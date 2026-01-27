@@ -8,11 +8,11 @@
 This project is a template with some basic functionality for the ASW labs.
 
 # Contributors
-UO302313 - David Fernando Bolaños Lopez
-UO294946 - Raúl Velasco Vizán
-UO301919 - Ángela Nistal Guerrero
-UO300731 - Olai Navarro Baizán
-UO301831 - Alejandro Requena Roncero
+- UO302313 - David Fernando Bolaños Lopez
+- UO294946 - Raúl Velasco Vizán
+- UO301919 - Ángela Nistal Guerrero
+- UO300731 - Olai Navarro Baizán
+- UO301831 - Alejandro Requena Roncero
 
 ## Project Structure
 
