@@ -11,6 +11,7 @@ This project is a template with some basic functionality for the ASW labs.
 UO302313 - David Fernando Bolaños Lopez
 UO294946 - Raúl Velasco Vizán
 UO301919 - Ángela Nistal Guerrero
+UO300731 - Olai Navarro Baizán
 
 ## Project Structure
 
