@@ -9,6 +9,7 @@ This project is a template with some basic functionality for the ASW labs.
 
 # Contributors
 UO302313 - David Fernando Bolaños Lopez
+UO294946 - Raúl Velasco Vizán
 
 ## Project Structure
 
