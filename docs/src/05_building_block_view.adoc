@@ -56,27 +56,27 @@ The Yovi system is decomposed into three main subsystems to achieve separation o
 | Building Block | Responsibility
 
 | **Web Frontend**
-| • Renders game board and UI components
+a| • Renders game board and UI components
 • Handles user interactions (login, game moves, statistics viewing)
 • Communicates with Web App Server via REST API
 • Manages client-side state
 
 | **Web App Server (BFF)**
-| • Acts as Backend for Frontend orchestrating multiple services
+a| • Acts as Backend for Frontend orchestrating multiple services
 • Provides REST API for web clients and bots
 • Manages user authentication and authorization
 • Coordinates Game Server and Database operations
 • Transforms between user-friendly formats and YEN notation
 
 | **Game Server**
-| • Implements core Y game rules and logic
+a| • Implements core Y game rules and logic
 • Validates moves and checks win conditions
 • Computes bot moves using various strategies
 • Stateless service using YEN notation
 • Exposes REST API for game operations
 
 | **Database (SQLite)**
-| • Stores user accounts and credentials
+a| • Stores user accounts and credentials
 • Persists match history and game state
 • Maintains player statistics and rankings
 • Provides atomic transactions for data consistency
@@ -159,36 +159,36 @@ The Web App Server follows a layered architecture with clear separation between 
 | Component | Responsibility
 
 | **AuthController**
-| • Handles HTTP requests for `/auth/register` and `/auth/login`
+a| • Handles HTTP requests for `/auth/register` and `/auth/login`
 • Validates user credentials
 • Returns JWT tokens or session cookies
 
 | **MatchesController**
-| • Manages match creation (`POST /matches`)
+a| • Manages match creation (`POST /matches`)
 • Retrieves match history (`GET /matches`)
 • Requires authentication
 
 | **StatsController**
-| • Provides player statistics endpoint (`GET /stats`)
+a| • Provides player statistics endpoint (`GET /stats`)
 • Aggregates data from UsersService
 
 | **BotApiController**
-| • Exposes bot-specific API (`POST /bot/play`)
+a| • Exposes bot-specific API (`POST /bot/play`)
 • Handles bot authentication
 • Delegates to GameOrchestrationService
 
 | **GameOrchestrationService**
-| • Core orchestration logic
+a| • Core orchestration logic
 • Coordinates UsersClient and GameEngineClient
 • Implements game flow: validate state → compute move → persist result
 • Error handling and state management
 
 | **UsersClient**
-| • HTTP client wrapping UsersService API
+a| • HTTP client wrapping UsersService API
 • Handles user authentication, match persistence, statistics retrieval
 
 | **GameEngineClient**
-| • HTTP client wrapping Game Server API
+a| • HTTP client wrapping Game Server API
 • Sends YEN positions and receives bot moves
 • Uses SharedContracts DTOs (YenPositionDto, YenMoveDto)
 |===
@@ -260,37 +260,37 @@ The Game Server encapsulates all game-specific logic using Domain-Driven Design 
 | Component | Responsibility
 
 | **EngineService**
-| • REST API entry point (`POST /ybot/choose/{botId}`)
+a| • REST API entry point (`POST /ybot/choose/{botId}`)
 • Parses YEN notation from requests
 • Delegates to NextMoveComputer or WinEvaluator
 • Returns YenMoveDto responses
 
 | **NextMoveComputer**
-| • Computes next optimal move for a given bot strategy
+a| • Computes next optimal move for a given bot strategy
 • Selects appropriate Strategy implementation based on botId/difficulty
 • Returns valid move in YEN notation
 
 | **WinEvaluator**
-| • Checks if game has ended (win condition met)
+a| • Checks if game has ended (win condition met)
 • Analyzes board for Y-connections (3-sided paths)
 • Returns game status (ongoing/won/draw)
 
 | **Strategy Interface**
-| • Defines contract for bot implementations
+a| • Defines contract for bot implementations
 • `compute_move(board: &Board, difficulty: u8) -> Move`
 
 | **RandomStrategy**
-| • Implements random valid move selection
+a| • Implements random valid move selection
 • Low difficulty, fast execution
 • Used for testing and beginner difficulty
 
 | **HeuristicStrategy**
-| • Implements heuristic-based move evaluation
+a| • Implements heuristic-based move evaluation
 • Considers board control, connection potential, blocking opponent
 • Configurable difficulty levels affect search depth
 
 | **GameDomain Package**
-| • **Game**: Aggregates board, players, move history, game state
+a| • **Game**: Aggregates board, players, move history, game state
 • **Board**: Hexagonal grid representation using barycentric coordinates
 • **Move**: Represents player action (position + player)
 • **Player**: Entity representing B or R player
@@ -359,38 +359,38 @@ UsersService follows a clean architecture with Repository pattern for database a
 | Component | Responsibility
 
 | **UsersApiController**
-| • Exposes internal REST API for Web App Server
+a| • Exposes internal REST API for Web App Server
 • Endpoints: `/auth/*`, `/users/*`, `/matches/*`, `/stats/*`
 • Input validation and error handling
 
 | **AuthService**
-| • User registration and authentication logic
+a| • User registration and authentication logic
 • Password hashing (Argon2)
 • JWT token generation and validation
 
 | **UserService**
-| • CRUD operations for user accounts
+a| • CRUD operations for user accounts
 • User profile management
 
 | **MatchService**
-| • Match creation and state persistence
+a| • Match creation and state persistence
 • Stores match metadata (size, strategy, difficulty, participants)
 • Updates match status (ongoing/finished)
 
 | **StatsService**
-| • Aggregates player statistics (wins/losses/draws)
+a| • Aggregates player statistics (wins/losses/draws)
 • Calculates rankings and metrics
 • Provides historical match data
 
 | **UserRepository**
-| • Database access layer for `users` table
+a| • Database access layer for `users` table
 • SQL query execution and result mapping
 
 | **MatchRepository**
-| • Database access layer for `matches` table
+a| • Database access layer for `matches` table
 • Stores serialized YEN board states
 
 | **StatsRepository**
-| • Database access layer for aggregated statistics
+a| • Database access layer for aggregated statistics
 • Optimized read queries for rankings
 |===

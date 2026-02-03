@@ -53,30 +53,30 @@ end note
 | Partner | Input | Output
 
 | **Human Player (Web User)**
-| • User registration/login credentials
+a| • User registration/login credentials
 • Game moves (position=YEN, strategy, difficulty)
 • Match creation requests (size, strategy, difficulty)
 • Statistics/history queries
-| • Authentication tokens/sessions
+a| • Authentication tokens/sessions
 • Current game state (YEN format)
 • Valid/invalid move responses
 • Match results and statistics
 • Game history data
 
 | **Bot Client (External/Internal)**
-| • Bot authentication
+a| • Bot authentication
 • Game moves via Bot API (position=YEN, strategy, difficulty)
 • Match participation requests
-| • Authentication tokens
+a| • Authentication tokens
 • Current game state (YEN format)
 • Move validation responses
 • Match outcomes
 
 | **Administrator**
-| • System monitoring requests
+a| • System monitoring requests
 • User management operations
 • Bot registration/configuration
-| • System status
+a| • System status
 • User data
 • Bot performance metrics
 |===
@@ -146,7 +146,7 @@ end note
 | **Web Browser → Web App Server**
 | HTTPS, REST API, WebSocket (future)
 | 443 (HTTPS)
-| • User authentication
+a| • User authentication
 • Match management
 • Game moves submission
 • Statistics retrieval
@@ -154,7 +154,7 @@ end note
 | **Web App Server → Game Server**
 | HTTP, REST API
 | 8080 (HTTP)
-| • Bot move computation
+a| • Bot move computation
 • Move validation
 • Win condition checking
 • YEN format transformation
@@ -162,7 +162,7 @@ end note
 | **Web App Server → Database**
 | SQLite native (embedded)
 | Local file access
-| • User CRUD operations
+a| • User CRUD operations
 • Match state persistence
 • Statistics aggregation
 • Transaction management
@@ -170,7 +170,7 @@ end note
 | **Bot Client → Web App Server**
 | HTTPS, REST API
 | 443 (HTTPS)
-| • Bot authentication
+a| • Bot authentication
 • Automated gameplay
 • Cross-team competition
 |===
@@ -232,7 +232,3 @@ end note
 * **Database**: SQLite file stored as volume mount for data persistence
 * **Scalability**: Game Server is stateless and can be horizontally scaled behind a load balancer
 * **Security**: HTTPS enforced for external communication, internal HTTP acceptable for trusted network
-
-
-
-|===

@@ -16,23 +16,24 @@ This section outlines the fundamental architectural and technological decisions 
 | Decision | Rationale
 
 | **Separate Game Server (Rust)**
-| • **Performance**: Rust provides memory safety without garbage collection, ensuring fast execution for game logic and move validation
+a| • **Performance**: Rust provides memory safety without garbage collection, ensuring fast execution for game logic and move validation
 • **Concurrency**: Rust's ownership model enables safe concurrent processing of multiple game sessions
 • **Domain Separation**: Isolates core game logic from presentation and user management concerns
 • **Requirement**: Mandated by project specification to implement game engine in Rust
 
 | **Web App Server (Node.js + Express + TypeScript)**
-| • **Rapid Development**: JavaScript/TypeScript ecosystem provides extensive libraries and tooling
+a| • **Rapid Development**: JavaScript/TypeScript ecosystem provides extensive libraries and tooling
 • **Full-stack TypeScript**: Enables code sharing between frontend and backend (DTOs, types)
 • **REST API**: Express simplifies RESTful API implementation for both web clients and bots
 • **Requirement**: TypeScript mandated by project specification for web application
 
 | **Frontend (React + Vite + TypeScript)**
-| • **Component-based UI**: React's declarative approach simplifies game board rendering and state management
+a| • **Component-based UI**: React's declarative approach simplifies game board rendering and state management
 • **Fast Development**: Vite provides instant hot module replacement (HMR) for rapid iteration
 • **Type Safety**: TypeScript prevents runtime errors and improves code maintainability
+
 | **Database (SQLite)**
-| • **Simplicity**: Zero-configuration embedded database, no separate server process required
+a| • **Simplicity**: Zero-configuration embedded database, no separate server process required
 • **Portability**: Single file database simplifies deployment and backup
 • **Performance**: Excellent read performance for user statistics and rankings
 • **Write-Ahead Logging (WAL)**: Enables concurrent reads during writes, sufficient for academic project scale
@@ -153,33 +154,33 @@ package "Game Server (Rust)" {
 | Quality Goal | Strategy | Implementation
 
 | **Performance**
-| • Rust for compute-intensive game logic
+a| • Rust for compute-intensive game logic
 • SQLite for fast read operations
 • Stateless game server for horizontal scaling
-| • Move validation in O(n) time
+a| • Move validation in O(n) time
 • Indexed database queries for rankings
 • Concurrent request handling
 
 | **Scalability**
-| • Stateless services enable horizontal scaling
+a| • Stateless services enable horizontal scaling
 • Database optimized for read-heavy workload
-| • Multiple game server instances possible
+a| • Multiple game server instances possible
 • Connection pooling
 • Caching strategies for frequent queries
 
 | **Maintainability**
-| • Clear separation of concerns
+a| • Clear separation of concerns
 • Type safety (TypeScript + Rust)
 • Shared DTOs between services
-| • Layered architecture
+a| • Layered architecture
 • Repository pattern for DB abstraction
 • Comprehensive API documentation
 
 | **Interoperability**
-| • REST API with JSON
+a| • REST API with JSON
 • Standardized YEN notation
 • External bot API
-| • OpenAPI/Swagger documentation
+a| • OpenAPI/Swagger documentation
 • Versioned API endpoints
 • Cross-team bot competition support
 |===
