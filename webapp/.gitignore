@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# TypeScript incremental build cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+# Vite / tooling caches
+.vite
+.eslintcache
+.cache
