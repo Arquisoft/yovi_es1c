@@ -28,6 +28,7 @@ use std::sync::Arc;
 pub use choose::MoveResponse;
 pub use error::ErrorResponse;
 pub use version::*;
+use tower_http::cors::{CorsLayer, Any};
 
 use crate::{GameYError, RandomBot, YBotRegistry, state::AppState};
 
@@ -35,12 +36,18 @@ use crate::{GameYError, RandomBot, YBotRegistry, state::AppState};
 ///
 /// This is useful for testing the API without binding to a network port.
 pub fn create_router(state: AppState) -> axum::Router {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     axum::Router::new()
         .route("/status", axum::routing::get(status))
         .route(
             "/{api_version}/ybot/choose/{bot_id}",
             axum::routing::post(choose::choose),
         )
+        .layer(cors)
         .with_state(state)
 }
 
