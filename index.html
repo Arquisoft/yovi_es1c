@@ -491,9 +491,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#section-concepts">8. Cross-cutting Concepts</a>
 <ul class="sectlevel2">
-<li><a href="#_concept_1">8.1. <em>&lt;Concept 1&gt;</em></a></li>
-<li><a href="#_concept_2">8.2. <em>&lt;Concept 2&gt;</em></a></li>
-<li><a href="#_concept_n">8.3. <em>&lt;Concept n&gt;</em></a></li>
+<li><a href="#_domain_model">8.1. Domain Model</a></li>
+<li><a href="#_user_experience_ux">8.2. User experience (UX)</a></li>
+<li><a href="#_safety_and_security_concepts">8.3. Safety and Security Concepts</a></li>
+<li><a href="#_architecture_and_design_patterns">8.4. Architecture and Design Patterns</a></li>
+<li><a href="#_development_concepts">8.5. Development Concepts</a></li>
+<li><a href="#_persistence_layer">8.6. Persistence Layer</a></li>
+<li><a href="#_error_handling">8.7. Error Handling</a></li>
 </ul>
 </li>
 <li><a href="#section-design-decisions">9. Architecture Decisions</a></li>
@@ -759,7 +763,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_communication_partners">3.1.1. Communication Partners</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/business-context.png" alt="business context" width="511" height="524">
+<img src="./images/business-context.png" alt="business context" width="878" height="340">
 </div>
 </div>
 <table class="tableblock frame-all grid-all stretch">
@@ -904,7 +908,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_system_architecture">3.2.1. System Architecture</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="785" height="517">
+<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="940" height="642">
 </div>
 </div>
 </div>
@@ -1245,7 +1249,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_microservices_with_bff_pattern">4.3.1. Microservices with BFF Pattern</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/solution-architecture.png" alt="solution architecture" width="703" height="433">
+<img src="./images/solution-architecture.png" alt="solution architecture" width="653" height="472">
 </div>
 </div>
 <div class="paragraph">
@@ -1272,7 +1276,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/layered-architecture.png" alt="layered architecture" width="677" height="368">
+<img src="./images/layered-architecture.png" alt="layered architecture" width="751" height="457">
 </div>
 </div>
 <div class="paragraph">
@@ -1519,7 +1523,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_overview_diagram">5.1.1. Overview Diagram</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level1-overview.png" alt="level1 overview" width="792" height="395">
+<img src="./images/level1-overview.png" alt="level1 overview" width="848" height="455">
 </div>
 </div>
 <div class="paragraph">
@@ -1670,7 +1674,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_white_box_web_app_server">5.2.1. White Box: Web App Server</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-webapp.png" alt="level2 webapp" width="891" height="590">
+<img src="./images/level2-webapp.png" alt="level2 webapp" width="988" height="708">
 </div>
 </div>
 <div class="paragraph">
@@ -1823,7 +1827,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_white_box_game_server">5.2.2. White Box: Game Server</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-gameserver.png" alt="level2 gameserver" width="1154" height="606">
+<img src="./images/level2-gameserver.png" alt="level2 gameserver" width="1152" height="769">
 </div>
 </div>
 <div class="paragraph">
@@ -1975,7 +1979,7 @@ conventions (e.g. programming or versioning guidelines, documentation or naming 
 <h4 id="_white_box_usersservice">5.2.3. White Box: UsersService</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-users.png" alt="level2 users" width="768" height="521">
+<img src="./images/level2-users.png" alt="level2 users" width="866" height="627">
 </div>
 </div>
 <div class="paragraph">
@@ -2468,24 +2472,174 @@ on this list.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_concept_1">8.1. <em>&lt;Concept 1&gt;</em></h3>
+<h3 id="_domain_model">8.1. Domain Model</h3>
 <div class="paragraph">
-<p><em>&lt;explanation&gt;</em></p>
+<p>A first version of the domain model of the application, representing all the entities
+that interact with the application and their relations, is shown in the following
+diagram:</p>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="./images/domain-model.png" alt="domain model" width="668" height="628">
+</div>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_concept_2">8.2. <em>&lt;Concept 2&gt;</em></h3>
+<h3 id="_user_experience_ux">8.2. User experience (UX)</h3>
 <div class="paragraph">
-<p><em>&lt;explanation&gt;</em></p>
+<p>Since the project includes a web interface,
+we wanted the user experience to be as smooth
+and intuitive as possible. The idea is that anyone
+can open the application and start playing without
+needing instructions.</p>
 </div>
 <div class="paragraph">
-<p>&#8230;&#8203;</p>
+<p>Key UX ideas:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Visual Feedback: The interface reacts immediately
+to user actions (valid moves, turn changes, errors).
+This helps players understand what is happening in
+the game at all times.</p>
+</li>
+<li>
+<p>Consistency: We try to keep the same style and
+interaction patterns across all pages so the user
+does not have to “relearn” how to use the app.</p>
+</li>
+<li>
+<p>Accessibility: Clear colors, readable text,
+and simple layouts help make the game accessible
+to a wider audience.</p>
+</li>
+</ul>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_concept_n">8.3. <em>&lt;Concept n&gt;</em></h3>
+<h3 id="_safety_and_security_concepts">8.3. Safety and Security Concepts</h3>
 <div class="paragraph">
-<p><em>&lt;explanation&gt;</em></p>
+<p>Security is a cross‑cutting concern because it
+affects both the backend and the frontend.
+Even though this is an academic project, we still apply basic security principles.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Authentication and Authorization:
+Only authenticated users can access certain features, such as starting a game or viewing their profile.</p>
+</li>
+<li>
+<p>Password Protection:
+Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database.</p>
+</li>
+<li>
+<p>Data Protection:
+We only store the minimum amount of user information needed for the system to work.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_architecture_and_design_patterns">8.4. Architecture and Design Patterns</h3>
+<div class="paragraph">
+<p>The system follows a service‑based architecture. Instead of having one big monolithic
+application, we split the project into several smaller services:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>webapp (React + TypeScript): the user interface</p>
+</li>
+<li>
+<p>users (Node.js + Express): user registration and authentication</p>
+</li>
+<li>
+<p>gamey (Rust): the Y‑game engine and bot logic</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Some patterns we use:</p>
+</div>
+<div class="paragraph">
+<p>Game Engine Pattern:
+The Rust service encapsulates all the game logic, including move validation and board updates.</p>
+</div>
+<div class="paragraph">
+<p>Separation of Concerns:
+The frontend separates UI components, state management, and API calls.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_development_concepts">8.5. Development Concepts</h3>
+<div class="paragraph">
+<p>These concepts describe the practices that the whole team follows during development.</p>
+</div>
+<div class="paragraph">
+<p><strong>Version Control:</strong></p>
+</div>
+<div class="paragraph">
+<p>The project is developed collaboratively using GitHub. Branching, pull requests and code reviews
+ensure that all components evolve consistently.</p>
+</div>
+<div class="paragraph">
+<p><strong>Testing:</strong></p>
+</div>
+<div class="paragraph">
+<p>Each part of the system includes automated tests:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Rust engine: unit tests</p>
+</li>
+<li>
+<p>Node.js service: API tests</p>
+</li>
+<li>
+<p>React app: component and integration tests</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Testing is transversal because it guarantees correctness across all services.</p>
+</div>
+<div class="paragraph">
+<p><strong>Continuous Integration:</strong></p>
+</div>
+<div class="paragraph">
+<p>GitHub Actions automatically run builds and tests whenever code is pushed.
+This helps detect errors early and keeps all services aligned.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_persistence_layer">8.6. Persistence Layer</h3>
+<div class="paragraph">
+<p>The application relies on a SQL database (relational database) that will
+manage the data of the application related to the game sessions or related to the user.</p>
+</div>
+<div class="paragraph">
+<p>Game sessions are not permanently stored, since the game engine written in Rust is
+designed to compute the state of the board in memory. This simplifies the architecture
+and avoids unnecessary complexity. If persistence of matches is needed in the future
+(for example, to implement match history or resume functionality), the system can be
+extended without affecting the existing services thanks to the service‑based design.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_error_handling">8.7. Error Handling</h3>
+<div class="paragraph">
+<p>The application includes a consistent error handling strategy to deal with the different types of errors that may
+appear during execution. The goal is to detect problems early, avoid unexpected crashes and provide clear feedback
+both to developers and to users.</p>
+</div>
+<div class="paragraph">
+<p>At the user level, the application only displays simple and understandable messages, without exposing technical
+details. This prevents confusion and avoids leaking internal information. On the other hand, the backend services
+and the Rust game engine generate structured error messages and log them internally so developers can identify the
+cause of the problem more easily.</p>
 </div>
 <div style="page-break-after: always;"></div>
 </div>
@@ -2551,7 +2705,7 @@ There you will find links and examples about ADR.</p>
 <h3 id="_quality_tree">10.1. Quality Tree</h3>
 <div class="imageblock">
 <div class="content">
-<img src="./images/business-context.png" alt="business context" width="404" height="481">
+<img src="./images/quality-tree.png" alt="quality tree" width="404" height="481">
 </div>
 </div>
 </div>
@@ -2708,7 +2862,7 @@ There you will find links and examples about ADR.</p>
 <div id="footer">
 <div id="footer-text">
 Version 8.2 EN<br>
-Last updated 2026-01-29 11:49:21 +0100
+Last updated 2026-02-05 19:46:55 +0100
 </div>
 </div>
 </body>
