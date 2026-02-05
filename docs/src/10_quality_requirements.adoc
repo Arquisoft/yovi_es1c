@@ -7,7 +7,7 @@ This project is mainly focused on 4 basic quality attributes for an online game 
 
 === Quality Tree
 
-[plantuml, business-context, png]
+[plantuml, quality-tree, png]
 ----
 @startmindmap
 * Quality
