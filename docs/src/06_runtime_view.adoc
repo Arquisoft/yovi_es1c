@@ -4,7 +4,7 @@
 This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, and statistics retrieval.
 The scenarios below are derived directly from the system’s architecture and message flows, using JSON/YEN as the canonical representation of game states.
 
-=== 6.1. Runtime Scenario 1: User Registration and Login
+=== Runtime Scenario 1: User Registration and Login
 
 This scenario shows how a human user registers or logs into the system through the Web Frontend.
 The WebApp BFF delegates authentication to the UsersService, which persists user data in SQLite.
@@ -30,7 +30,7 @@ Api --> Human: token/session
 - The BFF does not store credentials; it only forwards tokens.
 - SQLite acts as the single source of truth for user accounts.
 
-=== 6.2. Runtime Scenario 2: Authorization Check
+=== Runtime Scenario 2: Authorization Check
 
 When a user requests protected resources, the BFF verifies the token either locally (JWT) or by delegating to the UsersService.
 
@@ -51,7 +51,7 @@ Api --> Human: 401 Unauthorized
 - Ensures that only authenticated users can access match data.
 - Supports both JWT local validation and remote verification.
 
-=== 6.3. Runtime Scenario 3: Match Creation and Initial State Retrieval
+=== Runtime Scenario 3: Match Creation and Initial State Retrieval
 
 A user creates a new match by specifying board size, strategy, and difficulty.
 The UsersService persists the match and returns the initial YEN state.
@@ -76,7 +76,7 @@ Api --> Human: match + initial YEN
 - The UsersService owns match lifecycle and persistence.
 - Initial game state is always stored and returned in YEN format.
 
-=== 6.4. Runtime Scenario 4: Player Move (Human Turn)
+=== Runtime Scenario 4: Player Move (Human Turn)
 
 The human player submits a move in YEN notation.
 The BFF retrieves the current match state, validates it, calls the Rust engine for the bot move, and persists the updated state.
@@ -123,7 +123,7 @@ Api --> Human: move + updated YEN
 - The Rust engine is stateless and only computes moves.
 - All updates are persisted atomically in SQLite.
 
-=== 6.5. Runtime Scenario 5: Bot API Interaction
+=== Runtime Scenario 5: Bot API Interaction
 
 Bots can play matches programmatically using the external API.
 The flow mirrors the human move scenario but uses bot credentials or API keys.
@@ -159,7 +159,7 @@ Api --> Bot: move + updated YEN
 - Bots interact with the same engine and match logic as human players.
 - API keys or bot credentials ensure secure automated access.
 
-=== 6.6. Runtime Scenario 6: Statistics and History Retrieval
+=== Runtime Scenario 6: Statistics and History Retrieval
 
 Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics.
 
