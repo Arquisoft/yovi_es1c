@@ -3,6 +3,20 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-design-decisions]]
 == Architecture Decisions
 
+=== ADR 1: Microservices architecture
+* **Context:** The platform is expected to scale with increasing user demand, evolve over time with new features or game modes, and support parallel development by multiple team members. High availability and maintainability are important non-functional requirements.
+* **Status:** Accepted by the teacher and development team.
+* **Decision:** We decided to implement a microservice-based architecture with a clear separation between game logic, web APIs, and presentation layers. The system will consist of an independent Game Server (Rust) handling core game rules and state, a Web Application Server (Node.js + Express + TypeScript) exposing APIs and coordinating requests, and a Frontend application (React + Vite + TypeScript) for user interaction. Persistent data will be managed through a backend-controlled SQLite database. +
+This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.
+* **Pros:** 
+** Clear separation of concerns between game logic, web APIs, and user interface.
+** Enables independent development and deployment of the Game Server and Web Application Server.
+* **Cons:**
+** Increased architectural complexity compared to a single monolithic backend.
+** Introduces inter-service communication overhead and potential latency.
+
+
+
 
 ifdef::arc42help[]
 [role="arc42help"]
