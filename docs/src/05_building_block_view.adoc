@@ -1,225 +1,396 @@
 ifndef::imagesdir[:imagesdir: ../images]
 
 [[section-building-block-view]]
-
-
 == Building Block View
-
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Content
-The building block view shows the static decomposition of the system into building blocks (modules, components, subsystems, classes, interfaces, packages, libraries, frameworks, layers, partitions, tiers, functions, macros, operations, data structures, ...) as well as their dependencies (relationships, associations, ...)
-
-This view is mandatory for every architecture documentation.
-In analogy to a house this is the _floor plan_.
-
-.Motivation
-Maintain an overview of your source code by making its structure understandable through
-abstraction.
-
-This allows you to communicate with your stakeholder on an abstract level without disclosing implementation details.
-
-.Form
-The building block view is a hierarchical collection of black boxes and white boxes
-(see figure below) and their descriptions.
-
-image::05_building_blocks-EN.png["Hierarchy of building blocks"]
-
-*Level 1* is the white box description of the overall system together with black
-box descriptions of all contained building blocks.
-
-*Level 2* zooms into some building blocks of level 1.
-Thus it contains the white box description of selected building blocks of level 1, together with black box descriptions of their internal building blocks.
-
-*Level 3* zooms into selected building blocks of level 2, and so on.
-
-
-.Further Information
-
-See https://docs.arc42.org/section-5/[Building Block View] in the arc42 documentation.
-
-****
-endif::arc42help[]
 
 === Whitebox Overall System
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Here you describe the decomposition of the overall system using the following white box template. It contains
+==== Overview Diagram
 
- * an overview diagram
- * a motivation for the decomposition
- * black box descriptions of the contained building blocks. For these we offer you alternatives:
+[plantuml, level1-overview, png]
+----
+@startuml
+!include <C4/C4_Component>
 
-   ** use _one_ table for a short and pragmatic overview of all contained building blocks and their interfaces
-   ** use a list of black box descriptions of the building blocks according to the black box template (see below).
-   Depending on your choice of tool this list could be sub-chapters (in text files), sub-pages (in a Wiki) or nested elements (in a modeling tool).
+skinparam componentStyle rectangle
 
+package "Yovi System" {
+  component "Web Frontend\n(React + Vite + TS)" as frontend <<application>>
+  component "Web App Server\n(Node.js + Express + TS)" as webapp <<service>>
+  component "Game Server\n(Rust)" as gamey <<service>>
+  database "SQLite Database" as db <<database>>
+}
 
- * (optional:) important interfaces, that are not explained in the black box templates of a building block, but are very important for understanding the white box.
-Since there are so many ways to specify interfaces why do not provide a specific template for them.
- In the worst case you have to specify and describe syntax, semantics, protocols, error handling,
- restrictions, versions, qualities, necessary compatibilities and many things more.
-In the best case you will get away with examples or simple signatures.
+frontend -down-> webapp : HTTPS/REST\nJSON
+webapp -right-> gamey : HTTP/REST\nJSON (YEN)
+webapp -down-> db : SQLite\nSQL
 
-****
-endif::arc42help[]
+note right of webapp
+  **Backend for Frontend (BFF)**
+  Orchestrates user management
+  and game logic
+end note
 
-_**<Overview Diagram>**_
+note right of gamey
+  **Core Game Engine**
+  Stateless game logic
+  Move validation & bot AI
+end note
 
-Motivation::
+@enduml
+----
 
-_<text explanation>_
+**Motivation:**
 
+The Yovi system is decomposed into three main subsystems to achieve separation of concerns, independent scalability, and technology-specific optimization:
 
-Contained Building Blocks::
-_<Description of contained building block (black boxes)>_
+* **Web Frontend**: User interface layer for human players
+* **Web App Server**: Orchestration layer (BFF pattern) managing authentication, match lifecycle, and API routing
+* **Game Server**: Pure game logic engine optimized for performance (Rust)
+* **Database**: Persistent storage for users, matches, and statistics
 
-Important Interfaces::
-_<Description of important interfaces>_
+**Contained Building Blocks:**
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Insert your explanations of black boxes from level 1:
-
-If you use tabular form you will only describe your black boxes with name and
-responsibility according to the following schema:
-
-[cols="1,2" options="header"]
+[cols="1,3", options="header"]
 |===
-| **Name** | **Responsibility**
-| _<black box 1>_ | _<Text>_
-| _<black box 2>_ | _<Text>_
+| Building Block | Responsibility
+
+| **Web Frontend**
+a| • Renders game board and UI components
+• Handles user interactions (login, game moves, statistics viewing)
+• Communicates with Web App Server via REST API
+• Manages client-side state
+
+| **Web App Server (BFF)**
+a| • Acts as Backend for Frontend orchestrating multiple services
+• Provides REST API for web clients and bots
+• Manages user authentication and authorization
+• Coordinates Game Server and Database operations
+• Transforms between user-friendly formats and YEN notation
+
+| **Game Server**
+a| • Implements core Y game rules and logic
+• Validates moves and checks win conditions
+• Computes bot moves using various strategies
+• Stateless service using YEN notation
+• Exposes REST API for game operations
+
+| **Database (SQLite)**
+a| • Stores user accounts and credentials
+• Persists match history and game state
+• Maintains player statistics and rankings
+• Provides atomic transactions for data consistency
 |===
 
+**Important Interfaces:**
 
-
-If you use a list of black box descriptions then you fill in a separate black box template for every important building block .
-Its headline is the name of the black box.
-****
-endif::arc42help[]
-
-==== <Name black box 1>
-
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Here you describe <black box 1>
-according the the following black box template:
-
-* Purpose/Responsibility
-* Interface(s), when they are not extracted as separate paragraphs. This interfaces may include qualities and performance characteristics.
-* (Optional) Quality-/Performance characteristics of the black box, e.g.availability, run time behavior, ....
-* (Optional) directory/file location
-* (Optional) Fulfilled requirements (if you need traceability to requirements).
-* (Optional) Open issues/problems/risks
-
-****
-endif::arc42help[]
-
-_<Purpose/Responsibility>_
-
-_<Interface(s)>_
-
-_<(Optional) Quality/Performance Characteristics>_
-
-_<(Optional) Directory/File Location>_
-
-_<(Optional) Fulfilled Requirements>_
-
-_<(optional) Open Issues/Problems/Risks>_
-
-
-
-
-==== <Name black box 2>
-
-_<black box template>_
-
-==== <Name black box n>
-
-_<black box template>_
-
-
-==== <Name interface 1>
-
-...
-
-==== <Name interface m>
-
-
+* **Web Frontend → Web App Server**: REST API (`/auth/*`, `/matches/*`, `/play`, `/stats`)
+* **Web App Server → Game Server**: REST API (`/ybot/choose/{botId}`)
+* **Web App Server → Database**: SQLite native SQL queries
+* **Bot Client → Web App Server**: REST API (`/bot/play`)
 
 === Level 2
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Here you can specify the inner structure of (some) building blocks from level 1 as white boxes.
+==== White Box: Web App Server
 
-You have to decide which building blocks of your system are important enough to justify such a detailed description.
-Please prefer relevance over completeness. Specify important, surprising, risky, complex or volatile building blocks.
-Leave out normal, simple, boring or standardized parts of your system
-****
-endif::arc42help[]
+[plantuml, level2-webapp, png]
+----
+@startuml
+package "Web App Server (Node.js + Express + TypeScript)" {
 
-==== White Box _<building block 1>_
+  package "Controllers Layer" <<frame>> {
+    component [AuthController] <<TS>>
+    component [MatchesController] <<TS>>
+    component [StatsController] <<TS>>
+    component [BotApiController] <<TS>>
+  }
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-...describes the internal structure of _building block 1_.
-****
-endif::arc42help[]
+  package "Services Layer" <<frame>> {
+    component [GameOrchestrationService] <<TS>>
+  }
 
-_<white box template>_
+  package "Clients Layer" <<frame>> {
+    component [UsersClient] <<TS>>
+    component [GameEngineClient] <<TS>>
+  }
+}
 
-==== White Box _<building block 2>_
+component "UsersService\n(External)" as users <<external>>
+component "Game Server\n(External)" as game <<external>>
+component "SharedContracts\n(DTOs)" as contracts <<library>>
 
+[AuthController] ..> [GameOrchestrationService]
+[MatchesController] ..> [GameOrchestrationService]
+[StatsController] ..> [GameOrchestrationService]
+[BotApiController] ..> [GameOrchestrationService]
 
-_<white box template>_
+[GameOrchestrationService] ..> [UsersClient]
+[GameOrchestrationService] ..> [GameEngineClient]
 
-...
+[UsersClient] --> users : HTTP/JSON
+[GameEngineClient] --> game : HTTP/JSON
 
-==== White Box _<building block m>_
+[UsersClient] ..> contracts
+[GameEngineClient] ..> contracts
 
+note right of [GameOrchestrationService]
+  **Orchestration Responsibilities:**
+  - Coordinates UsersService calls
+  - Validates game state
+  - Calls Game Server for moves
+  - Transforms YEN ↔ User formats
+end note
 
-_<white box template>_
+@enduml
+----
 
+**Motivation:**
 
+The Web App Server follows a layered architecture with clear separation between HTTP handling (Controllers), business orchestration (Services), and external communication (Clients). This enables:
 
-=== Level 3
+* **Testability**: Each layer can be unit tested independently
+* **Maintainability**: Changes to external APIs are isolated in Client classes
+* **Reusability**: GameOrchestrationService can be used by multiple controllers
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Here you can specify the inner structure of (some) building blocks from level 2 as white boxes.
+**Contained Building Blocks:**
 
-When you need more detailed levels of your architecture please copy this
-part of arc42 for additional levels.
-****
-endif::arc42help[]
+[cols="1,3", options="header"]
+|===
+| Component | Responsibility
 
-==== White Box <_building block x.1_>
+| **AuthController**
+a| • Handles HTTP requests for `/auth/register` and `/auth/login`
+• Validates user credentials
+• Returns JWT tokens or session cookies
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Specifies the internal structure of _building block x.1_.
-****
-endif::arc42help[]
+| **MatchesController**
+a| • Manages match creation (`POST /matches`)
+• Retrieves match history (`GET /matches`)
+• Requires authentication
 
-_<white box template>_
+| **StatsController**
+a| • Provides player statistics endpoint (`GET /stats`)
+• Aggregates data from UsersService
 
+| **BotApiController**
+a| • Exposes bot-specific API (`POST /bot/play`)
+• Handles bot authentication
+• Delegates to GameOrchestrationService
 
-==== White Box <_building block x.2_>
+| **GameOrchestrationService**
+a| • Core orchestration logic
+• Coordinates UsersClient and GameEngineClient
+• Implements game flow: validate state → compute move → persist result
+• Error handling and state management
 
-_<white box template>_
+| **UsersClient**
+a| • HTTP client wrapping UsersService API
+• Handles user authentication, match persistence, statistics retrieval
 
+| **GameEngineClient**
+a| • HTTP client wrapping Game Server API
+• Sends YEN positions and receives bot moves
+• Uses SharedContracts DTOs (YenPositionDto, YenMoveDto)
+|===
 
+==== White Box: Game Server
 
-==== White Box <_building block y.1_>
+[plantuml, level2-gameserver, png]
+----
+@startuml
+package "Game Server (Rust)" {
 
-_<white box template>_
+  component [EngineService] <<RUST>> #LightBlue
+  component [NextMoveComputer] <<RUST>> #LightYellow
+  component [WinEvaluator] <<RUST>> #LightYellow
+
+  interface "Strategy" as IStrategy <<interface>>
+  component [RandomStrategy] <<RUST>> #LightGreen
+  component [HeuristicStrategy] <<RUST>> #LightGreen
+
+  package "GameDomain" <<frame>> {
+    component [Game] <<RUST>>
+    component [Board] <<RUST>>
+    component [Move] <<RUST>>
+    component [Player] <<RUST>>
+    component [Coordinate] <<RUST>>
+    component [WinChecker] <<RUST>>
+  }
+}
+
+[EngineService] ..> [NextMoveComputer] : uses
+[EngineService] ..> [WinEvaluator] : uses
+
+[NextMoveComputer] ..> IStrategy : delegates to
+[WinEvaluator] ..> [Game] : evaluates
+
+IStrategy <|.. [RandomStrategy]
+IStrategy <|.. [HeuristicStrategy]
+
+[Game] *-- [Board]
+[Game] *-- [Move]
+[Game] *-- [Player]
+[Board] *-- [Coordinate]
+[Game] ..> [WinChecker]
+
+note right of IStrategy
+  **Strategy Pattern**
+  Enables multiple bot
+  implementations with
+  different difficulty levels
+end note
+
+note bottom of GameDomain
+  **Domain-Driven Design**
+  Pure game logic with no
+  external dependencies
+end note
+
+@enduml
+----
+
+**Motivation:**
+
+The Game Server encapsulates all game-specific logic using Domain-Driven Design principles. The Strategy pattern allows for extensible bot implementations without modifying core game logic.
+
+**Contained Building Blocks:**
+
+[cols="1,3", options="header"]
+|===
+| Component | Responsibility
+
+| **EngineService**
+a| • REST API entry point (`POST /ybot/choose/{botId}`)
+• Parses YEN notation from requests
+• Delegates to NextMoveComputer or WinEvaluator
+• Returns YenMoveDto responses
+
+| **NextMoveComputer**
+a| • Computes next optimal move for a given bot strategy
+• Selects appropriate Strategy implementation based on botId/difficulty
+• Returns valid move in YEN notation
+
+| **WinEvaluator**
+a| • Checks if game has ended (win condition met)
+• Analyzes board for Y-connections (3-sided paths)
+• Returns game status (ongoing/won/draw)
+
+| **Strategy Interface**
+a| • Defines contract for bot implementations
+• `compute_move(board: &Board, difficulty: u8) -> Move`
+
+| **RandomStrategy**
+a| • Implements random valid move selection
+• Low difficulty, fast execution
+• Used for testing and beginner difficulty
+
+| **HeuristicStrategy**
+a| • Implements heuristic-based move evaluation
+• Considers board control, connection potential, blocking opponent
+• Configurable difficulty levels affect search depth
+
+| **GameDomain Package**
+a| • **Game**: Aggregates board, players, move history, game state
+• **Board**: Hexagonal grid representation using barycentric coordinates
+• **Move**: Represents player action (position + player)
+• **Player**: Entity representing B or R player
+• **Coordinate**: Barycentric coordinate (x, y, z)
+• **WinChecker**: Algorithm to detect Y-shaped winning connections
+|===
+
+==== White Box: UsersService
+
+[plantuml, level2-users, png]
+----
+@startuml
+package "UsersService (Node.js + TypeScript)" {
+
+  package "Controllers" <<frame>> {
+    component [UsersApiController] <<TS>>
+  }
+
+  package "Services" <<frame>> {
+    component [AuthService] <<TS>>
+    component [UserService] <<TS>>
+    component [MatchService] <<TS>>
+    component [StatsService] <<TS>>
+  }
+
+  package "Repositories" <<frame>> {
+    component [UserRepository] <<TS>>
+    component [MatchRepository] <<TS>>
+    component [StatsRepository] <<TS>>
+  }
+}
+
+database "SQLite DB" as db <<database>>
+
+[UsersApiController] ..> [AuthService]
+[UsersApiController] ..> [UserService]
+[UsersApiController] ..> [MatchService]
+[UsersApiController] ..> [StatsService]
+
+[AuthService] ..> [UserRepository]
+[UserService] ..> [UserRepository]
+[MatchService] ..> [MatchRepository]
+[StatsService] ..> [StatsRepository]
+
+[UserRepository] --> db
+[MatchRepository] --> db
+[StatsRepository] --> db
+
+note right of [MatchRepository]
+  **Repository Pattern**
+  Abstracts database access
+  Enables testing with mocks
+end note
+
+@enduml
+----
+
+**Motivation:**
+
+UsersService follows a clean architecture with Repository pattern for database abstraction. This service is the source of truth for user data and match state persistence.
+
+**Contained Building Blocks:**
+
+[cols="1,3", options="header"]
+|===
+| Component | Responsibility
+
+| **UsersApiController**
+a| • Exposes internal REST API for Web App Server
+• Endpoints: `/auth/*`, `/users/*`, `/matches/*`, `/stats/*`
+• Input validation and error handling
+
+| **AuthService**
+a| • User registration and authentication logic
+• Password hashing (Argon2)
+• JWT token generation and validation
+
+| **UserService**
+a| • CRUD operations for user accounts
+• User profile management
+
+| **MatchService**
+a| • Match creation and state persistence
+• Stores match metadata (size, strategy, difficulty, participants)
+• Updates match status (ongoing/finished)
+
+| **StatsService**
+a| • Aggregates player statistics (wins/losses/draws)
+• Calculates rankings and metrics
+• Provides historical match data
+
+| **UserRepository**
+a| • Database access layer for `users` table
+• SQL query execution and result mapping
+
+| **MatchRepository**
+a| • Database access layer for `matches` table
+• Stores serialized YEN board states
+
+| **StatsRepository**
+a| • Database access layer for aggregated statistics
+• Optimized read queries for rankings
+|===

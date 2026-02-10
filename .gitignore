@@ -1,8 +1,41 @@
+# Dependencias
 node_modules
+
+# Builds / caches
+dist
+dist-ssr
+.vite
+*.tsbuildinfo
+.eslintcache
+.cache
+
+# Coverage
 coverage
-gamey/target
 lcov.info
+
+# Rust
+gamey/target
+
+# Docs build
 docs/build
+
+# Env (keep example)
 .env
-webapp/.env
+.env.*
+!.env.example
+
+# SQLite local files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDEs
 .vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

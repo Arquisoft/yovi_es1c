@@ -57,18 +57,157 @@ See https://docs.arc42.org/section-8/[Concepts] in the arc42 documentation.
 ****
 endif::arc42help[]
 
-=== _<Concept 1>_
+=== Domain Model
 
-_<explanation>_
+A first version of the domain model of the application, representing all the entities
+that interact with the application and their relations, is shown in the following
+diagram:
 
+[plantuml, "domain-model", png]
+----
+@startuml
 
+class Player {
+  +id(): PlayerId
+  +name(): String
+}
 
-=== _<Concept 2>_
+class PlayerId {
+  +id(): u32
+}
 
-_<explanation>_
+class GameY {
+  .. game state ..
+  +new(size: usize)
+  +add_move(m: Movement)
+  +render(options: RenderOptions)
+}
 
-...
+class Movement {
+}
 
-=== _<Concept n>_
+class Coordinates {
+  +from_index(idx: usize, size: usize)
+  +to_index(size: usize)
+}
 
-_<explanation>_
+class GameAction {
+}
+
+class YBot {
+  <<trait>>
+  +name(): &str
+  +choose_move(board: &GameY): Option<Coordinates>
+}
+
+Player --> PlayerId : has >
+Movement --> PlayerId : references >
+Movement --> Coordinates : uses >
+GameY --> Movement : records >
+GameY --> Coordinates : uses >
+YBot --> GameY : reads >
+YBot --> Coordinates : returns >
+
+@enduml
+----
+
+=== User experience (UX)
+
+Since the project includes a web interface,
+we wanted the user experience to be as smooth
+and intuitive as possible. The idea is that anyone
+can open the application and start playing without
+needing instructions.
+
+Key UX ideas:
+
+• Visual Feedback: The interface reacts immediately
+to user actions (valid moves, turn changes, errors).
+This helps players understand what is happening in
+the game at all times.
+
+• Consistency: We try to keep the same style and
+interaction patterns across all pages so the user
+does not have to “relearn” how to use the app.
+• Accessibility: Clear colors, readable text,
+and simple layouts help make the game accessible
+to a wider audience.
+
+=== Safety and Security Concepts
+
+Security is a cross‑cutting concern because it
+affects both the backend and the frontend.
+Even though this is an academic project, we still apply basic security principles.
+
+• Authentication and Authorization:
+Only authenticated users can access certain features, such as starting a game or viewing their profile.
+
+• Password Protection:
+Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database.
+
+• Data Protection:
+We only store the minimum amount of user information needed for the system to work.
+
+=== Architecture and Design Patterns
+
+The system follows a service‑based architecture. Instead of having one big monolithic
+application, we split the project into several smaller services:
+
+• webapp (React + TypeScript): the user interface
+• users (Node.js + Express): user registration and authentication
+• gamey (Rust): the Y‑game engine and bot logic
+
+Some patterns we use:
+
+Game Engine Pattern:
+The Rust service encapsulates all the game logic, including move validation and board updates.
+
+Separation of Concerns:
+The frontend separates UI components, state management, and API calls.
+
+=== Development Concepts
+
+These concepts describe the practices that the whole team follows during development.
+
+*Version Control:*
+
+The project is developed collaboratively using GitHub. Branching, pull requests and code reviews
+ensure that all components evolve consistently.
+
+*Testing:*
+
+Each part of the system includes automated tests:
+
+• Rust engine: unit tests
+• Node.js service: API tests
+• React app: component and integration tests
+
+Testing is transversal because it guarantees correctness across all services.
+
+*Continuous Integration:*
+
+GitHub Actions automatically run builds and tests whenever code is pushed.
+This helps detect errors early and keeps all services aligned.
+
+=== Persistence Layer
+
+The application relies on a SQL database (relational database) that will
+manage the data of the application related to the game sessions or related to the user.
+
+Game sessions are not permanently stored, since the game engine written in Rust is
+designed to compute the state of the board in memory. This simplifies the architecture
+and avoids unnecessary complexity. If persistence of matches is needed in the future
+(for example, to implement match history or resume functionality), the system can be
+extended without affecting the existing services thanks to the service‑based design.
+
+=== Error Handling
+
+The application includes a consistent error handling strategy to deal with the different types of errors that may
+appear during execution. The goal is to detect problems early, avoid unexpected crashes and provide clear feedback
+both to developers and to users.
+
+At the user level, the application only displays simple and understandable messages, without exposing technical
+details. This prevents confusion and avoids leaking internal information. On the other hand, the backend services
+and the Rust game engine generate structured error messages and log them internally so developers can identify the
+cause of the problem more easily.
+

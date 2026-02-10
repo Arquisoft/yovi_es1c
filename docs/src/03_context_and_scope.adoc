@@ -3,78 +3,232 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-context-and-scope]]
 == Context and Scope
 
-
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-Context and scope - as the name suggests - delimits your system (i.e. your scope) from all its communication partners
-(neighboring systems and users, i.e. the context of your system). It thereby specifies the external interfaces.
-
-If necessary, differentiate the business context (domain specific inputs and outputs) from the technical context (channels, protocols, hardware).
-
-.Motivation
-The domain interfaces and technical interfaces to communication partners are among your system's most critical aspects. Make sure that you completely understand them.
-
-.Form
-Various options:
-
-* Context diagrams
-* Lists of communication partners and their interfaces.
-
-
-.Further Information
-
-See https://docs.arc42.org/section-3/[Context and Scope] in the arc42 documentation.
-
-****
-endif::arc42help[]
+Yovi is a distributed web application that allows users and bots to play the Y board game. The system provides a platform where human players can compete against each other or against AI bots, with match history and statistics tracking for registered users.
 
 === Business Context
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-Specification of *all* communication partners (users, IT-systems, ...) with explanations of domain specific inputs and outputs or interfaces.
-Optionally you can add domain specific formats or communication protocols.
+==== Communication Partners
 
-.Motivation
-All stakeholders should understand which data are exchanged with the environment of the system.
+[plantuml, business-context, png]
+----
+@startuml
+!define RECTANGLE rectangle
 
-.Form
-All kinds of diagrams that show the system as a black box and specify the domain interfaces to communication partners.
+skinparam rectangle {
+  BackgroundColor<<system>> LightBlue
+  BorderColor<<system>> Blue
+}
 
-Alternatively (or additionally) you can use a table.
-The title of the table is the name of your system, the three columns contain the name of the communication partner, the inputs, and the outputs.
+actor "Human Player\n(Web User)" as user
+actor "Bot Client\n(External/Internal)" as bot
+actor "Administrator" as admin
 
-****
-endif::arc42help[]
+RECTANGLE "Yovi System" as system <<system>>
 
-**<Diagram or Table>**
+user --> system : Registration/Login\nGame moves (YEN)\nMatch creation\nStatistics queries
 
-**<optionally: Explanation of external domain interfaces>**
+system --> user : Auth tokens/sessions\nGame state (YEN)\nMove validation\nMatch results\nStatistics
+
+bot --> system : Bot authentication\nGame moves (YEN)\nMatch participation
+
+system --> bot : Auth tokens\nGame state (YEN)\nMove validation\nMatch outcomes
+
+admin --> system : System monitoring\nUser management\nBot configuration
+
+system --> admin : System status\nUser data\nBot metrics
+
+note right of system
+  **Key Domain Concepts:**
+  - YEN (Y-encoded Notation)
+  - Match sessions
+  - Strategy/difficulty levels
+  - Anonymous play support
+end note
+
+@enduml
+----
+
+[cols="1,2,2", options="header"]
+|===
+| Partner | Input | Output
+
+| **Human Player (Web User)**
+a| • User registration/login credentials
+• Game moves (position=YEN, strategy, difficulty)
+• Match creation requests (size, strategy, difficulty)
+• Statistics/history queries
+a| • Authentication tokens/sessions
+• Current game state (YEN format)
+• Valid/invalid move responses
+• Match results and statistics
+• Game history data
+
+| **Bot Client (External/Internal)**
+a| • Bot authentication
+• Game moves via Bot API (position=YEN, strategy, difficulty)
+• Match participation requests
+a| • Authentication tokens
+• Current game state (YEN format)
+• Move validation responses
+• Match outcomes
+
+| **Administrator**
+a| • System monitoring requests
+• User management operations
+• Bot registration/configuration
+a| • System status
+• User data
+• Bot performance metrics
+|===
+
+==== Domain Concepts
+
+* **YEN (Y-encoded Notation)**: Domain-specific format for representing board positions and moves in the Y game
+* **Match**: A game session between two players (human or bot)
+* **Strategy**: Game difficulty level and bot behavior configuration
+* **Anonymous Play**: Unregistered users can play but their scores are not persisted
 
 === Technical Context
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-Technical interfaces (channels and transmission media) linking your system to its environment. In addition a mapping of domain specific input/output to the channels, i.e. an explanation which I/O uses which channel.
+==== System Architecture
 
-.Motivation
-Many stakeholders make architectural decision based on the technical interfaces between the system and its context. Especially infrastructure or hardware designers decide these technical interfaces.
+[plantuml, technical-context-deployment, png]
+----
+@startuml
+!include <C4/C4_Deployment>
 
-.Form
-E.g. UML deployment diagram describing channels to neighboring systems,
-together with a mapping table showing the relationships between channels and input/output.
+node "Client Browser" as browser {
+  artifact "React App\n(bundled JS)" as react
+}
 
-****
-endif::arc42help[]
+node "Application Server" as appserver {
+  artifact "Node.js\nWeb App Server\n(Express + TS)" as nodejs
+  database "SQLite DB\n(users.db)" as sqlitedb
+}
 
-**<Diagram or Table>**
+node "Game Engine Server" as gameserver {
+  artifact "Rust Binary\n(Game Server)" as rust
+}
 
-**<optionally: Explanation of technical interfaces>**
+browser -down-> nodejs : HTTPS (443)\nREST API\nJSON\nSession/JWT
+nodejs -right-> rust : HTTP (8080)\nREST API\nJSON (YEN format)
+nodejs -down-> sqlitedb : SQLite protocol\nSQL queries\n(embedded)
 
-**<Mapping Input/Output to Channels>**
+note right of browser
+  **Client Environment**
+  Modern web browser
+  JavaScript runtime
+end note
+
+note right of appserver
+  **Backend Infrastructure**
+  Linux/Docker container
+  Node.js runtime
+  Embedded database
+end note
+
+note right of gameserver
+  **Game Logic Service**
+  Linux/Docker container
+  Stateless computation
+  Fast move validation
+end note
+
+@enduml
+----
+
+==== Technical Interfaces
+
+[cols="2,2,1,3", options="header"]
+|===
+| Component Connection | Protocol/Technology | Port/Channel | Purpose
+
+| **Web Browser → Web App Server**
+| HTTPS, REST API, WebSocket (future)
+| 443 (HTTPS)
+a| • User authentication
+• Match management
+• Game moves submission
+• Statistics retrieval
+
+| **Web App Server → Game Server**
+| HTTP, REST API
+| 8080 (HTTP)
+a| • Bot move computation
+• Move validation
+• Win condition checking
+• YEN format transformation
+
+| **Web App Server → Database**
+| SQLite native (embedded)
+| Local file access
+a| • User CRUD operations
+• Match state persistence
+• Statistics aggregation
+• Transaction management
+
+| **Bot Client → Web App Server**
+| HTTPS, REST API
+| 443 (HTTPS)
+a| • Bot authentication
+• Automated gameplay
+• Cross-team competition
+|===
+
+==== Key API Endpoints
+
+**Authentication & User Management:**
+
+* `POST /auth/register` - User registration
+* `POST /auth/login` - User authentication
+* `GET /matches` - Retrieve user matches (requires authentication)
+
+**Match Management:**
+
+* `POST /matches` - Create new match (size, strategy, difficulty)
+* `POST /play` - Submit player move (position=YEN, strategy, difficulty)
+** Returns: Updated YEN board state, move validation status
+
+**Bot API:**
+
+* `POST /bot/play` - Bot move submission (position=YEN, strategy, difficulty)
+* `POST /ybot/choose/{botId}` - Bot move computation via Game Server
+** Returns: YenMoveDto + game status
+
+**Statistics & History:**
+
+* `GET /stats` - Retrieve player statistics and match history
+
+==== Data Formats
+
+**YEN Notation Example:**
+[source,json]
+----
+{
+  "size": 4,
+  "turn": "R",
+  "players": ["B", "R"],
+  "layout": "B/.B/RB./B..R"
+}
+----
+
+**Move Request/Response:**
+[source,json]
+----
+{
+  "position": "B/.B/RB./B..R",
+  "strategy": "heuristic",
+  "difficulty": 3,
+  "nextMove": {
+    "player": "R",
+    "coordinate": {"x": 0, "y": 1, "z": 2}
+  }
+}
+----
+
+==== Deployment Considerations
+
+* **Containerization**: Both Web App Server and Game Server are containerized using Docker for consistent deployment
+* **Database**: SQLite file stored as volume mount for data persistence
+* **Scalability**: Game Server is stateless and can be horizontally scaled behind a load balancer
+* **Security**: HTTPS enforced for external communication, internal HTTP acceptable for trusted network

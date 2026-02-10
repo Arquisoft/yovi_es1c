@@ -3,32 +3,217 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-solution-strategy]]
 == Solution Strategy
 
+=== Overview
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-A short summary and explanation of the fundamental decisions and solution strategies, that shape system architecture. It includes
+This section outlines the fundamental architectural and technological decisions that shape the Yovi system. These decisions were made based on project requirements, quality goals, and technical constraints imposed by the academic context.
 
-* technology decisions
-* decisions about the top-level decomposition of the system, e.g. usage of an architectural pattern or design pattern
-* decisions on how to achieve key quality goals
-* relevant organizational decisions, e.g. selecting a development process or delegating certain tasks to third parties.
+=== Technology Decisions
 
-.Motivation
-These decisions form the cornerstones for your architecture. They are the foundation for many other detailed decisions or implementation rules.
+==== Distributed Architecture with Microservices
 
-.Form
-Keep the explanations of such key decisions short.
+[cols="1,3", options="header"]
+|===
+| Decision | Rationale
 
-Motivate what was decided and why it was decided that way,
-based upon problem statement, quality goals and key constraints.
-Refer to details in the following sections.
+| **Separate Game Server (Rust)**
+a| • **Performance**: Rust provides memory safety without garbage collection, ensuring fast execution for game logic and move validation
+• **Concurrency**: Rust's ownership model enables safe concurrent processing of multiple game sessions
+• **Domain Separation**: Isolates core game logic from presentation and user management concerns
+• **Requirement**: Mandated by project specification to implement game engine in Rust
 
+| **Web App Server (Node.js + Express + TypeScript)**
+a| • **Rapid Development**: JavaScript/TypeScript ecosystem provides extensive libraries and tooling
+• **Full-stack TypeScript**: Enables code sharing between frontend and backend (DTOs, types)
+• **REST API**: Express simplifies RESTful API implementation for both web clients and bots
+• **Requirement**: TypeScript mandated by project specification for web application
 
-.Further Information
+| **Frontend (React + Vite + TypeScript)**
+a| • **Component-based UI**: React's declarative approach simplifies game board rendering and state management
+• **Fast Development**: Vite provides instant hot module replacement (HMR) for rapid iteration
+• **Type Safety**: TypeScript prevents runtime errors and improves code maintainability
 
-See https://docs.arc42.org/section-4/[Solution Strategy] in the arc42 documentation.
+| **Database (SQLite)**
+a| • **Simplicity**: Zero-configuration embedded database, no separate server process required
+• **Portability**: Single file database simplifies deployment and backup
+• **Performance**: Excellent read performance for user statistics and rankings
+• **Write-Ahead Logging (WAL)**: Enables concurrent reads during writes, sufficient for academic project scale
+• **Low Concurrency**: Appropriate for expected user load in university project context
+|===
 
-****
-endif::arc42help[]
+=== Architectural Patterns
+
+==== Microservices with BFF Pattern
+
+[plantuml, solution-architecture, png]
+----
+@startuml
+!define RECTANGLE rectangle
+
+skinparam rectangle {
+  BackgroundColor<<frontend>> LightGreen
+  BackgroundColor<<bff>> LightBlue
+  BackgroundColor<<service>> LightYellow
+}
+
+RECTANGLE "React Frontend" as frontend <<frontend>>
+RECTANGLE "Web App Server\n(BFF - Backend for Frontend)" as bff <<bff>>
+RECTANGLE "Game Engine\n(Rust Service)" as game <<service>>
+database "SQLite" as db
+
+frontend --> bff : REST API\n(User-friendly)
+bff --> game : REST API\n(YEN notation)
+bff --> db : Direct access
+
+note right of bff
+  **BFF Responsibilities:**
+  • Orchestrates game and user services
+  • Transforms YEN ↔ User-friendly formats
+  • Authentication & authorization
+  • Session management
+  • Bot API aggregation
+end note
+
+note right of game
+  **Game Service Responsibilities:**
+  • Game logic (move validation)
+  • Win condition checking
+  • Bot move computation
+  • Strategy implementations
+  • Pure domain logic (stateless)
+end note
+
+@enduml
+----
+
+The system follows a **Backend for Frontend (BFF)** pattern where:
+
+* **Web App Server** acts as a facade that orchestrates calls to the Game Server and Database
+* **Game Server** remains stateless and focuses solely on game domain logic
+* **Shared contracts (DTOs)** define the boundaries between services using YEN notation
+
+==== Layered Architecture within Services
+
+Each service follows a layered architecture:
+
+[plantuml, layered-architecture, png]
+----
+@startuml
+package "Web App Server (TypeScript)" {
+  [Controllers] --> [Services]
+  [Services] --> [Repositories]
+  [Repositories] --> [Database]
+
+  note right of Controllers
+    REST endpoints
+    Request/Response handling
+  end note
+
+  note right of Services
+    Business logic
+    Orchestration
+  end note
+}
+
+package "Game Server (Rust)" {
+  [Engine Service] --> [Game Domain]
+  [Game Domain] --> [Strategy Pattern]
+
+  note right of [Game Domain]
+    Core game rules
+    Board representation
+    Move validation
+  end note
+
+  note right of [Strategy Pattern]
+    Multiple bot strategies
+    Difficulty levels
+    Extensible AI
+  end note
+}
+
+@enduml
+----
+
+**Web App Server Layers:**
+
+* **Controllers**: Handle HTTP requests, authentication, input validation
+* **Services**: Orchestrate business logic, coordinate Game Server calls
+* **Repositories**: Abstract database access using Repository pattern
+* **DTOs**: Shared data contracts for inter-process communication
+
+**Game Server Design:**
+
+* **Domain-Driven Design**: Game, Board, Player, Move as core entities
+* **Strategy Pattern**: Multiple bot strategies with configurable difficulty levels
+* **Encapsulation**: Pure domain logic with no external dependencies
+
+=== Quality Goals Achievement
+
+[cols="2,3,3", options="header"]
+|===
+| Quality Goal | Strategy | Implementation
+
+| **Performance**
+a| • Rust for compute-intensive game logic
+• SQLite for fast read operations
+• Stateless game server for horizontal scaling
+a| • Move validation in O(n) time
+• Indexed database queries for rankings
+• Concurrent request handling
+
+| **Scalability**
+a| • Stateless services enable horizontal scaling
+• Database optimized for read-heavy workload
+a| • Multiple game server instances possible
+• Connection pooling
+• Caching strategies for frequent queries
+
+| **Maintainability**
+a| • Clear separation of concerns
+• Type safety (TypeScript + Rust)
+• Shared DTOs between services
+a| • Layered architecture
+• Repository pattern for DB abstraction
+• Comprehensive API documentation
+
+| **Interoperability**
+a| • REST API with JSON
+• Standardized YEN notation
+• External bot API
+a| • OpenAPI/Swagger documentation
+• Versioned API endpoints
+• Cross-team bot competition support
+|===
+
+=== Key Constraints
+
+[cols="1,3", options="header"]
+|===
+| Constraint | Impact on Architecture
+
+| **Mandated Technologies**
+| TypeScript for web app and Rust for game engine are project requirements, limiting technology choices
+
+| **YEN Notation**
+| All game state communication must use YEN format, requiring transformation layers
+
+| **Bot API Requirement**
+| System must expose external API for bot clients, influencing authentication and API design
+
+| **Academic Timeline**
+| Limited development time favors familiar technologies (React, Express) and simple deployment (SQLite)
+
+| **Web Deployment**
+| Application must be publicly accessible, requiring containerization and cloud deployment strategy
+
+| **Multiple Strategies**
+| Game engine must support extensible bot strategies, leading to Strategy pattern adoption
+|===
+
+=== Organizational Decisions
+
+* **Monorepo vs. Multi-repo**: Separate repositories for frontend, backend, and game server to enable independent development and deployment
+* **Shared contracts repository**: Common DTOs and types shared across services
+* **API-first development**: OpenAPI specification defines contracts before implementation
+* **Version control**: Git with feature branch workflow and code reviews
+* **Documentation**: arc42 for architecture, inline code documentation, API documentation with Swagger
