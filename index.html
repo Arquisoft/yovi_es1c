@@ -507,7 +507,14 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_error_handling">8.7. Error Handling</a></li>
 </ul>
 </li>
-<li><a href="#section-design-decisions">9. Architecture Decisions</a></li>
+<li><a href="#section-design-decisions">9. Architecture Decisions</a>
+<ul class="sectlevel2">
+<li><a href="#_adr_1_microservices_architecture">9.1. ADR 1: Microservices architecture</a></li>
+<li><a href="#_adr_2_rust_for_game_server">9.2. ADR 2: Rust for Game Server</a></li>
+<li><a href="#_adr_3_docker_containerization">9.3. ADR 3: Docker Containerization</a></li>
+<li><a href="#_adr_4_sqlite_as_database_system">9.4. ADR 4: SQLite as Database System</a></li>
+</ul>
+</li>
 <li><a href="#section-quality-scenarios">10. Quality Requirements</a>
 <ul class="sectlevel2">
 <li><a href="#_quality_tree">10.1. Quality Tree</a></li>
@@ -819,7 +826,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_communication_partners">3.1.1. Communication Partners</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/business-context.png" alt="business context" width="878" height="340">
+<img src="./images/business-context.png" alt="business context" width="511" height="524">
 </div>
 </div>
 <table class="tableblock frame-all grid-all stretch">
@@ -964,7 +971,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_system_architecture">3.2.1. System Architecture</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="940" height="642">
+<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="785" height="517">
 </div>
 </div>
 </div>
@@ -1305,7 +1312,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_microservices_with_bff_pattern">4.3.1. Microservices with BFF Pattern</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/solution-architecture.png" alt="solution architecture" width="653" height="472">
+<img src="./images/solution-architecture.png" alt="solution architecture" width="703" height="433">
 </div>
 </div>
 <div class="paragraph">
@@ -1332,7 +1339,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/layered-architecture.png" alt="layered architecture" width="751" height="457">
+<img src="./images/layered-architecture.png" alt="layered architecture" width="677" height="368">
 </div>
 </div>
 <div class="paragraph">
@@ -1579,7 +1586,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_overview_diagram">5.1.1. Overview Diagram</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level1-overview.png" alt="level1 overview" width="848" height="455">
+<img src="./images/level1-overview.png" alt="level1 overview" width="792" height="395">
 </div>
 </div>
 <div class="paragraph">
@@ -1730,7 +1737,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_web_app_server">5.2.1. White Box: Web App Server</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-webapp.png" alt="level2 webapp" width="988" height="708">
+<img src="./images/level2-webapp.png" alt="level2 webapp" width="891" height="590">
 </div>
 </div>
 <div class="paragraph">
@@ -1883,7 +1890,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_game_server">5.2.2. White Box: Game Server</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-gameserver.png" alt="level2 gameserver" width="1152" height="769">
+<img src="./images/level2-gameserver.png" alt="level2 gameserver" width="1154" height="606">
 </div>
 </div>
 <div class="paragraph">
@@ -2035,7 +2042,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_usersservice">5.2.3. White Box: UsersService</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-users.png" alt="level2 users" width="866" height="627">
+<img src="./images/level2-users.png" alt="level2 users" width="768" height="521">
 </div>
 </div>
 <div class="paragraph">
@@ -2599,7 +2606,7 @@ diagram:</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/domain-model.png" alt="domain model" width="668" height="628">
+<img src="./images/domain-model.png" alt="domain model" width="599" height="567">
 </div>
 </div>
 </div>
@@ -2767,51 +2774,179 @@ cause of the problem more easily.</p>
 <div class="sect1">
 <h2 id="section-design-decisions">9. Architecture Decisions</h2>
 <div class="sectionbody">
-<div class="sidebarblock arc42help">
-<div class="content">
-<div class="paragraph">
-<div class="title">Contents</div>
-<p>Important, expensive, large scale or risky architecture decisions including rationales.
-With "decisions" we mean selecting one alternative based on given criteria.</p>
-</div>
-<div class="paragraph">
-<p>Please use your judgement to decide whether an architectural decision should be documented
-here in this central section or whether you better document it locally
-(e.g. within the white box template of one building block).</p>
-</div>
-<div class="paragraph">
-<p>Avoid redundancy.
-Refer to section 4, where you already captured the most important decisions of your architecture.</p>
-</div>
-<div class="paragraph">
-<div class="title">Motivation</div>
-<p>Stakeholders of your system should be able to comprehend and retrace your decisions.</p>
-</div>
-<div class="paragraph">
-<div class="title">Form</div>
-<p>Various options:</p>
-</div>
+<div class="sect2">
+<h3 id="_adr_1_microservices_architecture">9.1. ADR 1: Microservices architecture</h3>
 <div class="ulist">
 <ul>
 <li>
-<p>ADR (<a href="https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions">Documenting Architecture Decisions</a>) for every important decision</p>
+<p><strong>Context:</strong> The platform is expected to scale with increasing user demand, evolve over time with new features or game modes, and support parallel development by multiple team members. High availability and maintainability are important non-functional requirements.</p>
 </li>
 <li>
-<p>List or table, ordered by importance and consequences or:</p>
+<p><strong>Status:</strong> Accepted by the teacher and development team.</p>
 </li>
 <li>
-<p>more detailed in form of separate sections per decision</p>
+<p><strong>Decision:</strong> We decided to implement a microservice-based architecture with a clear separation between game logic, web APIs, and presentation layers. The system will consist of an independent Game Server (Rust) handling core game rules and state, a Web Application Server (Node.js + Express + TypeScript) exposing APIs and coordinating requests, and a Frontend application (React + Vite + TypeScript) for user interaction. Persistent data will be managed through a backend-controlled SQLite database.<br>
+This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.</p>
+</li>
+<li>
+<p><strong>Pros:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Clear separation of concerns between game logic, web APIs, and user interface.</p>
+</li>
+<li>
+<p>Enables independent development and deployment of the Game Server and Web Application Server.</p>
 </li>
 </ul>
 </div>
-<div class="paragraph">
-<div class="title">Further Information</div>
-<p>See <a href="https://docs.arc42.org/section-9/">Architecture Decisions</a> in the arc42 documentation.
-There you will find links and examples about ADR.</p>
+</li>
+<li>
+<p><strong>Cons:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Increased architectural complexity compared to a single monolithic backend.</p>
+</li>
+<li>
+<p>Introduces inter-service communication overhead and potential latency.</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
 </div>
 </div>
+<div class="sect2">
+<h3 id="_adr_2_rust_for_game_server">9.2. ADR 2: Rust for Game Server</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Context:</strong> The game server must be performant, safe, and reliable, as errors in the game logic could compromise fairness or stability. Additionally, the engine may need to handle multiple concurrent games and interact efficiently with other services in the system.</p>
+</li>
+<li>
+<p><strong>Status:</strong> Accepted by the teacher and development team.</p>
+</li>
+<li>
+<p><strong>Decision:</strong> We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust.</p>
+</li>
+<li>
+<p><strong>Pros:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Strong memory safety guarantees, reducing runtime errors and crashes.</p>
+</li>
+<li>
+<p>Highg performance and excellent support for concurrency, which is important for managing game sessions in parallel.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Cons:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Steeper learnig curve, as the development team is not familiar with this programming language.</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_adr_3_docker_containerization">9.3. ADR 3: Docker Containerization</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Context:</strong> The platform is composed of multiple independent components implemented with different technologies and runtimes. A way to ensure consistent development, testing, and deployment across different environments is essential to reduce configuration issues and simplify setup for new team members.</p>
+</li>
+<li>
+<p><strong>Status:</strong> Accepted by the teacher and development team.</p>
+</li>
+<li>
+<p><strong>Decision:</strong> We decided to containerize all major components of the system using Docker. Each service will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.</p>
+</li>
+<li>
+<p><strong>Pros:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Provides consistent environments across development, testing, and deployment.</p>
+</li>
+<li>
+<p>Simplifies setup and onboarding by reducing manual configuration.</p>
+</li>
+<li>
+<p>Enables easier deployment and scaling of individual services.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Cons:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Adds an extra layer of complexity to the development workflow.</p>
+</li>
+<li>
+<p>Requires basic knowledge of Docker and container orchestration from the development team.</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_adr_4_sqlite_as_database_system">9.4. ADR 4: SQLite as Database System</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Context:</strong> The application requires persistent storage for game data, user information, and match states. The database solution should be simple to operate, easy to integrate with the existing backend services, and appropriate for an academic project deployed in a cloud environment.</p>
+</li>
+<li>
+<p><strong>Status:</strong> Proposed by the development team.</p>
+</li>
+<li>
+<p><strong>Decision:</strong> We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by backend services. This choice is also highly based on the development team&#8217;s experience using relational databases.</p>
+</li>
+<li>
+<p><strong>Pros:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Easy integration with backend services and containerized environments.</p>
+</li>
+<li>
+<p>Suitable for small-to-medium workloads.</p>
+</li>
+<li>
+<p>Low learning curve, as the development team is used to working with relational databases.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Cons:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Limited scalability and concurrency support compared to cloud-native database solutions.</p>
+</li>
+<li>
+<p>Not ideal for high-availability or horizontally scaled write-heavy workloads.</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
 </div>
 <div style="page-break-after: always;"></div>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -2981,7 +3116,7 @@ There you will find links and examples about ADR.</p>
 <div id="footer">
 <div id="footer-text">
 Version 8.2 EN<br>
-Last updated 2026-02-05 19:46:55 +0100
+Last updated 2026-01-29 11:49:21 +0100
 </div>
 </div>
 </body>
