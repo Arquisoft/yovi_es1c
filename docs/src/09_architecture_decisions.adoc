@@ -25,35 +25,14 @@ This approach allows each component to evolve independently while using the most
 * **Cons:**
 ** Steeper learnig curve, as the development team is not familiar with this programming language.
 
-
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-Important, expensive, large scale or risky architecture decisions including rationales.
-With "decisions" we mean selecting one alternative based on given criteria.
-
-Please use your judgement to decide whether an architectural decision should be documented
-here in this central section or whether you better document it locally
-(e.g. within the white box template of one building block).
-
-Avoid redundancy. 
-Refer to section 4, where you already captured the most important decisions of your architecture.
-
-.Motivation
-Stakeholders of your system should be able to comprehend and retrace your decisions.
-
-.Form
-Various options:
-
-* ADR (https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions[Documenting Architecture Decisions]) for every important decision
-* List or table, ordered by importance and consequences or:
-* more detailed in form of separate sections per decision
-
-.Further Information
-
-See https://docs.arc42.org/section-9/[Architecture Decisions] in the arc42 documentation.
-There you will find links and examples about ADR.
-
-****
-endif::arc42help[]
+=== ADR 3: Docker Containerization
+* **Context:** The platform is composed of multiple independent components implemented with different technologies and runtimes. A way to ensure consistent development, testing, and deployment across different environments is essential to reduce configuration issues and simplify setup for new team members.
+* **Status:** Accepted by the teacher and development team.
+* **Decision:** We decided to containerize all major components of the system using Docker. Each service will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
+* **Pros:**
+** Provides consistent environments across development, testing, and deployment.
+** Simplifies setup and onboarding by reducing manual configuration.
+** Enables easier deployment and scaling of individual services.
+* **Cons:**
+** Adds an extra layer of complexity to the development workflow.
+** Requires basic knowledge of Docker and container orchestration from the development team.
