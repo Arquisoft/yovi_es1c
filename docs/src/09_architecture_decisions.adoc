@@ -15,7 +15,15 @@ This approach allows each component to evolve independently while using the most
 ** Increased architectural complexity compared to a single monolithic backend.
 ** Introduces inter-service communication overhead and potential latency.
 
-
+=== ADR 2: Rust for Game Server
+* **Context:** The game server must be performant, safe, and reliable, as errors in the game logic could compromise fairness or stability. Additionally, the engine may need to handle multiple concurrent games and interact efficiently with other services in the system.
+* **Status:** Accepted by the teacher and development team.
+* **Decision:** We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust.
+* **Pros:** 
+** Strong memory safety guarantees, reducing runtime errors and crashes.
+** Highg performance and excellent support for concurrency, which is important for managing game sessions in parallel.
+* **Cons:**
+** Steeper learnig curve, as the development team is not familiar with this programming language.
 
 
 ifdef::arc42help[]
