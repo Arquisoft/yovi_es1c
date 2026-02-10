@@ -3,25 +3,43 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-technical-risks]]
 == Risks and Technical Debts
 
-
 ifdef::arc42help[]
 [role="arc42help"]
 ****
 .Contents
-A list of identified technical risks or technical debts, ordered by priority
-
-.Motivation
-“Risk management is project management for grown-ups” (Tim Lister, Atlantic Systems Guild.) 
-
-This should be your motto for systematic detection and evaluation of risks and technical debts in the architecture, which will be needed by management stakeholders (e.g. project managers, product owners) as part of the overall risk analysis and measurement planning.
-
-.Form
-List of risks and/or technical debts, probably including suggested measures to minimize, mitigate or avoid risks or reduce technical debts.
-
-
-.Further Information
-
-See https://docs.arc42.org/section-11/[Risks and Technical Debt] in the arc42 documentation.
-
+A list of identified technical risks or technical debts, ordered by priority.
 ****
 endif::arc42help[]
+
+We have spotted several risks and technical debts that could mess a bit with the project development. These are grouped and sorted by how much they could affect deadlines and overall software quality.
+
+=== Risks
+
+[options="header",cols="3,5,5"]
+|===
+|Risk
+|Brief description
+|Measures we are taking against it
+
+|*Language difficulties (Rust & TypeScript)* 
+|The team doesn’t have real previous experience with Rust or TypeScript. Rust especially has this ownership model that is quite complicated and totally new for us, and we are still getting comfortable with TypeScript static typing.
+|We are using the first sprints mostly to read documentation like crazy and do small tasks to understand syntax and safety stuff before touching the main logic.
+
+|*Infrastructure and Dockerization*
+|We never really worked containerizing apps or managing environments using Docker. If we configure images badly, we could end up with the classic “works on my machine” problem.
+|We are following official templates and docs to build Dockerfiles and we will run integration tests early to be sure the environment works the same for everyone in the team.
+
+|*Deployment and Server Management*
+|Setting up a production server and automating deployment is a big challenge for us. We are not very used to deployment pipelines or server maintenance yet.
+|We plan to start deployment as soon as possible (Continuous Deployment style) to find problems early and not at the last minute.
+
+|*Version Control (Git/GitHub)*
+|We use Git, but our experience with more complex workflows (Pull Requests, merge conflict fixing, branch protection, etc.) is still limited. If we mess up merges, we could lose data or work.
+|We created a strict branching strategy. Every change must go through a Pull Request (PR) review so nobody accidentally overwrites someone else’s work.
+
+
+|===
+
+=== Technical debts
+
+
