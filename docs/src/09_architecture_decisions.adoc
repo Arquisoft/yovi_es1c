@@ -36,3 +36,15 @@ This approach allows each component to evolve independently while using the most
 * **Cons:**
 ** Adds an extra layer of complexity to the development workflow.
 ** Requires basic knowledge of Docker and container orchestration from the development team.
+
+=== ADR 4: SQLite as Database System
+* **Context:** The application requires persistent storage for game data, user information, and match states. The database solution should be simple to operate, easy to integrate with the existing backend services, and appropriate for an academic project deployed in a cloud environment.
+* **Status:** Proposed by the development team.
+* **Decision:** We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by backend services. This choice is also highly based on the development team's experience using relational databases.
+* **Pros:**
+** Easy integration with backend services and containerized environments.
+** Suitable for small-to-medium workloads.
+** Low learning curve, as the development team is used to working with relational databases.
+* **Cons:**
+** Limited scalability and concurrency support compared to cloud-native database solutions.
+** Not ideal for high-availability or horizontally scaled write-heavy workloads.
