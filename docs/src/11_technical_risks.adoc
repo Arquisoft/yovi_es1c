@@ -42,4 +42,18 @@ We have spotted several risks and technical debts that could mess a bit with the
 
 === Technical debts
 
+[options="header",cols="3,5"]
+|===
+|Technical debt
+|Brief description
+
+|*External API Dependency*
+|Our app depends a lot on external services (like map services or data APIs). If those services change their API or go down, parts of our app will just stop working. Right now, we don’t have a proper abstraction layer to easily swap those services.
+
+|*Network Inconsistency*
+|The app performance depends directly on how good the user’s internet is. We still didn’t implement a solid offline mode or caching system (like Service Workers), so with a bad connection the user experience will be quite bad.
+
+|*Monolithic Configuration*
+|Because we don’t have much experience with server deployment, our first configuration will probably be a bit hardcoded or less modular than it should be. Later we will need to refactor this to move to a more scalable setup using environment variables.
+|===
 
