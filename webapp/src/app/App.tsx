@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import './styles/App.css'
-import RegisterForm from '../ features/auth/ui/RegisterForm.tsx';
-import GameUI from '../ features/ game/ui/GameUI.tsx';
+import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
+import GameUI from '../features/game/ui/GameUI.tsx';
 import reactLogo from '../assets/react.svg'
 
 function App() {

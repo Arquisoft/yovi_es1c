@@ -1,67 +1,184 @@
-ifndef::imagesdir[:imagesdir: ../images]
-
 [[section-runtime-view]]
 == Runtime View
 
+This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, and statistics retrieval.
+The scenarios below are derived directly from the system’s architecture and message flows, using JSON/YEN as the canonical representation of game states.
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-The runtime view describes concrete behavior and interactions of the system’s building blocks in form of scenarios from the following areas:
+=== Runtime Scenario 1: User Registration and Login
 
-* important use cases or features: how do building blocks execute them?
-* interactions at critical external interfaces: how do building blocks cooperate with users and neighboring systems?
-* operation and administration: launch, start-up, stop
-* error and exception scenarios
+This scenario shows how a human user registers or logs into the system through the Web Frontend.
+The WebApp BFF delegates authentication to the UsersService, which persists user data in SQLite.
 
-Remark: The main criterion for the choice of possible scenarios (sequences, workflows) is their *architectural relevance*. It is *not* important to describe a large number of scenarios. You should rather document a representative selection.
-
-.Motivation
-You should understand how (instances of) building blocks of your system perform their job and communicate at runtime.
-You will mainly capture scenarios in your documentation to communicate your architecture to stakeholders that are less willing or able to read and understand the static models (building block view, deployment view).
-
-.Form
-There are many notations for describing scenarios, e.g.
-
-* numbered list of steps (in natural language)
-* activity diagrams or flow charts
-* sequence diagrams
-* BPMN or EPCs (event process chains)
-* state machines
-* ...
-
-
-.Further Information
-
-See https://docs.arc42.org/section-6/[Runtime View] in the arc42 documentation.
-
-****
-endif::arc42help[]
-
-=== <Runtime Scenario 1>
-
-
-* _<insert runtime diagram or textual description of the scenario>_
-* _<insert description of the notable aspects of the interactions between the
-building block instances depicted in this diagram.>_
-
-It is possible to use a sequence diagram:
-
-[plantuml,"Sequence diagram",png]
+[plantuml, "runtime-login", png]
 ----
-actor Alice
-actor Bob
-database Pod as "Bob's Pod"
-Alice -> Bob: Authentication Request
-Bob --> Alice: Authentication Response
-Alice  --> Pod: Store route
-Alice -> Bob: Another authentication Request
-Alice <-- Bob: another authentication Response
+actor "Web Frontend" as Human
+participant "WebApp BFF\n(TS API)" as Api
+participant "UsersService\n(TS API)" as Users
+database "SQLite DB" as DB
+
+Human -> Api: POST /auth/register | /auth/login
+Api -> Users: POST /auth/register | /auth/login
+Users -> DB: create/read user
+DB --> Users: user + credentials
+Users --> Api: token/session
+Api --> Human: token/session
 ----
 
-=== <Runtime Scenario 2>
+*Notable Aspects:*
 
-=== ...
+- Authentication is centralized in the UsersService.
+- The BFF does not store credentials; it only forwards tokens.
+- SQLite acts as the single source of truth for user accounts.
 
-=== <Runtime Scenario n>
+=== Runtime Scenario 2: Authorization Check
+
+When a user requests protected resources, the BFF verifies the token either locally (JWT) or by delegating to the UsersService.
+
+[plantuml, "runtime-auth-check", png]
+----
+actor Human
+participant Api
+participant Users
+
+Human -> Api: GET /matches
+Api -> Users: GET /auth/verify (token)
+Users --> Api: 401 Unauthorized
+Api --> Human: 401 Unauthorized
+----
+
+*Notable Aspects:*
+
+- Ensures that only authenticated users can access match data.
+- Supports both JWT local validation and remote verification.
+
+=== Runtime Scenario 3: Match Creation and Initial State Retrieval
+
+A user creates a new match by specifying board size, strategy, and difficulty.
+The UsersService persists the match and returns the initial YEN state.
+
+[plantuml, "runtime-create-match", png]
+----
+actor Human
+participant Api
+participant Users
+database DB
+
+Human -> Api: POST /matches (size, strategy, difficulty)
+Api -> Users: POST /matches (userId, size, strategy, difficulty)
+Users -> DB: create match
+DB --> Users: matchId + persisted state
+Users --> Api: match + initial YEN
+Api --> Human: match + initial YEN
+----
+
+*Notable Aspects:*
+
+- The UsersService owns match lifecycle and persistence.
+- Initial game state is always stored and returned in YEN format.
+
+=== Runtime Scenario 4: Player Move (Human Turn)
+
+The human player submits a move in YEN notation.
+The BFF retrieves the current match state, validates it, calls the Rust engine for the bot move, and persists the updated state.
+
+[plantuml, "runtime-human-move", png]
+----
+actor Human
+participant Api
+participant Users
+participant "Game Server\n(Rust)" as Engine
+database DB
+
+Human -> Api: POST /play (matchId, position=YEN, strategy, difficulty)
+
+' 1) Validate and retrieve match state
+Api -> Users: GET /matches/{matchId}
+Users -> DB: read match + status
+DB --> Users: match state/status
+Users --> Api: match state/status
+
+alt match finished
+  Api --> Human: 409 game finished
+end
+
+' 2) Compute bot move
+Api -> Engine: POST /ybot/choose/{botId} (position + params)
+Engine --> Api: YenMoveDto + status
+
+alt invalid YEN
+  Api --> Human: 400 invalid position
+end
+
+' 3) Persist updated state
+Api -> Users: POST /matches/{matchId}/moves (YenMoveDto + updatedYen + status)
+Users -> DB: persist move/result/stats
+DB --> Users: ok + updated aggregates
+Users --> Api: updated match + stats snapshot
+Api --> Human: move + updated YEN
+----
+
+*Notable Aspects:*
+
+- UsersService is the authoritative source of match state.
+- The Rust engine is stateless and only computes moves.
+- All updates are persisted atomically in SQLite.
+
+=== Runtime Scenario 5: Bot API Interaction
+
+Bots can play matches programmatically using the external API.
+The flow mirrors the human move scenario but uses bot credentials or API keys.
+
+[plantuml, "runtime-bot-api", png]
+----
+actor "Bot Client" as Bot
+participant Api
+participant Users
+participant Engine
+database DB
+
+Bot -> Api: POST /bot/play (matchId, position=YEN, strategy, difficulty)
+
+Api -> Users: GET /matches/{matchId} (auth/botKey)
+Users -> DB: read match + status
+DB --> Users: match state/status
+Users --> Api: match state/status
+
+Api -> Engine: POST /ybot/choose/{botId}
+Engine --> Api: YenMoveDto + status
+
+Api -> Users: POST /matches/{matchId}/moves (move + updated state)
+Users -> DB: persist move/result/stats
+DB --> Users: ok
+Users --> Api: ok
+
+Api --> Bot: move + updated YEN
+----
+
+*Notable Aspects:*
+
+- Bots interact with the same engine and match logic as human players.
+- API keys or bot credentials ensure secure automated access.
+
+=== Runtime Scenario 6: Statistics and History Retrieval
+
+Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics.
+
+[plantuml, "runtime-stats", png]
+----
+actor Human
+participant Api
+participant Users
+database DB
+
+Human -> Api: GET /stats
+Api -> Users: GET /stats (userId)
+Users -> DB: read stats/history
+DB --> Users: stats/history
+Users --> Api: StatsDto
+Api --> Human: StatsDto
+----
+
+*Notable Aspects:*
+
+- Statistics are computed from persisted match data.
+- The UsersService exposes a unified Stats API for both frontend and bots.
