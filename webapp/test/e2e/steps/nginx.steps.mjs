@@ -1,4 +1,4 @@
-import { Given, When, Then } from '@cucumber/cucumber';
+import {Given, When, Then} from '@cucumber/cucumber';
 import assert from 'assert';
 
 Given('the application is deployed', async function () {
@@ -22,7 +22,7 @@ When('I visit the home page', async function () {
         this.failedRequests.push(request.url());
     });
 
-    await this.page.goto('http://localhost/', { waitUntil: 'networkidle' });
+    await this.page.goto('http://localhost/', {waitUntil: 'networkidle'});
 });
 
 Then('the page should load successfully', async function () {
@@ -78,7 +78,7 @@ When('I test all proxy endpoints', async function () {
             body: await gameyResponse.text()
         };
     } catch (e) {
-        this.endpointResults['/api/gamey/status'] = { error: e.message };
+        this.endpointResults['/api/gamey/status'] = {error: e.message};
     }
 
     try {
@@ -88,7 +88,7 @@ When('I test all proxy endpoints', async function () {
             success: webappResponse.ok()
         };
     } catch (e) {
-        this.endpointResults['/'] = { error: e.message };
+        this.endpointResults['/'] = {error: e.message};
     }
 });
 
@@ -111,7 +111,7 @@ Then('the root path {string} should serve the webapp', async function (path) {
 });
 
 When('I inspect the webapp JavaScript bundle', async function () {
-    await this.page.goto('http://localhost/', { waitUntil: 'networkidle' });
+    await this.page.goto('http://localhost/', {waitUntil: 'networkidle'});
 
     const html = await this.page.content();
     const scriptMatches = html.matchAll(/src="([^"]+\.js)"/g);
@@ -141,7 +141,6 @@ Then('it should contain {string}', async function (needle) {
 
     if (found) {
         const index = this.bundleContent.indexOf(needle);
-        const context = this.bundleContent.substring(index - 20, index + needle.length + 20);
     }
 
     assert.ok(found, `Expected bundle to contain "${needle}"`);
@@ -149,12 +148,7 @@ Then('it should contain {string}', async function (needle) {
 
 Then('it should not contain {string}', async function (needle) {
     const found = this.bundleContent.includes(needle);
-
-
-        const index = this.bundleContent.indexOf(needle);
-        const context = this.bundleContent.substring(index - 20, index + needle.length + 20);
-
-
+    const index = this.bundleContent.indexOf(needle);
     assert.ok(!found, `Bundle should NOT contain "${needle}"`);
 });
 
