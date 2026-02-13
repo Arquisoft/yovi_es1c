@@ -44,6 +44,24 @@ export const useGameController = () => {
         setMessage("Click a cell to play");
     };
 
+    const changeSize = (newSize: number) => {
+        // Crear nuevo layout vacío con el tamaño especificado
+        const emptyLayout = Array(newSize)
+            .fill(null)
+            .map((_, i) => '.'.repeat(i + 1))
+            .join('/');
+
+        setGameState({
+            ...gameState,
+            size: newSize,
+            layout: emptyLayout,
+            turn: 0,
+        });
+        setMessage('');
+        setGameOver(false);
+        setError(null);
+    };
+
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
         if (gameMode === "BOT" && gameState.turn !== 0) return;
@@ -186,6 +204,7 @@ export const useGameController = () => {
             selectMode: resetGame,
             newGame: () => resetGame(gameMode),
             handleCellClick,
+            changeSize,
         },
     };
 };
