@@ -1,4 +1,4 @@
-import styles from './Board.module.css';
+import styles from './Board.css';
 
 interface BoardProps {
     layout: string;

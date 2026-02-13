@@ -145,7 +145,7 @@ export const useGameController = () => {
 
             if (!res.ok) {
                 const errorText = await res.text();
-                throw new Error(`Bot error: ${errorText}`);
+                setError(`Bot error: ${errorText}`);
             }
 
             const data: ChooseMoveResponseDto = await res.json();

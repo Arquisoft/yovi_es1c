@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import styles from './Nav.module.css';
+import styles from './Nav.css';
 import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
 
