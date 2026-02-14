@@ -1,6 +1,6 @@
 // webapp/src/app/App.tsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import './styles/App.css';
+import './styles/App.module.css';
 import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
 import GameUI from '../features/game/ui/GameUI.tsx';
 import Nav from '../components/layout/Nav';

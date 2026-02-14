@@ -45,7 +45,6 @@ export const useGameController = () => {
     };
 
     const changeSize = (newSize: number) => {
-        // Crear nuevo layout vacío con el tamaño especificado
         const emptyLayout = Array(newSize)
             .fill(null)
             .map((_, i) => '.'.repeat(i + 1))
@@ -144,55 +143,66 @@ export const useGameController = () => {
             });
 
             if (!res.ok) {
-                const errorText = await res.text();
-                setError(`Bot error: ${errorText}`);
+                const rawBody = await res.text();
+                let serverMessage = rawBody;
+
+                try {
+                    const parsed = JSON.parse(rawBody) as { error?: string; message?: string };
+                    serverMessage = parsed.error ?? parsed.message ?? rawBody;
+                } catch {
+                    // Text body is not JSON, so just use it as-is
+                }
+
+                setError(`Bot error: ${serverMessage}`);
+                setMessage("Error talking to bot");
+                setGameState({ ...humanState, turn: 0 });
+                return;
             }
 
             const data: ChooseMoveResponseDto = await res.json();
-            console.log("Bot response:", data);
-
             const mapped = rowColFromCoords(data.coords, humanState.size);
 
-            if (mapped) {
-                if (getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
-                    setMessage(`Bot suggested an occupied cell (${mapped.row}, ${mapped.col})`);
-                    setGameState({ ...humanState, turn: 0 });
-                    return;
-                }
-
-                const botLayout = updateLayout(
-                    humanState.layout,
-                    mapped.row,
-                    mapped.col,
-                    humanState.players[1]
-                );
-
-                const botState: YenPositionDto = {
-                    ...humanState,
-                    layout: botLayout,
-                    turn: 0,
-                };
-
-                setGameState(botState);
-
-                if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
-                    announceWinner("Jugador 2 (Bot)");
-                } else if (!botLayout.includes(".")) {
-                    setGameOver(true);
-                    setMessage("Board full — game over");
-                } else {
-                    setMessage(`Bot played at (${mapped.row}, ${mapped.col}) — your turn again`);
-                }
-            } else {
+            if (!mapped) {
                 setMessage(
                     `Bot suggested coords (${data.coords.x}, ${data.coords.y}, ${data.coords.z})`
                 );
                 setGameState({ ...humanState, turn: 0 });
+                return;
+            }
+
+            if (getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
+                setMessage(`Bot suggested an occupied cell (${mapped.row}, ${mapped.col})`);
+                setGameState({ ...humanState, turn: 0 });
+                return;
+            }
+
+            const botLayout = updateLayout(
+                humanState.layout,
+                mapped.row,
+                mapped.col,
+                humanState.players[1]
+            );
+
+            const botState: YenPositionDto = {
+                ...humanState,
+                layout: botLayout,
+                turn: 0,
+            };
+
+            setGameState(botState);
+
+            if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
+                announceWinner("Jugador 2 (Bot)");
+            } else if (!botLayout.includes(".")) {
+                setGameOver(true);
+                setMessage("Board full — game over");
+            } else {
+                setMessage(`Bot played at (${mapped.row}, ${mapped.col}) — your turn again`);
             }
         } catch (err) {
-            console.error(err);
             setError(err instanceof Error ? err.message : "Error");
             setMessage("Error talking to bot");
+            setGameState({ ...humanState, turn: 0 });
         } finally {
             setLoading(false);
         }

@@ -1,7 +1,7 @@
 import { Board } from "./Board";
 import { useGameController } from "../hooks/useGameController";
 import { useState, useEffect } from 'react';
-import styles from './GameUI.css';
+import styles from './GameUI.module.css';
 
 export default function GameUI() {
     const { state, actions } = useGameController();
