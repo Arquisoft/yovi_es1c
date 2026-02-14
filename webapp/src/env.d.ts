@@ -8,3 +8,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+// Declare CSS modules so they are treated as modules by TypeScript.
+declare module '*.css' {
+  const content: { [className: string]: string };
+  export default content;
+}

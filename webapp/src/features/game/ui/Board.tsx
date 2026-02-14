@@ -1,42 +1,51 @@
-// webapp/src/Board.tsx
+import styles from './Board.module.css';
+
 interface BoardProps {
     layout: string;
     size: number;
     onCellClick: (row: number, col: number) => void;
     currentPlayer: number;
+    isDark: boolean;
 }
 
-export function Board({ layout, size, onCellClick, currentPlayer }: BoardProps) {
+export function Board({ layout, size, onCellClick, currentPlayer, isDark }: BoardProps) {
     const rows = layout.split('/');
 
     const getCellSymbol = (rowIndex: number, colIndex: number): string => {
         return rows[rowIndex]?.[colIndex] ?? '.';
     };
 
-    const getCellColor = (symbol: string): string => {
-        if (symbol === 'B') return '#4169E1';   // Blue
-        if (symbol === 'R') return '#DC143C';   // Red
-        return '#E0E0E0';                       // Empty
-    };
+    const getCellClasses = (symbol: string, isEmpty: boolean): string => {
+        const classes = [styles.cell];
 
-    const getHoverColor = (): string => {
-        return currentPlayer === 0 ? '#6495ED' : '#FF6B6B';
+        if (isDark) {
+            classes.push(styles.darkTheme);
+        } else {
+            classes.push(styles.lightTheme);
+        }
+
+        if (isEmpty) {
+            classes.push(styles.empty);
+            classes.push(currentPlayer === 0 ? styles.hoverBlue : styles.hoverRed);
+        } else if (symbol === 'B') {
+            classes.push(styles.blue);
+        } else if (symbol === 'R') {
+            classes.push(styles.red);
+        }
+
+        return classes.join(' ');
     };
 
     return (
-        <div style={{ padding: '20px' }}>
+        <div
+            className={`${styles.boardContainer} ${isDark ? styles.darkBoard : styles.lightBoard}`}
+            data-size={size}
+        >
             {Array.from({ length: size }, (_, rowIndex) => {
                 const numCells = rowIndex + 1;
+
                 return (
-                    <div
-                        key={rowIndex}
-                        style={{
-                            display: 'flex',
-                            gap: '8px',
-                            marginBottom: '8px',
-                            marginLeft: `${(size - numCells) * 25}px`,
-                        }}
-                    >
+                    <div key={rowIndex} className={styles.row}>
                         {Array.from({ length: numCells }, (_, colIndex) => {
                             const symbol = getCellSymbol(rowIndex, colIndex);
                             const isEmpty = symbol === '.';
@@ -46,30 +55,8 @@ export function Board({ layout, size, onCellClick, currentPlayer }: BoardProps) 
                                     key={colIndex}
                                     onClick={() => isEmpty && onCellClick(rowIndex, colIndex)}
                                     disabled={!isEmpty}
-                                    style={{
-                                        width: '45px',
-                                        height: '45px',
-                                        borderRadius: '50%',
-                                        border: '2px solid #333',
-                                        backgroundColor: getCellColor(symbol),
-                                        cursor: isEmpty ? 'pointer' : 'not-allowed',
-                                        fontSize: '14px',
-                                        fontWeight: 'bold',
-                                        color: '#111',
-                                        transition: 'all 0.15s',
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        if (isEmpty) {
-                                            e.currentTarget.style.backgroundColor = getHoverColor();
-                                            e.currentTarget.style.transform = 'scale(1.1)';
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (isEmpty) {
-                                            e.currentTarget.style.backgroundColor = getCellColor(symbol);
-                                            e.currentTarget.style.transform = 'scale(1)';
-                                        }
-                                    }}
+                                    className={getCellClasses(symbol, isEmpty)}
+                                    aria-label={`Celda fila ${rowIndex + 1}, columna ${colIndex + 1}`}
                                 >
                                     {symbol !== '.' ? symbol : ''}
                                 </button>

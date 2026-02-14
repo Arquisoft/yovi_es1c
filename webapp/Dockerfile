@@ -17,6 +17,11 @@ RUN export VITE_API_URL=${VITE_API_URL} && export VITE_GAMEY_API_URL=${VITE_GAME
 
 # Production image
 FROM nginx:stable-alpine
+
+# Copiar archivos compilados
 COPY --from=builder /app/dist /usr/share/nginx/html
+# Copiar archivo de configuracion nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
