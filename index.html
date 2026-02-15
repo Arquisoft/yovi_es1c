@@ -2785,6 +2785,17 @@ cause of the problem more easily.</p>
 <p><strong>Status:</strong> Accepted by the teacher and development team.</p>
 </li>
 <li>
+<p><strong>Possible alternatives:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Monolithic arquitecture:</strong> where all game logic, API web and data storage services would be integrated in a single backend app.
+Although it would have simplified the development at first, this solution presents big issues in terms of scalability and maintainability.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
 <p><strong>Decision:</strong> We decided to implement a microservice-based architecture with a clear separation between game logic, web APIs, and presentation layers. The system will consist of an independent Game Server (Rust) handling core game rules and state, a Web Application Server (Node.js + Express + TypeScript) exposing APIs and coordinating requests, and a Frontend application (React + Vite + TypeScript) for user interaction. Persistent data will be managed through a backend-controlled SQLite database.<br>
 This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.</p>
 </li>
@@ -2828,6 +2839,16 @@ This approach allows each component to evolve independently while using the most
 <p><strong>Status:</strong> Accepted by the teacher and development team.</p>
 </li>
 <li>
+<p><strong>Possible alternatives:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>There were no possible alternatives because this was an imposed contraint, given by the course&#8217;s teachers.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
 <p><strong>Decision:</strong> We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust.</p>
 </li>
 <li>
@@ -2865,6 +2886,16 @@ This approach allows each component to evolve independently while using the most
 </li>
 <li>
 <p><strong>Status:</strong> Accepted by the teacher and development team.</p>
+</li>
+<li>
+<p><strong>Possible alternatives:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>There were no possible alternatives because this was an imposed contraint, given by the course&#8217;s teachers.</p>
+</li>
+</ul>
+</div>
 </li>
 <li>
 <p><strong>Decision:</strong> We decided to containerize all major components of the system using Docker. Each service will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.</p>
@@ -2910,6 +2941,16 @@ This approach allows each component to evolve independently while using the most
 </li>
 <li>
 <p><strong>Status:</strong> Proposed by the development team.</p>
+</li>
+<li>
+<p><strong>Possible alternatives:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>MongoDB:</strong> A document-oriented NOSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken.</p>
+</li>
+</ul>
+</div>
 </li>
 <li>
 <p><strong>Decision:</strong> We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by backend services. This choice is also highly based on the development team&#8217;s experience using relational databases.</p>
