@@ -6,6 +6,9 @@ ifndef::imagesdir[:imagesdir: ../images]
 === ADR 1: Microservices architecture
 * **Context:** The platform is expected to scale with increasing user demand, evolve over time with new features or game modes, and support parallel development by multiple team members. High availability and maintainability are important non-functional requirements.
 * **Status:** Accepted by the teacher and development team.
+* **Possible alternatives:**
+** **Monolithic arquitecture:** where all game logic, API web and data storage services would be integrated in a single backend app. 
+Although it would have simplified the development at first, this solution presents big issues in terms of scalability and maintainability.
 * **Decision:** We decided to implement a microservice-based architecture with a clear separation between game logic, web APIs, and presentation layers. The system will consist of an independent Game Server (Rust) handling core game rules and state, a Web Application Server (Node.js + Express + TypeScript) exposing APIs and coordinating requests, and a Frontend application (React + Vite + TypeScript) for user interaction. Persistent data will be managed through a backend-controlled SQLite database. +
 This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.
 * **Pros:** 
@@ -18,6 +21,8 @@ This approach allows each component to evolve independently while using the most
 === ADR 2: Rust for Game Server
 * **Context:** The game server must be performant, safe, and reliable, as errors in the game logic could compromise fairness or stability. Additionally, the engine may need to handle multiple concurrent games and interact efficiently with other services in the system.
 * **Status:** Accepted by the teacher and development team.
+* **Possible alternatives:**
+** There were no possible alternatives because this was an imposed contraint, given by the course's teachers.
 * **Decision:** We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust.
 * **Pros:** 
 ** Strong memory safety guarantees, reducing runtime errors and crashes.
@@ -28,6 +33,8 @@ This approach allows each component to evolve independently while using the most
 === ADR 3: Docker Containerization
 * **Context:** The platform is composed of multiple independent components implemented with different technologies and runtimes. A way to ensure consistent development, testing, and deployment across different environments is essential to reduce configuration issues and simplify setup for new team members.
 * **Status:** Accepted by the teacher and development team.
+* **Possible alternatives:**
+** There were no possible alternatives because this was an imposed contraint, given by the course's teachers.
 * **Decision:** We decided to containerize all major components of the system using Docker. Each service will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
 * **Pros:**
 ** Provides consistent environments across development, testing, and deployment.
@@ -40,6 +47,8 @@ This approach allows each component to evolve independently while using the most
 === ADR 4: SQLite as Database System
 * **Context:** The application requires persistent storage for game data, user information, and match states. The database solution should be simple to operate, easy to integrate with the existing backend services, and appropriate for an academic project deployed in a cloud environment.
 * **Status:** Proposed by the development team.
+* **Possible alternatives:**
+** **MongoDB:** A document-oriented NOSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken. 
 * **Decision:** We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by backend services. This choice is also highly based on the development team's experience using relational databases.
 * **Pros:**
 ** Easy integration with backend services and containerized environments.
