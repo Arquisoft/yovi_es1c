@@ -1,100 +1,82 @@
 ifndef::imagesdir[:imagesdir: ../images]
 
 [[section-deployment-view]]
-
-
 == Deployment View
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Content
-The deployment view describes:
+The deployment view describes the technical infrastructure we use to run the Yovi system. It also shows how the software parts (building blocks) connect to that infrastructure. 
 
- 1. technical infrastructure used to execute your system, with infrastructure elements like geographical locations, environments, computers, processors, channels and net topologies as well as other infrastructure elements and
+Because our system uses Docker containers, we describe the deployment in two main environments: the Production Environment and the Development Environment.
 
-2. mapping of (software) building blocks to that infrastructure elements.
+=== Infrastructure Level 1 - Production Environment
 
-Often systems are executed in different environments, e.g. development environment, test environment, production environment. In such cases you should document all relevant environments.
+This section describes the main production environment where the final users can access the system.
 
-Especially document a deployment view if your software is executed as distributed system with more than one computer, processor, server or container or when you design and construct your own hardware processors and chips.
+_**Overview Diagram**_
 
-From a software perspective it is sufficient to capture only those elements of an infrastructure that are needed to show a deployment of your building blocks. Hardware architects can go beyond that and describe an infrastructure to any level of detail they need to capture.
+.Production Deployment Diagram
+image::deployment-level1-architecture.png[Level 1 Architecture Diagram, align="center"]
 
-.Motivation
-Software does not run without hardware.
-This underlying infrastructure can and will influence a system and/or some
-cross-cutting concepts. Therefore, there is a need to know the infrastructure.
+**Motivation**
 
-.Form
+The main goal of this deployment strategy is to find a good balance between working fast and keeping the system secure. Software needs hardware to run. By using a Virtual Machine (VM) as the main host, the system creates a secure border at the hardware level. Inside this VM, we use Docker containers to run the apps. This makes sure that the deployment is isolated and prevents problems with installed programs on the host machine.
 
-Maybe a highest level deployment diagram is already contained in section 3.2. as
-technical context with your own infrastructure as ONE black box. In this section one can
-zoom into this black box using additional deployment diagrams:
+**Quality and/or Performance Features**
 
-* UML offers deployment diagrams to express that view. Use it, probably with nested diagrams,
-when your infrastructure is more complex.
-* When your (hardware) stakeholders prefer other kinds of diagrams rather than a deployment diagram, let them use any kind that is able to show nodes and channels of the infrastructure.
+* **Security (Defense in Depth):** The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the API Gateway is the only part connected to the public internet.
+* **Portability:** By using Docker containers, the environment is always the same. The application works exactly the same way, no matter what physical server is running the Virtual Machine.
+* **Independent Scalability:** The system is divided into specific microservices (Users, Gamey, API Gateway). Because of this, developers can give more resources to the Rust game engine without affecting the Node.js user management system.
+
+**Mapping of Building Blocks to Infrastructure**
+
+[cols="1,2", options="header"]
+|===
+| Software Artifact (Building Block) | Infrastructure Element
+
+| **Web Application (React/Vite)**
+| Deployed in a Docker container inside the VM. It serves the web interface (GUI) using static files over port 80 to the user's browser.
+
+| **API Gateway (Nginx)**
+| Deployed in a Docker container inside the VM. It works as a Reverse Proxy and is the only public entry point (Port 80/8080) to route the traffic.
+
+| **User Management API (Node.js)**
+| Deployed in a Docker container inside the VM (Port 3000). It manages user registration, login, and sessions.
+
+| **GameY Engine API (Rust)**
+| Deployed in a Docker container inside the VM (Port 4000). It calculates the math logic of the game and the bot movements in YEN format.
+
+| **SQLite Database**
+| A small database file saved on a Host Volume connected to the User Management container. This makes sure the data is not lost if the container restarts.
+|===
 
 
-.Further Information
+=== Infrastructure Level 1 - Development Environment
 
-See https://docs.arc42.org/section-7/[Deployment View] in the arc42 documentation.
+Following the arc42 rules for multiple environments, the development environment uses the same Docker containers to be equal to production, but without the secure Virtual Machine.
 
-****
-endif::arc42help[]
+**Motivation**
 
-=== Infrastructure Level 1
+Developers need a fast and reliable environment to write and test code on their computers. We use Docker Compose to start the whole system on the developer's local machine.
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Describe (usually in a combination of diagrams, tables, and text):
+**Quality and/or Performance Features**
 
-* distribution of a system to multiple locations, environments, computers, processors, .., as well as physical connections between them
-* important justifications or motivations for this deployment structure
-* quality and/or performance features of this infrastructure
-* mapping of software artifacts to elements of this infrastructure
+* **Consistency:** It solves the classic "it works on my machine" problem.
+* **Fast Setup:** A new developer can start the complete system (Frontend, APIs, and Database) with just one `docker-compose up` command.
 
-For multiple environments or alternative deployments please copy and adapt this section of arc42 for all relevant environments.
-****
-endif::arc42help[]
+**Mapping of Building Blocks to Infrastructure**
 
-_**<Overview Diagram>**_
-
-Motivation::
-
-_<explanation in text form>_
-
-Quality and/or Performance Features::
-
-_<explanation in text form>_
-
-Mapping of Building Blocks to Infrastructure::
-_<description of the mapping>_
+In this environment, the mapping is exactly the same as in Production. The only difference is the host hardware:
+* **Infrastructure Element:** The developer's personal computer (Localhost) running Docker Desktop, instead of a Cloud Virtual Machine.
 
 
 === Infrastructure Level 2
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Here you can include the internal structure of (some) infrastructure elements from level 1.
+Here we explain the internal structure of the Docker environment from Level 1. We zoom into the isolated network and how data is saved.
 
-Please copy the structure from level 1 for each selected element.
-****
-endif::arc42help[]
+.Data Flow and Persistence Layer (Level 2)
+image::deployment-level2-dataflow.png[Level 2 Data Flow Diagram, align="center"]
 
-==== _<Infrastructure Element 1>_
+**Internal Structure Explanation:**
 
-_<diagram + explanation>_
+This level shows the internal Docker network rules. The **API Gateway (Nginx)** completely isolates the microservices from the public internet. External users can never reach the backend directly. 
 
-==== _<Infrastructure Element 2>_
-
-_<diagram + explanation>_
-
-...
-
-==== _<Infrastructure Element n>_
-
-_<diagram + explanation>_
+Also, data storage is strictly controlled. The `SQLite` database is connected to a physical host volume. However, only the `User Management` container has permissions to read and write to this file. If the `GameY Engine` needs user data, it must ask via internal HTTP requests. This keeps the microservices properly separated.
