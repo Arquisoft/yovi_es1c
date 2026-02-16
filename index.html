@@ -514,6 +514,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_adr_2_rust_for_game_server">9.2. ADR 2: Rust for Game Server</a></li>
 <li><a href="#_adr_3_docker_containerization">9.3. ADR 3: Docker Containerization</a></li>
 <li><a href="#_adr_4_sqlite_as_database_system">9.4. ADR 4: SQLite as Database System</a></li>
+<li><a href="#_adr_5_nginx_as_api_gateway">9.5. ADR 5: Nginx as API Gateway</a></li>
 </ul>
 </li>
 <li><a href="#section-quality-scenarios">10. Quality Requirements</a>
@@ -592,7 +593,7 @@ For documentation of your own system you use better the <em>plain</em> version.<
 with configurable board sizes and selectable difficulty levels.</p>
 </div>
 <div class="paragraph">
-<p>YOVI consists of a TypeScript-based web application and a Rust-based game logic module, which communicate via JSON messages using the YEN notation.</p>
+<p>YOVI consists of a React-based web frontend (running in the browser), a Node.js-based Users Service (managing authentication and database access), and a Rust-based Game Server (handling game logic), which communicate via REST APIs using JSON messages with YEN notation for game states.</p>
 </div>
 <div class="paragraph">
 <p>This section summarizes the most relevant functional requirements from an architectural perspective.</p>
@@ -619,27 +620,27 @@ with configurable board sizes and selectable difficulty levels.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Player</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Play Game</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The player accesses the web application and starts a new game of Y. The system displays a board with configurable size. The player takes turns placing pieces on the board. After each player move, the system sends the current game state in YEN notation to the game logic module. The AI responds with its move, which is applied to the board and shown to the player. The system manages turns and checks after each move if the game has ended. The process repeats until a victory or defeat condition occurs.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The player accesses the web application in their browser and starts a new game of Y. The React frontend displays a board with configurable size. The player takes turns placing pieces on the board. After each player move, the frontend sends the current game state in YEN notation to the Game Server via Nginx. The AI responds with its move, which is applied to the board and shown to the player. The system manages turns and checks after each move if the game has ended. The process repeats until a victory or defeat condition occurs.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Player</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Strategy Configuration</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Before or during a game, the player selects a game strategy for the AI and an associated difficulty level. The system stores this configuration and uses it whenever it requests the next move from the AI. The game state and selected strategy are sent to the Rust logic module, which calculates the move accordingly.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Before or during a game, the player selects a game strategy for the AI and an associated difficulty level through the React UI. The system stores this configuration in the Users Service and uses it whenever it requests the next move from the Game Server. The game state and selected strategy are sent to the Rust Game Server, which calculates the move accordingly.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Registered Player</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">History and Statistics Management</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">A registered player accesses their profile within the web application. The system retrieves information associated with the user, including total games played, wins, losses, and other performance metrics. This information is presented in a structured manner, allowing the player to track progress and results over time.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A registered player accesses their profile within the web application. The React frontend requests statistics from the Users Service via Nginx. The system retrieves information associated with the user, including total games played, wins, losses, and other performance metrics from the SQLite database. This information is presented in a structured manner in the UI, allowing the player to track progress and results over time.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">External Bot</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">API for External Bots</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">An external bot makes requests to the system API to create games, check board state, or make moves. The bot sends the game state using YEN notation and receives responses in the same format.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An external bot makes requests to the system API through Nginx to create games, check board state, or make moves. The bot sends the game state using YEN notation to the Game Server and receives responses in the same format. Authentication is handled by the Users Service.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">System (Web App / API)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">System (Game Server)</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Move Validation and Suggestion</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The system sends the current game state in YEN notation to the Rust game logic module. The module determines if the game has ended and, if not, calculates the optimal next move according to the selected strategy. The result is returned to the system to update the game or respond to an API request.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The Game Server receives the current game state in YEN notation from the React frontend (via Nginx). The Rust module determines if the game has ended and, if not, calculates the optimal next move according to the selected strategy. The result is returned to the frontend to update the game board.</p></td>
 </tr>
 </tbody>
 </table>
@@ -680,6 +681,10 @@ with configurable board sizes and selectable difficulty levels.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Usability</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The web application should offer a clear and intuitive interface, enabling users to play games and consult information effortlessly.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Security</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The system should protect backend services from direct external access, handle authentication properly, and ensure data integrity through controlled database access.</p></td>
 </tr>
 </tbody>
 </table>
@@ -977,7 +982,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_system_architecture">3.2.1. System Architecture</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="940" height="642">
+<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="875" height="852">
 </div>
 </div>
 </div>
@@ -1000,30 +1005,54 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web Browser → Web App Server</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">HTTPS, REST API, WebSocket (future)</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">443 (HTTPS)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web Browser → Nginx (API Gateway)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">80 (HTTP)</p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>User authentication</p>
+<p>Single public entry point</p>
 </li>
 <li>
-<p>Match management</p>
+<p>Request routing to backend services</p>
 </li>
 <li>
-<p>Game moves submission</p>
+<p>CORS handling</p>
 </li>
 <li>
-<p>Statistics retrieval</p>
+<p>Rate limiting</p>
+</li>
+<li>
+<p>Static file serving (React frontend)</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web App Server → Game Server</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx → Users Service</strong></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">8080 (HTTP)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3000 (HTTP)</p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>User authentication and registration</p>
+</li>
+<li>
+<p>Match persistence</p>
+</li>
+<li>
+<p>Statistics retrieval</p>
+</li>
+<li>
+<p>Database access abstraction</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx → Game Server</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4000 (HTTP)</p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
@@ -1036,13 +1065,13 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Win condition checking</p>
 </li>
 <li>
-<p>YEN format transformation</p>
+<p>YEN format game logic</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web App Server → Database</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Users Service → Database</strong></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">SQLite native (embedded)</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Local file access</p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
@@ -1063,19 +1092,22 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Bot Client → Web App Server</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">HTTPS, REST API</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">443 (HTTPS)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>React Frontend (in Browser) → Nginx</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API, AJAX</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">80 (HTTP)</p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Bot authentication</p>
+<p>API calls to backend services</p>
 </li>
 <li>
-<p>Automated gameplay</p>
+<p>Game state updates</p>
 </li>
 <li>
-<p>Cross-team competition</p>
+<p>User authentication</p>
+</li>
+<li>
+<p>Statistics queries</p>
 </li>
 </ul>
 </div></div></td>
@@ -1086,31 +1118,34 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="sect3">
 <h4 id="_key_api_endpoints">3.2.3. Key API Endpoints</h4>
 <div class="paragraph">
-<p><strong>Authentication &amp; User Management:</strong></p>
+<p><strong>Authentication &amp; User Management (via Nginx → Users Service):</strong></p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><code>POST /auth/register</code> - User registration</p>
+<p><code>POST /api/users/auth/register</code> - User registration</p>
 </li>
 <li>
-<p><code>POST /auth/login</code> - User authentication</p>
+<p><code>POST /api/users/auth/login</code> - User authentication</p>
 </li>
 <li>
-<p><code>GET /matches</code> - Retrieve user matches (requires authentication)</p>
+<p><code>GET /api/users/matches</code> - Retrieve user matches (requires authentication)</p>
+</li>
+<li>
+<p><code>POST /api/users/matches</code> - Create new match (size, strategy, difficulty)</p>
+</li>
+<li>
+<p><code>GET /api/users/stats</code> - Retrieve player statistics and match history</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p><strong>Match Management:</strong></p>
+<p><strong>Game Logic (via Nginx → Game Server):</strong></p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><code>POST /matches</code> - Create new match (size, strategy, difficulty)</p>
-</li>
-<li>
-<p><code>POST /play</code> - Submit player move (position=YEN, strategy, difficulty)</p>
+<p><code>POST /api/gamey/play</code> - Submit player move (position=YEN, strategy, difficulty)</p>
 <div class="ulist">
 <ul>
 <li>
@@ -1119,18 +1154,8 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </ul>
 </div>
 </li>
-</ul>
-</div>
-<div class="paragraph">
-<p><strong>Bot API:</strong></p>
-</div>
-<div class="ulist">
-<ul>
 <li>
-<p><code>POST /bot/play</code> - Bot move submission (position=YEN, strategy, difficulty)</p>
-</li>
-<li>
-<p><code>POST /ybot/choose/{botId}</code> - Bot move computation via Game Server</p>
+<p><code>POST /api/gamey/ybot/choose/{botId}</code> - Bot move computation</p>
 <div class="ulist">
 <ul>
 <li>
@@ -1139,15 +1164,18 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </ul>
 </div>
 </li>
+<li>
+<p><code>GET /api/gamey/validate</code> - Validate move without executing</p>
+</li>
 </ul>
 </div>
 <div class="paragraph">
-<p><strong>Statistics &amp; History:</strong></p>
+<p><strong>Bot API (External bots via Nginx):</strong></p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><code>GET /stats</code> - Retrieve player statistics and match history</p>
+<p><code>POST /api/gamey/bot/play</code> - Bot move submission (position=YEN, strategy, difficulty)</p>
 </li>
 </ul>
 </div>
@@ -1189,16 +1217,22 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Containerization</strong>: Both Web App Server and Game Server are containerized using Docker for consistent deployment</p>
+<p><strong>Containerization</strong>: All services (React Frontend, Nginx, Users Service, Game Server) are containerized using Docker for consistent deployment</p>
 </li>
 <li>
-<p><strong>Database</strong>: SQLite file stored as volume mount for data persistence</p>
+<p><strong>Database</strong>: SQLite file stored as volume mount in Users Service for data persistence</p>
 </li>
 <li>
-<p><strong>Scalability</strong>: Game Server is stateless and can be horizontally scaled behind a load balancer</p>
+<p><strong>Scalability</strong>: Game Server is stateless and can be horizontally scaled behind Nginx load balancer</p>
 </li>
 <li>
-<p><strong>Security</strong>: HTTPS enforced for external communication, internal HTTP acceptable for trusted network</p>
+<p><strong>Security</strong>: Nginx handles CORS, rate limiting, and request validation</p>
+</li>
+<li>
+<p><strong>API Gateway</strong>: Nginx isolates backend services from direct external access</p>
+</li>
+<li>
+<p><strong>Frontend Deployment</strong>: React app is built and served as static files through Nginx</p>
 </li>
 </ul>
 </div>
@@ -1233,6 +1267,28 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </thead>
 <tbody>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx as API Gateway</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p><strong>Security</strong>: Single public entry point isolates backend services from direct access</p>
+</li>
+<li>
+<p><strong>Routing</strong>: Centralized request routing based on URL paths (<code>/api/users/<strong></code>, <code>/api/gamey/</strong></code>)</p>
+</li>
+<li>
+<p><strong>Cross-cutting concerns</strong>: Handles CORS, rate limiting, and static file serving in one place</p>
+</li>
+<li>
+<p><strong>Performance</strong>: Efficient reverse proxy with minimal overhead</p>
+</li>
+<li>
+<p><strong>Simplicity</strong>: Easy configuration and widely adopted in production environments</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Separate Game Server (Rust)</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
@@ -1252,20 +1308,23 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web App Server (Node.js + Express + TypeScript)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Users Service (Node.js + Express + TypeScript)</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
 <p><strong>Rapid Development</strong>: JavaScript/TypeScript ecosystem provides extensive libraries and tooling</p>
 </li>
 <li>
-<p><strong>Full-stack TypeScript</strong>: Enables code sharing between frontend and backend (DTOs, types)</p>
+<p><strong>Database Integration</strong>: Excellent SQLite support with mature ORM options</p>
 </li>
 <li>
-<p><strong>REST API</strong>: Express simplifies RESTful API implementation for both web clients and bots</p>
+<p><strong>REST API</strong>: Express simplifies RESTful API implementation</p>
 </li>
 <li>
-<p><strong>Requirement</strong>: TypeScript mandated by project specification for web application</p>
+<p><strong>Single DB Access Point</strong>: Encapsulates all database operations in one service</p>
+</li>
+<li>
+<p><strong>Requirement</strong>: TypeScript mandated by project specification</p>
 </li>
 </ul>
 </div></div></td>
@@ -1282,6 +1341,12 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p><strong>Type Safety</strong>: TypeScript prevents runtime errors and improves code maintainability</p>
+</li>
+<li>
+<p><strong>SPA Architecture</strong>: Single-page application enables smooth user experience without page reloads</p>
+</li>
+<li>
+<p><strong>Client-side coordination</strong>: Frontend manages API call orchestration from the browser</p>
 </li>
 </ul>
 </div></div></td>
@@ -1315,41 +1380,63 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="sect2">
 <h3 id="_architectural_patterns">4.3. Architectural Patterns</h3>
 <div class="sect3">
-<h4 id="_microservices_with_bff_pattern">4.3.1. Microservices with BFF Pattern</h4>
+<h4 id="_microservices_architecture">4.3.1. Microservices Architecture</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/solution-architecture.png" alt="solution architecture" width="660" height="472">
+<img src="./images/solution-architecture.png" alt="solution architecture" width="1169" height="611">
 </div>
 </div>
 <div class="paragraph">
-<p>The system follows a <strong>Backend for Frontend (BFF)</strong> pattern where:</p>
+<p>The system follows a <strong>microservices architecture</strong> where:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Web App Server</strong> acts as a facade that orchestrates calls to the Game Server and Database</p>
+<p><strong>Nginx</strong> acts as the API Gateway, providing a single entry point and routing requests to appropriate services</p>
+</li>
+<li>
+<p><strong>React Frontend</strong> runs in the user&#8217;s browser and coordinates API calls to backend services</p>
+</li>
+<li>
+<p><strong>Users Service</strong> manages all data persistence and is the single point of database access</p>
 </li>
 <li>
 <p><strong>Game Server</strong> remains stateless and focuses solely on game domain logic</p>
 </li>
 <li>
-<p><strong>Shared contracts (DTOs)</strong> define the boundaries between services using YEN notation</p>
+<p><strong>YEN notation</strong> defines the boundaries between services for game state communication</p>
 </li>
 </ul>
 </div>
 </div>
 <div class="sect3">
 <h4 id="_layered_architecture_within_services">4.3.2. Layered Architecture within Services</h4>
-<div class="paragraph">
-<p>Each service follows a layered architecture:</p>
-</div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/layered-architecture.png" alt="layered architecture" width="751" height="457">
+<img src="./images/layered-architecture.png" alt="layered architecture" width="1100" height="457">
 </div>
 </div>
 <div class="paragraph">
-<p><strong>Web App Server Layers:</strong></p>
+<p><strong>React Frontend Layers:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Components</strong>: React UI components for board, moves, statistics</p>
+</li>
+<li>
+<p><strong>State Management</strong>: Local game state and user session (React hooks/context)</p>
+</li>
+<li>
+<p><strong>API Layer</strong>: Abstraction over backend API calls</p>
+</li>
+<li>
+<p><strong>HTTP Client</strong>: Fetch/Axios for making HTTP requests to Nginx</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Users Service Layers:</strong></p>
 </div>
 <div class="ulist">
 <ul>
@@ -1357,13 +1444,13 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p><strong>Controllers</strong>: Handle HTTP requests, authentication, input validation</p>
 </li>
 <li>
-<p><strong>Services</strong>: Orchestrate business logic, coordinate Game Server calls</p>
+<p><strong>Services</strong>: Business logic for users, matches, statistics</p>
 </li>
 <li>
 <p><strong>Repositories</strong>: Abstract database access using Repository pattern</p>
 </li>
 <li>
-<p><strong>DTOs</strong>: Shared data contracts for inter-process communication</p>
+<p><strong>Database</strong>: SQLite persistence layer</p>
 </li>
 </ul>
 </div>
@@ -1414,6 +1501,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p>Stateless game server for horizontal scaling</p>
 </li>
+<li>
+<p>Nginx for efficient request routing</p>
+</li>
 </ul>
 </div></div></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
@@ -1425,7 +1515,10 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Indexed database queries for rankings</p>
 </li>
 <li>
-<p>Concurrent request handling</p>
+<p>Concurrent request handling in Rust</p>
+</li>
+<li>
+<p>Nginx caching for static files</p>
 </li>
 </ul>
 </div></div></td>
@@ -1440,6 +1533,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p>Database optimized for read-heavy workload</p>
 </li>
+<li>
+<p>Nginx can load balance multiple game server instances</p>
+</li>
 </ul>
 </div></div></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
@@ -1448,10 +1544,13 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Multiple game server instances possible</p>
 </li>
 <li>
-<p>Connection pooling</p>
+<p>Connection pooling in Users Service</p>
 </li>
 <li>
 <p>Caching strategies for frequent queries</p>
+</li>
+<li>
+<p>Independent service scaling</p>
 </li>
 </ul>
 </div></div></td>
@@ -1467,20 +1566,23 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Type safety (TypeScript + Rust)</p>
 </li>
 <li>
-<p>Shared DTOs between services</p>
+<p>Single database access point (Users Service)</p>
 </li>
 </ul>
 </div></div></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Layered architecture</p>
+<p>Layered architecture in each service</p>
 </li>
 <li>
 <p>Repository pattern for DB abstraction</p>
 </li>
 <li>
-<p>Comprehensive API documentation</p>
+<p>API documentation</p>
+</li>
+<li>
+<p>Shared YEN notation contracts</p>
 </li>
 </ul>
 </div></div></td>
@@ -1496,20 +1598,55 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Standardized YEN notation</p>
 </li>
 <li>
-<p>External bot API</p>
+<p>External bot API support</p>
 </li>
 </ul>
 </div></div></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>OpenAPI/Swagger documentation</p>
+<p>HTTP-based communication</p>
 </li>
 <li>
 <p>Versioned API endpoints</p>
 </li>
 <li>
 <p>Cross-team bot competition support</p>
+</li>
+<li>
+<p>Well-defined API contracts</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Security</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Nginx isolates backend services</p>
+</li>
+<li>
+<p>Rate limiting and CORS at gateway level</p>
+</li>
+<li>
+<p>Authentication in Users Service</p>
+</li>
+</ul>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>JWT token-based authentication</p>
+</li>
+<li>
+<p>Password hashing (bcrypt/Argon2)</p>
+</li>
+<li>
+<p>No direct backend access</p>
+</li>
+<li>
+<p>Input validation at API boundaries</p>
 </li>
 </ul>
 </div></div></td>
@@ -1533,11 +1670,11 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Mandated Technologies</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">TypeScript for web app and Rust for game engine are project requirements, limiting technology choices</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TypeScript for frontend/backend and Rust for game engine are project requirements, limiting technology choices</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>YEN Notation</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">All game state communication must use YEN format, requiring transformation layers</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">All game state communication must use YEN format, requiring parsing/serialization layers</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Bot API Requirement</strong></p></td>
@@ -1549,11 +1686,15 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web Deployment</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Application must be publicly accessible, requiring containerization and cloud deployment strategy</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Application must be publicly accessible, requiring containerization and reverse proxy strategy</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Multiple Strategies</strong></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Game engine must support extensible bot strategies, leading to Strategy pattern adoption</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Database Consistency</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A single database access point through Users Service ensures data integrity</p></td>
 </tr>
 </tbody>
 </table>
@@ -1563,19 +1704,22 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Monorepo vs. Multi-repo</strong>: Separate repositories for frontend, backend, and game server to enable independent development and deployment</p>
+<p><strong>Monorepo structure</strong>: All services in one repository (<code>webapp/</code>, <code>users/</code>, <code>gamey/</code>, <code>nginx/</code>) for easier coordination</p>
 </li>
 <li>
-<p><strong>Shared contracts repository</strong>: Common DTOs and types shared across services</p>
+<p><strong>Docker Compose</strong>: Simplified local development with single command startup</p>
 </li>
 <li>
-<p><strong>API-first development</strong>: OpenAPI specification defines contracts before implementation</p>
+<p><strong>Shared YEN notation</strong>: Common understanding of game state format across all services</p>
+</li>
+<li>
+<p><strong>API-first approach</strong>: Define API contracts before implementation</p>
 </li>
 <li>
 <p><strong>Version control</strong>: Git with feature branch workflow and code reviews</p>
 </li>
 <li>
-<p><strong>Documentation</strong>: arc42 for architecture, inline code documentation, API documentation with Swagger</p>
+<p><strong>Documentation</strong>: arc42 for architecture, inline code documentation, README files per service</p>
 </li>
 </ul>
 </div>
@@ -1592,28 +1736,31 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_overview_diagram">5.1.1. Overview Diagram</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level1-overview.png" alt="level1 overview" width="848" height="455">
+<img src="./images/level1-overview.png" alt="level1 overview" width="1177" height="630">
 </div>
 </div>
 <div class="paragraph">
 <p><strong>Motivation:</strong></p>
 </div>
 <div class="paragraph">
-<p>The Yovi system is decomposed into three main subsystems to achieve separation of concerns, independent scalability, and technology-specific optimization:</p>
+<p>The Yovi system is decomposed into four main subsystems to achieve separation of concerns, independent scalability, and technology-specific optimization:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Web Frontend</strong>: User interface layer for human players</p>
+<p><strong>Nginx (API Gateway)</strong>: Single public entry point for all requests, handling routing, rate limiting, and CORS</p>
 </li>
 <li>
-<p><strong>Web App Server</strong>: Orchestration layer (BFF pattern) managing authentication, match lifecycle, and API routing</p>
+<p><strong>React Frontend (Webapp)</strong>: User interface layer running in the browser, managing UI state and coordinating API calls to backend services</p>
+</li>
+<li>
+<p><strong>Users Service</strong>: Data layer with exclusive database access, managing authentication, users, matches, and statistics</p>
 </li>
 <li>
 <p><strong>Game Server</strong>: Pure game logic engine optimized for performance (Rust)</p>
 </li>
 <li>
-<p><strong>Database</strong>: Persistent storage for users, matches, and statistics</p>
+<p><strong>Database</strong>: Persistent storage accessible only through Users Service</p>
 </li>
 </ul>
 </div>
@@ -1633,42 +1780,76 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web Frontend</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx (API Gateway)</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Renders game board and UI components</p>
+<p>Single public entry point on port 80</p>
 </li>
 <li>
-<p>Handles user interactions (login, game moves, statistics viewing)</p>
+<p>Routes requests based on URL paths (<code>/api/users/<strong></code>, <code>/api/gamey/</strong></code>, <code>/*</code>)</p>
 </li>
 <li>
-<p>Communicates with Web App Server via REST API</p>
+<p>Handles CORS and rate limiting</p>
 </li>
 <li>
-<p>Manages client-side state</p>
+<p>Serves React frontend static files</p>
+</li>
+<li>
+<p>Isolates backend services from direct external access</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web App Server (BFF)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>React Frontend (Webapp)</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Acts as Backend for Frontend orchestrating multiple services</p>
+<p>Single-page application (SPA) running in user&#8217;s browser</p>
 </li>
 <li>
-<p>Provides REST API for web clients and bots</p>
+<p>Renders game board and UI components using React</p>
 </li>
 <li>
-<p>Manages user authentication and authorization</p>
+<p>Handles user interactions (login, game moves, statistics viewing)</p>
 </li>
 <li>
-<p>Coordinates Game Server and Database operations</p>
+<p>Manages client-side state (game state, user session)</p>
 </li>
 <li>
-<p>Transforms between user-friendly formats and YEN notation</p>
+<p>Makes HTTP API calls to Users Service and Game Server through Nginx</p>
+</li>
+<li>
+<p>Coordinates game flow from the client side</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Users Service</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Single point of access to the database</p>
+</li>
+<li>
+<p>Manages user authentication and authorization (JWT tokens)</p>
+</li>
+<li>
+<p>Handles user CRUD operations</p>
+</li>
+<li>
+<p>Persists match history and game state</p>
+</li>
+<li>
+<p>Provides player statistics and rankings</p>
+</li>
+<li>
+<p>Ensures data consistency and integrity</p>
+</li>
+<li>
+<p>Exposes REST API on port 3000 (internal)</p>
 </li>
 </ul>
 </div></div></td>
@@ -1684,13 +1865,16 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Validates moves and checks win conditions</p>
 </li>
 <li>
-<p>Computes bot moves using various strategies</p>
+<p>Computes bot moves using various strategies (random, heuristic)</p>
 </li>
 <li>
 <p>Stateless service using YEN notation</p>
 </li>
 <li>
-<p>Exposes REST API for game operations</p>
+<p>Exposes REST API on port 4000 (internal)</p>
+</li>
+<li>
+<p>No database access, pure computation</p>
 </li>
 </ul>
 </div></div></td>
@@ -1709,7 +1893,10 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Maintains player statistics and rankings</p>
 </li>
 <li>
-<p>Provides atomic transactions for data consistency</p>
+<p>Accessible only through Users Service</p>
+</li>
+<li>
+<p>Embedded database (no separate server process)</p>
 </li>
 </ul>
 </div></div></td>
@@ -1722,48 +1909,60 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Web Frontend → Web App Server</strong>: REST API (<code>/auth/<strong></code>, <code>/matches/</strong></code>, <code>/play</code>, <code>/stats</code>)</p>
+<p><strong>User → Nginx</strong>: HTTP REST API (port 80, public)</p>
 </li>
 <li>
-<p><strong>Web App Server → Game Server</strong>: REST API (<code>/ybot/choose/{botId}</code>)</p>
+<p><strong>Nginx → React Frontend</strong>: Static file serving (HTML, JS, CSS)</p>
 </li>
 <li>
-<p><strong>Web App Server → Database</strong>: SQLite native SQL queries</p>
+<p><strong>Nginx → Users Service</strong>: REST API (<code>/api/users/*</code>, port 3000, internal)</p>
 </li>
 <li>
-<p><strong>Bot Client → Web App Server</strong>: REST API (<code>/bot/play</code>)</p>
+<p><strong>Nginx → Game Server</strong>: REST API (<code>/api/gamey/*</code>, port 4000, internal)</p>
+</li>
+<li>
+<p><strong>React Frontend → Nginx</strong>: AJAX/Fetch API calls from browser (<code>/api/users/<strong></code>, <code>/api/gamey/</strong></code>)</p>
+</li>
+<li>
+<p><strong>Users Service → Database</strong>: SQLite native SQL queries</p>
 </li>
 </ul>
+</div>
+<div class="paragraph">
+<p><strong>Communication Flow Example:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>User loads the app → Nginx serves React static files → React runs in browser</p>
+</li>
+<li>
+<p>User clicks "Login" → React calls <code>POST /api/users/auth/login</code> → Nginx routes to Users Service</p>
+</li>
+<li>
+<p>User makes a move → React calls <code>POST /api/gamey/play</code> → Nginx routes to Game Server</p>
+</li>
+<li>
+<p>Game Server returns move validation → React updates UI</p>
+</li>
+</ol>
 </div>
 </div>
 </div>
 <div class="sect2">
 <h3 id="_level_2">5.2. Level 2</h3>
 <div class="sect3">
-<h4 id="_white_box_web_app_server">5.2.1. White Box: Web App Server</h4>
+<h4 id="_white_box_users_service">5.2.1. White Box: Users Service</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-webapp.png" alt="level2 webapp" width="992" height="708">
+<img src="./images/level2-users.png" alt="level2 users" width="866" height="632">
 </div>
 </div>
 <div class="paragraph">
 <p><strong>Motivation:</strong></p>
 </div>
 <div class="paragraph">
-<p>The Web App Server follows a layered architecture with clear separation between HTTP handling (Controllers), business orchestration (Services), and external communication (Clients). This enables:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p><strong>Testability</strong>: Each layer can be unit tested independently</p>
-</li>
-<li>
-<p><strong>Maintainability</strong>: Changes to external APIs are isolated in Client classes</p>
-</li>
-<li>
-<p><strong>Reusability</strong>: GameOrchestrationService can be used by multiple controllers</p>
-</li>
-</ul>
+<p>Users Service follows a clean architecture with Repository pattern for database abstraction. This service is the single source of truth for user data and match state persistence. No other service has direct database access.</p>
 </div>
 <div class="paragraph">
 <p><strong>Contained Building Blocks:</strong></p>
@@ -1781,110 +1980,165 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>AuthController</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UsersApiController</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Handles HTTP requests for <code>/auth/register</code> and <code>/auth/login</code></p>
+<p>Exposes REST API endpoints for Nginx and clients</p>
 </li>
 <li>
-<p>Validates user credentials</p>
+<p>Endpoints: <code>/auth/<strong></code>, <code>/users/</strong></code>, <code>/matches/<strong></code>, <code>/stats/</strong></code></p>
 </li>
 <li>
-<p>Returns JWT tokens or session cookies</p>
+<p>Input validation and error handling</p>
+</li>
+<li>
+<p>Authentication middleware (JWT verification)</p>
+</li>
+<li>
+<p>Request/response mapping</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchesController</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>AuthService</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Manages match creation (<code>POST /matches</code>)</p>
+<p>User registration and authentication logic</p>
 </li>
 <li>
-<p>Retrieves match history (<code>GET /matches</code>)</p>
+<p>Password hashing (bcrypt or Argon2)</p>
 </li>
 <li>
-<p>Requires authentication</p>
+<p>JWT token generation and validation</p>
+</li>
+<li>
+<p>Session management</p>
+</li>
+<li>
+<p>Token refresh logic</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>StatsController</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UserService</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Provides player statistics endpoint (<code>GET /stats</code>)</p>
+<p>CRUD operations for user accounts</p>
 </li>
 <li>
-<p>Aggregates data from UsersService</p>
+<p>User profile management</p>
+</li>
+<li>
+<p>User search and retrieval</p>
+</li>
+<li>
+<p>Account validation</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>BotApiController</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchService</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Exposes bot-specific API (<code>POST /bot/play</code>)</p>
+<p>Match creation and state persistence</p>
 </li>
 <li>
-<p>Handles bot authentication</p>
+<p>Stores match metadata (size, strategy, difficulty, participants)</p>
 </li>
 <li>
-<p>Delegates to GameOrchestrationService</p>
+<p>Updates match status (ongoing/finished)</p>
+</li>
+<li>
+<p>Stores serialized YEN board states</p>
+</li>
+<li>
+<p>Match history queries</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>GameOrchestrationService</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>StatsService</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Core orchestration logic</p>
+<p>Aggregates player statistics (wins/losses/draws)</p>
 </li>
 <li>
-<p>Coordinates UsersClient and GameEngineClient</p>
+<p>Calculates rankings and metrics</p>
 </li>
 <li>
-<p>Implements game flow: validate state → compute move → persist result</p>
+<p>Provides historical match data</p>
 </li>
 <li>
-<p>Error handling and state management</p>
+<p>Optimized queries for leaderboards</p>
+</li>
+<li>
+<p>Win rate calculations</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UsersClient</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UserRepository</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>HTTP client wrapping UsersService API</p>
+<p>Database access layer for <code>users</code> table</p>
 </li>
 <li>
-<p>Handles user authentication, match persistence, statistics retrieval</p>
+<p>SQL query execution and result mapping</p>
+</li>
+<li>
+<p>Transaction management for user operations</p>
+</li>
+<li>
+<p>Password hash storage</p>
 </li>
 </ul>
 </div></div></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>GameEngineClient</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchRepository</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>HTTP client wrapping Game Server API</p>
+<p>Database access layer for <code>matches</code> table</p>
 </li>
 <li>
-<p>Sends YEN positions and receives bot moves</p>
+<p>Stores serialized YEN board states</p>
 </li>
 <li>
-<p>Uses SharedContracts DTOs (YenPositionDto, YenMoveDto)</p>
+<p>Query optimization for match history</p>
+</li>
+<li>
+<p>Match outcome persistence</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>StatsRepository</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Database access layer for aggregated statistics</p>
+</li>
+<li>
+<p>Optimized read queries for rankings</p>
+</li>
+<li>
+<p>Computed statistics caching</p>
+</li>
+<li>
+<p>Performance metrics</p>
 </li>
 </ul>
 </div></div></td>
@@ -1903,7 +2157,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p><strong>Motivation:</strong></p>
 </div>
 <div class="paragraph">
-<p>The Game Server encapsulates all game-specific logic using Domain-Driven Design principles. The Strategy pattern allows for extensible bot implementations without modifying core game logic.</p>
+<p>The Game Server encapsulates all game-specific logic using Domain-Driven Design principles. The Strategy pattern allows for extensible bot implementations without modifying core game logic. This service is completely stateless and has no database dependencies.</p>
 </div>
 <div class="paragraph">
 <p><strong>Contained Building Blocks:</strong></p>
@@ -1925,7 +2179,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>REST API entry point (<code>POST /ybot/choose/{botId}</code>)</p>
+<p>REST API entry point (<code>POST /api/gamey/play</code>, <code>POST /api/gamey/ybot/choose/{botId}</code>)</p>
 </li>
 <li>
 <p>Parses YEN notation from requests</p>
@@ -1935,6 +2189,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p>Returns YenMoveDto responses</p>
+</li>
+<li>
+<p>Stateless request handling</p>
 </li>
 </ul>
 </div></div></td>
@@ -1952,6 +2209,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p>Returns valid move in YEN notation</p>
 </li>
+<li>
+<p>No side effects, pure computation</p>
+</li>
 </ul>
 </div></div></td>
 </tr>
@@ -1968,6 +2228,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p>Returns game status (ongoing/won/draw)</p>
 </li>
+<li>
+<p>Deterministic evaluation</p>
+</li>
 </ul>
 </div></div></td>
 </tr>
@@ -1980,6 +2243,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p><code>compute_move(board: &amp;Board, difficulty: u8) &#8594; Move</code></p>
+</li>
+<li>
+<p>Enables extensibility for new strategies</p>
 </li>
 </ul>
 </div></div></td>
@@ -1997,6 +2263,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p>Used for testing and beginner difficulty</p>
 </li>
+<li>
+<p>No lookahead or evaluation</p>
+</li>
 </ul>
 </div></div></td>
 </tr>
@@ -2012,6 +2281,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p>Configurable difficulty levels affect search depth</p>
+</li>
+<li>
+<p>Position evaluation function</p>
 </li>
 </ul>
 </div></div></td>
@@ -2043,153 +2315,6 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </tr>
 </tbody>
 </table>
-</div>
-<div class="sect3">
-<h4 id="_white_box_usersservice">5.2.3. White Box: UsersService</h4>
-<div class="imageblock">
-<div class="content">
-<img src="./images/level2-users.png" alt="level2 users" width="866" height="627">
-</div>
-</div>
-<div class="paragraph">
-<p><strong>Motivation:</strong></p>
-</div>
-<div class="paragraph">
-<p>UsersService follows a clean architecture with Repository pattern for database abstraction. This service is the source of truth for user data and match state persistence.</p>
-</div>
-<div class="paragraph">
-<p><strong>Contained Building Blocks:</strong></p>
-</div>
-<table class="tableblock frame-all grid-all stretch">
-<colgroup>
-<col style="width: 25%;">
-<col style="width: 75%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">Component</th>
-<th class="tableblock halign-left valign-top">Responsibility</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UsersApiController</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>Exposes internal REST API for Web App Server</p>
-</li>
-<li>
-<p>Endpoints: <code>/auth/<strong></code>, <code>/users/</strong></code>, <code>/matches/<strong></code>, <code>/stats/</strong></code></p>
-</li>
-<li>
-<p>Input validation and error handling</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>AuthService</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>User registration and authentication logic</p>
-</li>
-<li>
-<p>Password hashing (Argon2)</p>
-</li>
-<li>
-<p>JWT token generation and validation</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UserService</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>CRUD operations for user accounts</p>
-</li>
-<li>
-<p>User profile management</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchService</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>Match creation and state persistence</p>
-</li>
-<li>
-<p>Stores match metadata (size, strategy, difficulty, participants)</p>
-</li>
-<li>
-<p>Updates match status (ongoing/finished)</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>StatsService</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>Aggregates player statistics (wins/losses/draws)</p>
-</li>
-<li>
-<p>Calculates rankings and metrics</p>
-</li>
-<li>
-<p>Provides historical match data</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>UserRepository</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>Database access layer for <code>users</code> table</p>
-</li>
-<li>
-<p>SQL query execution and result mapping</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchRepository</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>Database access layer for <code>matches</code> table</p>
-</li>
-<li>
-<p>Stores serialized YEN board states</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>StatsRepository</strong></p></td>
-<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
-<ul>
-<li>
-<p>Database access layer for aggregated statistics</p>
-</li>
-<li>
-<p>Optimized read queries for rankings</p>
-</li>
-</ul>
-</div></div></td>
-</tr>
-</tbody>
-</table>
 <div style="page-break-after: always;"></div>
 </div>
 </div>
@@ -2200,17 +2325,20 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="sectionbody">
 <div class="paragraph">
 <p>This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, and statistics retrieval.
-The scenarios below are derived directly from the system’s architecture and message flows, using JSON/YEN as the canonical representation of game states.</p>
+The scenarios below are derived directly from the system&#8217;s architecture and message flows, using JSON/YEN as the canonical representation of game states.</p>
+</div>
+<div class="paragraph">
+<p>All communication between the React Frontend (running in the user&#8217;s browser) and backend services goes through the Nginx API Gateway, which routes requests to the appropriate service based on URL paths.</p>
 </div>
 <div class="sect2">
 <h3 id="_runtime_scenario_1_user_registration_and_login">6.1. Runtime Scenario 1: User Registration and Login</h3>
 <div class="paragraph">
-<p>This scenario shows how a human user registers or logs into the system through the Web Frontend.
-The WebApp BFF delegates authentication to the UsersService, which persists user data in SQLite.</p>
+<p>This scenario shows how a human user registers or logs into the system through the React Frontend.
+The frontend makes API calls through Nginx, which routes authentication requests to the Users Service, which persists user data in SQLite.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-login.png" alt="runtime login" width="634" height="365">
+<img src="./images/runtime-login.png" alt="runtime login" width="817" height="426">
 </div>
 </div>
 <div class="paragraph">
@@ -2219,13 +2347,19 @@ The WebApp BFF delegates authentication to the UsersService, which persists user
 <div class="ulist">
 <ul>
 <li>
-<p>Authentication is centralized in the UsersService.</p>
+<p>Authentication is centralized in the Users Service</p>
 </li>
 <li>
-<p>The BFF does not store credentials; it only forwards tokens.</p>
+<p>Nginx routes all <code>/api/users/*</code> requests to Users Service (port 3000)</p>
 </li>
 <li>
-<p>SQLite acts as the single source of truth for user accounts.</p>
+<p>React Frontend stores the JWT token (localStorage or sessionStorage)</p>
+</li>
+<li>
+<p>SQLite acts as the single source of truth for user accounts</p>
+</li>
+<li>
+<p>No intermediate BFF layer; frontend communicates directly through API Gateway</p>
 </li>
 </ul>
 </div>
@@ -2233,11 +2367,12 @@ The WebApp BFF delegates authentication to the UsersService, which persists user
 <div class="sect2">
 <h3 id="_runtime_scenario_2_authorization_check">6.2. Runtime Scenario 2: Authorization Check</h3>
 <div class="paragraph">
-<p>When a user requests protected resources, the BFF verifies the token either locally (JWT) or by delegating to the UsersService.</p>
+<p>When a user requests protected resources, the React Frontend includes the JWT token in the request headers.
+Nginx forwards the request to Users Service, which verifies the token.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-auth-check.png" alt="runtime auth check" width="349" height="305">
+<img src="./images/runtime-auth-check.png" alt="runtime auth check" width="707" height="564">
 </div>
 </div>
 <div class="paragraph">
@@ -2246,10 +2381,16 @@ The WebApp BFF delegates authentication to the UsersService, which persists user
 <div class="ulist">
 <ul>
 <li>
-<p>Ensures that only authenticated users can access match data.</p>
+<p>Ensures that only authenticated users can access match data</p>
 </li>
 <li>
-<p>Supports both JWT local validation and remote verification.</p>
+<p>JWT validation happens in Users Service</p>
+</li>
+<li>
+<p>React Frontend handles unauthorized responses by redirecting to login</p>
+</li>
+<li>
+<p>Nginx simply routes requests without authentication logic</p>
 </li>
 </ul>
 </div>
@@ -2257,12 +2398,12 @@ The WebApp BFF delegates authentication to the UsersService, which persists user
 <div class="sect2">
 <h3 id="_runtime_scenario_3_match_creation_and_initial_state_retrieval">6.3. Runtime Scenario 3: Match Creation and Initial State Retrieval</h3>
 <div class="paragraph">
-<p>A user creates a new match by specifying board size, strategy, and difficulty.
-The UsersService persists the match and returns the initial YEN state.</p>
+<p>A user creates a new match by specifying board size, strategy, and difficulty through the React UI.
+The Users Service persists the match and returns the initial YEN state.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-create-match.png" alt="runtime create match" width="795" height="365">
+<img src="./images/runtime-create-match.png" alt="runtime create match" width="1109" height="594">
 </div>
 </div>
 <div class="paragraph">
@@ -2271,10 +2412,16 @@ The UsersService persists the match and returns the initial YEN state.</p>
 <div class="ulist">
 <ul>
 <li>
-<p>The UsersService owns match lifecycle and persistence.</p>
+<p>The Users Service owns match lifecycle and persistence</p>
 </li>
 <li>
-<p>Initial game state is always stored and returned in YEN format.</p>
+<p>Initial game state is always stored and returned in YEN format</p>
+</li>
+<li>
+<p>React Frontend renders the game board based on received YEN notation</p>
+</li>
+<li>
+<p>Match creation requires authentication (JWT token)</p>
 </li>
 </ul>
 </div>
@@ -2282,12 +2429,12 @@ The UsersService persists the match and returns the initial YEN state.</p>
 <div class="sect2">
 <h3 id="_runtime_scenario_4_player_move_human_turn">6.4. Runtime Scenario 4: Player Move (Human Turn)</h3>
 <div class="paragraph">
-<p>The human player submits a move in YEN notation.
-The BFF retrieves the current match state, validates it, calls the Rust engine for the bot move, and persists the updated state.</p>
+<p>The human player submits a move by clicking on the game board in React.
+The frontend sends the current game state to the Game Server for bot move computation, then persists the updated state in Users Service.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-human-move.png" alt="runtime human move" width="1028" height="673">
+<img src="./images/runtime-human-move.png" alt="runtime human move" width="1083" height="974">
 </div>
 </div>
 <div class="paragraph">
@@ -2296,13 +2443,19 @@ The BFF retrieves the current match state, validates it, calls the Rust engine f
 <div class="ulist">
 <ul>
 <li>
-<p>UsersService is the authoritative source of match state.</p>
+<p>React Frontend coordinates the multi-step flow from the browser</p>
 </li>
 <li>
-<p>The Rust engine is stateless and only computes moves.</p>
+<p>Game Server (Rust) is stateless and only computes moves based on YEN input</p>
 </li>
 <li>
-<p>All updates are persisted atomically in SQLite.</p>
+<p>Users Service is the authoritative source of match state persistence</p>
+</li>
+<li>
+<p>All updates are persisted atomically in SQLite</p>
+</li>
+<li>
+<p>Frontend manages client-side game state and UI updates</p>
 </li>
 </ul>
 </div>
@@ -2310,12 +2463,12 @@ The BFF retrieves the current match state, validates it, calls the Rust engine f
 <div class="sect2">
 <h3 id="_runtime_scenario_5_bot_api_interaction">6.5. Runtime Scenario 5: Bot API Interaction</h3>
 <div class="paragraph">
-<p>Bots can play matches programmatically using the external API.
-The flow mirrors the human move scenario but uses bot credentials or API keys.</p>
+<p>External bots can play matches programmatically using the API.
+The flow mirrors the human move scenario but uses bot credentials or API keys for authentication.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-bot-api.png" alt="runtime bot api" width="955" height="547">
+<img src="./images/runtime-bot-api.png" alt="runtime bot api" width="811" height="827">
 </div>
 </div>
 <div class="paragraph">
@@ -2324,10 +2477,16 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 <div class="ulist">
 <ul>
 <li>
-<p>Bots interact with the same engine and match logic as human players.</p>
+<p>Bots interact with the same Game Server and Users Service as human players</p>
 </li>
 <li>
-<p>API keys or bot credentials ensure secure automated access.</p>
+<p>Bot authentication uses API keys or JWT tokens</p>
+</li>
+<li>
+<p>Nginx can handle bot-specific routing logic</p>
+</li>
+<li>
+<p>External bots must follow the same YEN notation format</p>
 </li>
 </ul>
 </div>
@@ -2335,11 +2494,11 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 <div class="sect2">
 <h3 id="_runtime_scenario_6_statistics_and_history_retrieval">6.6. Runtime Scenario 6: Statistics and History Retrieval</h3>
 <div class="paragraph">
-<p>Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics.</p>
+<p>Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics through the React UI.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-stats.png" alt="runtime stats" width="406" height="365">
+<img src="./images/runtime-stats.png" alt="runtime stats" width="967" height="605">
 </div>
 </div>
 <div class="paragraph">
@@ -2348,10 +2507,19 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 <div class="ulist">
 <ul>
 <li>
-<p>Statistics are computed from persisted match data.</p>
+<p>Statistics are computed from persisted match data in SQLite</p>
 </li>
 <li>
-<p>The UsersService exposes a unified Stats API for both frontend and bots.</p>
+<p>The Users Service exposes a unified Stats API</p>
+</li>
+<li>
+<p>React Frontend handles visualization (charts, tables)</p>
+</li>
+<li>
+<p>All stats queries require authentication</p>
+</li>
+<li>
+<p>Nginx routes all statistics requests to Users Service</p>
 </li>
 </ul>
 </div>
@@ -2394,13 +2562,16 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Security (Defense in Depth):</strong> The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the API Gateway is the only part connected to the public internet.</p>
+<p><strong>Security (Defense in Depth):</strong> The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the Nginx API Gateway is the only part connected to the public internet.</p>
 </li>
 <li>
 <p><strong>Portability:</strong> By using Docker containers, the environment is always the same. The application works exactly the same way, no matter what physical server is running the Virtual Machine.</p>
 </li>
 <li>
-<p><strong>Independent Scalability:</strong> The system is divided into specific microservices (Users, Gamey, API Gateway). Because of this, developers can give more resources to the Rust game engine without affecting the Node.js user management system.</p>
+<p><strong>Independent Scalability:</strong> The system is divided into specific microservices (React Frontend, Users Service, Game Server). Because of this, developers can give more resources to the Rust game engine without affecting the Node.js Users Service.</p>
+</li>
+<li>
+<p><strong>Separation of Concerns:</strong> Users Service is the single point of access to the database, ensuring data consistency and security.</p>
 </li>
 </ul>
 </div>
@@ -2420,24 +2591,24 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Web Application (React/Vite)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM. It serves the web interface (GUI) using static files over port 80 to the user&#8217;s browser.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>React Frontend (Webapp)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed as static files (HTML, CSS, JS bundle) served by Nginx on port 80. The React application runs entirely in the user&#8217;s browser. Built with Vite and bundled for production.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>API Gateway (Nginx)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM. It works as a Reverse Proxy and is the only public entry point (Port 80/8080) to route the traffic.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx (API Gateway)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM. It works as a Reverse Proxy and API Gateway. It is the only public entry point (Port 80) to route all incoming traffic. Handles CORS, rate limiting, and serves the React frontend static files. Routes API requests to backend services.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>User Management API (Node.js)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 3000). It manages user registration, login, and sessions.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Users Service (Node.js + Express + TypeScript)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 3000, internal only). Single point of access to the database. Manages user registration, authentication, match persistence, and statistics. No other service can access the database directly.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>GameY Engine API (Rust)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 4000). It calculates the math logic of the game and the bot movements in YEN format.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Game Server (Rust)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 4000, internal only). It calculates the game logic and bot movements in YEN format. Stateless service optimized for performance. No database access.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>SQLite Database</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">A small database file saved on a Host Volume connected to the User Management container. This makes sure the data is not lost if the container restarts.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A database file saved on a Host Volume connected exclusively to the Users Service container. This makes sure the data is not lost if the container restarts. Only Users Service has read/write permissions.</p></td>
 </tr>
 </tbody>
 </table>
@@ -2462,7 +2633,7 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 <p><strong>Consistency:</strong> It solves the classic "it works on my machine" problem.</p>
 </li>
 <li>
-<p><strong>Fast Setup:</strong> A new developer can start the complete system (Frontend, APIs, and Database) with just one <code>docker-compose up</code> command.</p>
+<p><strong>Fast Setup:</strong> A new developer can start the complete system (React Frontend, Nginx, Users Service, Game Server, and Database) with just one <code>docker-compose up</code> command.</p>
 </li>
 </ul>
 </div>
@@ -2489,10 +2660,98 @@ The flow mirrors the human move scenario but uses bot credentials or API keys.</
 <p><strong>Internal Structure Explanation:</strong></p>
 </div>
 <div class="paragraph">
-<p>This level shows the internal Docker network rules. The <strong>API Gateway (Nginx)</strong> completely isolates the microservices from the public internet. External users can never reach the backend directly.</p>
+<p>This level shows the internal Docker network rules. The <strong>Nginx API Gateway</strong> completely isolates the microservices from the public internet. External users can never reach the backend services directly. All requests must go through Nginx on port 80.</p>
 </div>
 <div class="paragraph">
-<p>Also, data storage is strictly controlled. The <code>SQLite</code> database is connected to a physical host volume. However, only the <code>User Management</code> container has permissions to read and write to this file. If the <code>GameY Engine</code> needs user data, it must ask via internal HTTP requests. This keeps the microservices properly separated.</p>
+<p>The request flow is as follows:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>User browser loads the app</strong>: Nginx serves React static files (HTML, CSS, JS)</p>
+</li>
+<li>
+<p><strong>React app runs in browser</strong>: Makes API calls to <code>/api/users/<strong></code> and <code>/api/gamey/</strong></code></p>
+</li>
+<li>
+<p><strong>Nginx routes API requests</strong> based on URL path:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><code>/api/users/*</code> → Users Service (port 3000)</p>
+</li>
+<li>
+<p><code>/api/gamey/*</code> → Game Server (port 4000)</p>
+</li>
+<li>
+<p><code>/*</code> (all other paths) → React frontend static files</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Example User Flow:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>User opens <code><a href="http://yourapp.com" class="bare">http://yourapp.com</a></code> in browser</p>
+</li>
+<li>
+<p>Nginx serves <code>index.html</code> and React bundle from static files</p>
+</li>
+<li>
+<p>React app loads in browser, displays login screen</p>
+</li>
+<li>
+<p>User clicks "Login" → React sends <code>POST /api/users/auth/login</code> to Nginx</p>
+</li>
+<li>
+<p>Nginx routes request to Users Service (port 3000)</p>
+</li>
+<li>
+<p>Users Service validates credentials and returns JWT token</p>
+</li>
+<li>
+<p>React stores token and makes game requests to <code>/api/gamey/play</code></p>
+</li>
+<li>
+<p>Nginx routes game requests to Game Server (port 4000)</p>
+</li>
+<li>
+<p>Game Server returns move validation and updated game state in YEN format</p>
+</li>
+<li>
+<p>React updates the UI with a new board state</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>Also, data storage is strictly controlled. The <code>SQLite</code> database is connected to a physical host volume. However, only the <code>Users Service</code> container has permissions to read and write to this file. The Game Server has no database access and operates in a completely stateless manner. If game state needs to be persisted (for match history), it must be sent to Users Service, which stores it in the database.</p>
+</div>
+<div class="paragraph">
+<p><strong>Network Isolation:</strong></p>
+</div>
+<div class="paragraph">
+<p>All backend services (Users Service, Game Server) run on an internal Docker network. They cannot be accessed directly from outside the VM. Only Nginx has a public-facing port (80) exposed to the internet. This architecture ensures that:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Backend services are protected from direct attacks</p>
+</li>
+<li>
+<p>All requests go through Nginx security layers (rate limiting, CORS)</p>
+</li>
+<li>
+<p>Database is isolated behind Users Service</p>
+</li>
+<li>
+<p>Services communicate only through defined internal APIs</p>
+</li>
+</ul>
 </div>
 <div style="page-break-after: always;"></div>
 </div>
@@ -2636,7 +2895,7 @@ the game at all times.</p>
 <li>
 <p>Consistency: We try to keep the same style and
 interaction patterns across all pages so the user
-does not have to “relearn” how to use the app.</p>
+does not have to "relearn" how to use the app.</p>
 </li>
 <li>
 <p>Accessibility: Clear colors, readable text,
@@ -2650,22 +2909,30 @@ to a wider audience.</p>
 <h3 id="_safety_and_security_concepts">8.3. Safety and Security Concepts</h3>
 <div class="paragraph">
 <p>Security is a cross‑cutting concern because it
-affects both the backend and the frontend.
+affects both the backend services and the frontend.
 Even though this is an academic project, we still apply basic security principles.</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p>Authentication and Authorization:
-Only authenticated users can access certain features, such as starting a game or viewing their profile.</p>
+<p><strong>API Gateway Isolation:</strong>
+Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while Users Service and Game Server run on internal Docker network ports.</p>
 </li>
 <li>
-<p>Password Protection:
-Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database.</p>
+<p><strong>Authentication and Authorization:</strong>
+Only authenticated users can access certain features, such as creating matches or viewing their profile. The Users Service handles all authentication using JWT tokens.</p>
 </li>
 <li>
-<p>Data Protection:
-We only store the minimum amount of user information needed for the system to work.</p>
+<p><strong>Password Protection:</strong>
+Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database using bcrypt or Argon2.</p>
+</li>
+<li>
+<p><strong>Data Protection:</strong>
+We only store the minimum amount of user information needed for the system to work. The database is accessible only through the Users Service, ensuring data access control.</p>
+</li>
+<li>
+<p><strong>CORS and Rate Limiting:</strong>
+Nginx handles Cross-Origin Resource Sharing (CORS) headers and rate limiting to prevent abuse and ensure legitimate API usage.</p>
 </li>
 </ul>
 </div>
@@ -2673,19 +2940,22 @@ We only store the minimum amount of user information needed for the system to wo
 <div class="sect2">
 <h3 id="_architecture_and_design_patterns">8.4. Architecture and Design Patterns</h3>
 <div class="paragraph">
-<p>The system follows a service‑based architecture. Instead of having one big monolithic
-application, we split the project into several smaller services:</p>
+<p>The system follows a microservice-based architecture. Instead of having one big monolithic
+application, we split the project into several smaller, independent services:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p>webapp (React + TypeScript): the user interface</p>
+<p><strong>React Frontend (webapp/):</strong> The user interface running in the browser. It is a single-page application (SPA) built with React, Vite, and TypeScript. The frontend manages UI state and coordinates API calls to backend services.</p>
 </li>
 <li>
-<p>users (Node.js + Express): user registration and authentication</p>
+<p><strong>Nginx:</strong> The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, and serves the React frontend static files.</p>
 </li>
 <li>
-<p>gamey (Rust): the Y‑game engine and bot logic</p>
+<p><strong>Users Service (users/):</strong> Node.js + Express + TypeScript service that manages user registration, authentication, match persistence, and statistics. It is the single point of access to the SQLite database.</p>
+</li>
+<li>
+<p><strong>Game Server (gamey/):</strong> Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.</p>
 </li>
 </ul>
 </div>
@@ -2693,12 +2963,20 @@ application, we split the project into several smaller services:</p>
 <p>Some patterns we use:</p>
 </div>
 <div class="paragraph">
-<p>Game Engine Pattern:
-The Rust service encapsulates all the game logic, including move validation and board updates.</p>
+<p><strong>API Gateway Pattern:</strong>
+Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (<code>/api/users/<strong></code>, <code>/api/gamey/</strong></code>, <code>/</code>).</p>
 </div>
 <div class="paragraph">
-<p>Separation of Concerns:
-The frontend separates UI components, state management, and API calls.</p>
+<p><strong>Repository Pattern:</strong>
+The Users Service uses the Repository pattern to abstract database access, making it easier to test and maintain.</p>
+</div>
+<div class="paragraph">
+<p><strong>Strategy Pattern:</strong>
+The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic) in an extensible way.</p>
+</div>
+<div class="paragraph">
+<p><strong>Separation of Concerns:</strong>
+The frontend separates UI components, state management (React hooks/context), and API call logic into distinct layers.</p>
 </div>
 </div>
 <div class="sect2">
@@ -2722,13 +3000,13 @@ ensure that all components evolve consistently.</p>
 <div class="ulist">
 <ul>
 <li>
-<p>Rust engine: unit tests</p>
+<p>Rust Game Server: unit tests for game logic and strategies</p>
 </li>
 <li>
-<p>Node.js service: API tests</p>
+<p>Users Service (Node.js): API endpoint tests and integration tests</p>
 </li>
 <li>
-<p>React app: component and integration tests</p>
+<p>React Frontend: component tests and end-to-end tests</p>
 </li>
 </ul>
 </div>
@@ -2746,15 +3024,30 @@ This helps detect errors early and keeps all services aligned.</p>
 <div class="sect2">
 <h3 id="_persistence_layer">8.6. Persistence Layer</h3>
 <div class="paragraph">
-<p>The application relies on a SQL database (relational database) that will
-manage the data of the application related to the game sessions or related to the user.</p>
+<p>The application relies on a SQL database (SQLite - relational database) that will
+manage the data of the application related to user accounts, match history, and statistics.</p>
 </div>
 <div class="paragraph">
-<p>Game sessions are not permanently stored, since the game engine written in Rust is
-designed to compute the state of the board in memory. This simplifies the architecture
-and avoids unnecessary complexity. If persistence of matches is needed in the future
-(for example, to implement match history or resume functionality), the system can be
-extended without affecting the existing services thanks to the service‑based design.</p>
+<p>The database is accessed exclusively by the Users Service. This design decision ensures:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Data Consistency:</strong> Only one service manages database transactions</p>
+</li>
+<li>
+<p><strong>Security:</strong> Other services cannot directly access or modify the database</p>
+</li>
+<li>
+<p><strong>Separation of Concerns:</strong> Game Server remains stateless and focused on game logic</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Game sessions are computed in memory by the Rust Game Server, which is stateless. When a match needs to be persisted (for history or resuming later), the Users Service stores the game state in YEN notation in the SQLite database.</p>
+</div>
+<div class="paragraph">
+<p>If additional persistence requirements arise in the future (for example, caching or match replay functionality), the system can be extended without affecting the existing services thanks to the microservice-based design.</p>
 </div>
 </div>
 <div class="sect2">
@@ -2769,6 +3062,25 @@ both to developers and to users.</p>
 details. This prevents confusion and avoids leaking internal information. On the other hand, the backend services
 and the Rust game engine generate structured error messages and log them internally so developers can identify the
 cause of the problem more easily.</p>
+</div>
+<div class="paragraph">
+<p><strong>Error Handling Across Services:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>React Frontend:</strong> Displays user-friendly error messages for API failures, invalid moves, or authentication errors. Uses try-catch blocks and error boundaries for React component errors.</p>
+</li>
+<li>
+<p><strong>Nginx:</strong> Returns standard HTTP error codes (400, 401, 404, 500) and logs errors for monitoring.</p>
+</li>
+<li>
+<p><strong>Users Service:</strong> Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.</p>
+</li>
+<li>
+<p><strong>Game Server:</strong> Returns structured error responses for invalid YEN notation, illegal moves, or computation failures. Rust&#8217;s Result type ensures explicit error handling.</p>
+</li>
+</ul>
 </div>
 <div style="page-break-after: always;"></div>
 </div>
@@ -2792,25 +3104,50 @@ cause of the problem more easily.</p>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Monolithic arquitecture:</strong> where all game logic, API web and data storage services would be integrated in a single backend app.
+<p><strong>Monolithic architecture:</strong> where all game logic, API web and data storage services would be integrated in a single backend app.
 Although it would have simplified the development at first, this solution presents big issues in terms of scalability and maintainability.</p>
 </li>
 </ul>
 </div>
 </li>
 <li>
-<p><strong>Decision:</strong> We decided to implement a microservice-based architecture with a clear separation between game logic, web APIs, and presentation layers. The system will consist of an independent Game Server (Rust) handling core game rules and state, a Web Application Server (Node.js + Express + TypeScript) exposing APIs and coordinating requests, and a Frontend application (React + Vite + TypeScript) for user interaction. Persistent data will be managed through a backend-controlled SQLite database.<br>
+<p><strong>Decision:</strong> We decided to implement a microservice-based architecture with a clear separation between game logic, data persistence, and presentation layers. The system will consist of:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Game Server (Rust)</strong> handling core game rules, move validation, and bot strategies</p>
+</li>
+<li>
+<p><strong>Users Service (Node.js + Express + TypeScript)</strong> managing authentication, database access, match persistence, and statistics (single point of database access)</p>
+</li>
+<li>
+<p><strong>React Frontend (Vite + TypeScript)</strong> for user interaction, running entirely in the browser and coordinating API calls to backend services</p>
+</li>
+<li>
+<p><strong>Nginx API Gateway</strong> routing requests and handling cross-cutting concerns (CORS, rate limiting, security)</p>
+</li>
+<li>
+<p>Persistent data managed through SQLite, accessible only by Users Service<br>
 This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.</p>
+</li>
+</ul>
+</div>
 </li>
 <li>
 <p><strong>Pros:</strong></p>
 <div class="ulist">
 <ul>
 <li>
-<p>Clear separation of concerns between game logic, web APIs, and user interface.</p>
+<p>Clear separation of concerns between game logic, data persistence, and user interface</p>
 </li>
 <li>
-<p>Enables independent development and deployment of the Game Server and Web Application Server.</p>
+<p>Enables independent development and deployment of Game Server and Users Service</p>
+</li>
+<li>
+<p>Single database access point (Users Service) ensures data consistency</p>
+</li>
+<li>
+<p>Nginx provides security isolation for backend services</p>
 </li>
 </ul>
 </div>
@@ -2820,10 +3157,13 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p>Increased architectural complexity compared to a single monolithic backend.</p>
+<p>Increased architectural complexity compared to a single monolithic backend</p>
 </li>
 <li>
-<p>Introduces inter-service communication overhead and potential latency.</p>
+<p>Introduces inter-service communication overhead and potential latency</p>
+</li>
+<li>
+<p>Frontend must coordinate multiple API calls for complex workflows</p>
 </li>
 </ul>
 </div>
@@ -2846,23 +3186,26 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p>There were no possible alternatives because this was an imposed contraint, given by the course&#8217;s teachers.</p>
+<p>There were no possible alternatives because this was an imposed constraint, given by the course&#8217;s teachers.</p>
 </li>
 </ul>
 </div>
 </li>
 <li>
-<p><strong>Decision:</strong> We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust.</p>
+<p><strong>Decision:</strong> We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust. The Game Server will be completely stateless, with no database access.</p>
 </li>
 <li>
 <p><strong>Pros:</strong></p>
 <div class="ulist">
 <ul>
 <li>
-<p>Strong memory safety guarantees, reducing runtime errors and crashes.</p>
+<p>Strong memory safety guarantees, reducing runtime errors and crashes</p>
 </li>
 <li>
-<p>Highg performance and excellent support for concurrency, which is important for managing game sessions in parallel.</p>
+<p>High performance and excellent support for concurrency, which is important for managing game sessions in parallel</p>
+</li>
+<li>
+<p>Stateless design enables horizontal scaling</p>
 </li>
 </ul>
 </div>
@@ -2872,7 +3215,7 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p>Steeper learnig curve, as the development team is not familiar with this programming language.</p>
+<p>Steeper learning curve, as the development team is not familiar with this programming language</p>
 </li>
 </ul>
 </div>
@@ -2895,26 +3238,29 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p>There were no possible alternatives because this was an imposed contraint, given by the course&#8217;s teachers.</p>
+<p>There were no possible alternatives because this was an imposed constraint, given by the course&#8217;s teachers.</p>
 </li>
 </ul>
 </div>
 </li>
 <li>
-<p><strong>Decision:</strong> We decided to containerize all major components of the system using Docker. Each service will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.</p>
+<p><strong>Decision:</strong> We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Users Service, Game Server) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.</p>
 </li>
 <li>
 <p><strong>Pros:</strong></p>
 <div class="ulist">
 <ul>
 <li>
-<p>Provides consistent environments across development, testing, and deployment.</p>
+<p>Provides consistent environments across development, testing, and deployment</p>
 </li>
 <li>
-<p>Simplifies setup and onboarding by reducing manual configuration.</p>
+<p>Simplifies setup and onboarding by reducing manual configuration</p>
 </li>
 <li>
-<p>Enables easier deployment and scaling of individual services.</p>
+<p>Enables easier deployment and scaling of individual services</p>
+</li>
+<li>
+<p>Isolated network for backend services through Docker networking</p>
 </li>
 </ul>
 </div>
@@ -2924,10 +3270,10 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p>Adds an extra layer of complexity to the development workflow.</p>
+<p>Adds an extra layer of complexity to the development workflow</p>
 </li>
 <li>
-<p>Requires basic knowledge of Docker and container orchestration from the development team.</p>
+<p>Requires basic knowledge of Docker and container orchestration from the development team</p>
 </li>
 </ul>
 </div>
@@ -2950,26 +3296,32 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p><strong>MongoDB:</strong> A document-oriented NOSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken.</p>
+<p><strong>MongoDB:</strong> A document-oriented NoSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken.</p>
 </li>
 </ul>
 </div>
 </li>
 <li>
-<p><strong>Decision:</strong> We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by backend services. This choice is also highly based on the development team&#8217;s experience using relational databases.</p>
+<p><strong>Decision:</strong> We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by the Users Service - no other component has direct database access. This ensures data consistency and simplifies the persistence layer. This choice is also highly based on the development team&#8217;s experience using relational databases.</p>
 </li>
 <li>
 <p><strong>Pros:</strong></p>
 <div class="ulist">
 <ul>
 <li>
-<p>Easy integration with backend services and containerized environments.</p>
+<p>Easy integration with backend services and containerized environments</p>
 </li>
 <li>
-<p>Suitable for small-to-medium workloads.</p>
+<p>Suitable for small-to-medium workloads</p>
 </li>
 <li>
-<p>Low learning curve, as the development team is used to working with relational databases.</p>
+<p>Low learning curve, as the development team is used to working with relational databases</p>
+</li>
+<li>
+<p>Single point of access (Users Service) ensures data integrity</p>
+</li>
+<li>
+<p>Embedded database requires no separate server process</p>
 </li>
 </ul>
 </div>
@@ -2979,10 +3331,91 @@ This approach allows each component to evolve independently while using the most
 <div class="ulist">
 <ul>
 <li>
-<p>Limited scalability and concurrency support compared to cloud-native database solutions.</p>
+<p>Limited scalability and concurrency support compared to cloud-native database solutions</p>
 </li>
 <li>
-<p>Not ideal for high-availability or horizontally scaled write-heavy workloads.</p>
+<p>Not ideal for high-availability or horizontally scaled write-heavy workloads</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_adr_5_nginx_as_api_gateway">9.5. ADR 5: Nginx as API Gateway</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Context:</strong> The system requires a secure entry point for all external requests. Backend services (Users Service and Game Server) should not be directly accessible from the internet. Additionally, cross-cutting concerns such as CORS, rate limiting, and request routing need to be handled consistently.</p>
+</li>
+<li>
+<p><strong>Status:</strong> Proposed by the development team.</p>
+</li>
+<li>
+<p><strong>Possible alternatives:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Direct access to backend services:</strong> Each service could expose its own public port, but this would increase security risks and make it harder to manage cross-cutting concerns.</p>
+</li>
+<li>
+<p><strong>Cloud API Gateway services (AWS API Gateway, Azure API Management):</strong> These would provide more features but add complexity and cost for an academic project.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Decision:</strong> We decided to use Nginx as a reverse proxy and API Gateway. Nginx will be the only component with a publicly exposed port (80). It will route requests based on URL paths:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><code>/api/users/*</code> → Users Service (port 3000, internal)</p>
+</li>
+<li>
+<p><code>/api/gamey/*</code> → Game Server (port 4000, internal)</p>
+</li>
+<li>
+<p><code>/*</code> → React Frontend static files
+Nginx will also handle CORS headers, rate limiting, and request logging.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Pros:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Single public entry point enhances security (defense in depth)</p>
+</li>
+<li>
+<p>Backend services are isolated on internal Docker network</p>
+</li>
+<li>
+<p>Centralized handling of CORS, rate limiting, and logging</p>
+</li>
+<li>
+<p>High performance and battle-tested in production environments</p>
+</li>
+<li>
+<p>Simple configuration and widely known by the development community</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Cons:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Adds an additional component to the system architecture</p>
+</li>
+<li>
+<p>Requires learning Nginx configuration syntax</p>
+</li>
+<li>
+<p>Single point of failure (mitigated by its reliability)</p>
 </li>
 </ul>
 </div>
@@ -3174,42 +3607,6 @@ This approach allows each component to evolve independently while using the most
 <div class="sect1">
 <h2 id="section-glossary">12. Glossary</h2>
 <div class="sectionbody">
-<div class="sidebarblock arc42help">
-<div class="content">
-<div class="paragraph">
-<div class="title">Contents</div>
-<p>The most important domain and technical terms that your stakeholders use when discussing the system.</p>
-</div>
-<div class="paragraph">
-<p>You can also see the glossary as source for translations if you work in multi-language teams.</p>
-</div>
-<div class="paragraph">
-<div class="title">Motivation</div>
-<p>You should clearly define your terms, so that all stakeholders</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>have an identical understanding of these terms</p>
-</li>
-<li>
-<p>do not use synonyms and homonyms</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<div class="title">Form</div>
-<p>A table with columns &lt;Term&gt; and &lt;Definition&gt;.</p>
-</div>
-<div class="paragraph">
-<p>Potentially more columns in case you need translations.</p>
-</div>
-<div class="paragraph">
-<div class="title">Further Information</div>
-<p>See <a href="https://docs.arc42.org/section-12/">Glossary</a> in the arc42 documentation.</p>
-</div>
-</div>
-</div>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
 <col style="width: 33.3333%;">
@@ -3223,12 +3620,112 @@ This approach allows each component to evolve independently while using the most
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>&lt;Term-1&gt;</em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>&lt;definition-1&gt;</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>API Gateway</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architectural component that serves as the single public entry point, routing client requests to backend services and managing cross-cutting concerns</em></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>&lt;Term-2&gt;</em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>&lt;definition-2&gt;</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Nginx</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Web server and reverse proxy used to implement the API Gateway pattern in this system</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Anonymous Play</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Game mode where unregistered users can play without persisting their statistics or match history</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Arc42</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architecture documentation template followed in this project for structural consistency</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>BFF (Backend for Frontend)</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architectural pattern where the Web App Server orchestrates calls to multiple backend services (Users Service and Game Server)</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Barycentric Coordinates</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Coordinate system (x, y, z) used to represent positions on the hexagonal game board</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Board</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Hexagonal grid representing the Y game playing surface</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Bot Client</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>External automated agent that plays through the system&#8217;s Bot API</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>CORS (Cross-Origin Resource Sharing)</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>HTTP-header based mechanism that allows a server to indicate which origins are permitted to access its resources from a browser</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Docker</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Containerization platform used for packaging and deploying all system services</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Game Server</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Rust-based microservice responsible for core game logic, move validation, and bot AI strategies</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Match</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Game session between two players (human or bot) with a specific board size and strategy configuration</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Microservices</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Distributed architecture pattern where the system is decomposed into independent services (Frontend, Web App Server, Users Service, Game Server)</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Move/Movement</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Player action placing a piece at specific coordinates on the board</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>PlantUML</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Tool used for generating architectural diagrams throughout the documentation</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Registered Player</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>User with an account who can access match history, statistics, and personalized features</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Reverse Proxy</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Server (Nginx) that forwards client requests to appropriate backend services and returns responses</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>SQLite</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Embedded relational database used for persisting users, matches, and statistics</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Stateless Service</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Service that does not maintain persistent state between requests (e.g., Game Server)</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Strategy</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>AI difficulty level and bot behavior configuration (e.g., random, heuristic)</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Upstream</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Nginx configuration directive defining a group of backend servers that can handle requests (e.g., users_backend, gamey_backend)</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Users Service</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Node.js microservice that acts as the single point of access to the database, managing authentication, user accounts, match persistence, and statistics</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>WAL (Write-Ahead Logging)</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>SQLite mode that enables concurrent reads during writes, improving database performance</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Web App Server</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Node.js/Express/TypeScript service implementing the BFF pattern, orchestrating requests between Frontend, Users Service, and Game Server</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Win Checker</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Algorithm that detects Y-shaped winning connections on the board to determine game outcome</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>YBot</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Rust trait/interface defining the contract for bot strategy implementations</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>YEN (Y-Encoded Notation)</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Domain-specific format for representing board positions and moves in the Y game, used for inter-service communication</em></p></td>
 </tr>
 </tbody>
 </table>
