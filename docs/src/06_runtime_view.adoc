@@ -2,183 +2,235 @@
 == Runtime View
 
 This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, and statistics retrieval.
-The scenarios below are derived directly from the system’s architecture and message flows, using JSON/YEN as the canonical representation of game states.
+The scenarios below are derived directly from the system's architecture and message flows, using JSON/YEN as the canonical representation of game states.
+
+All communication between the React Frontend (running in the user's browser) and backend services goes through the Nginx API Gateway, which routes requests to the appropriate service based on URL paths.
 
 === Runtime Scenario 1: User Registration and Login
 
-This scenario shows how a human user registers or logs into the system through the Web Frontend.
-The WebApp BFF delegates authentication to the UsersService, which persists user data in SQLite.
+This scenario shows how a human user registers or logs into the system through the React Frontend.
+The frontend makes API calls through Nginx, which routes authentication requests to the Users Service, which persists user data in SQLite.
 
 [plantuml, "runtime-login", png]
 ----
-actor "Web Frontend" as Human
-participant "WebApp BFF\n(TS API)" as Api
-participant "UsersService\n(TS API)" as Users
+actor "User (Browser)" as Human
+participant "React Frontend" as Frontend
+participant "Nginx\n(API Gateway)" as Nginx
+participant "Users Service\n(Node.js)" as Users
 database "SQLite DB" as DB
 
-Human -> Api: POST /auth/register | /auth/login
-Api -> Users: POST /auth/register | /auth/login
+Human -> Frontend: Click Login/Register
+Frontend -> Nginx: POST /api/users/auth/register | /auth/login
+Nginx -> Users: Forward to port 3000
 Users -> DB: create/read user
 DB --> Users: user + credentials
-Users --> Api: token/session
-Api --> Human: token/session
+Users --> Nginx: token/session (JWT)
+Nginx --> Frontend: token/session
+Frontend --> Human: Display success, store token
 ----
 
 *Notable Aspects:*
 
-- Authentication is centralized in the UsersService.
-- The BFF does not store credentials; it only forwards tokens.
-- SQLite acts as the single source of truth for user accounts.
+- Authentication is centralized in the Users Service
+- Nginx routes all `/api/users/*` requests to Users Service (port 3000)
+- React Frontend stores the JWT token (localStorage or sessionStorage)
+- SQLite acts as the single source of truth for user accounts
+- No intermediate BFF layer; frontend communicates directly through API Gateway
 
 === Runtime Scenario 2: Authorization Check
 
-When a user requests protected resources, the BFF verifies the token either locally (JWT) or by delegating to the UsersService.
+When a user requests protected resources, the React Frontend includes the JWT token in the request headers.
+Nginx forwards the request to Users Service, which verifies the token.
 
 [plantuml, "runtime-auth-check", png]
 ----
-actor Human
-participant Api
-participant Users
+actor "User (Browser)" as Human
+participant "React Frontend" as Frontend
+participant "Nginx" as Nginx
+participant "Users Service" as Users
 
-Human -> Api: GET /matches
-Api -> Users: GET /auth/verify (token)
-Users --> Api: 401 Unauthorized
-Api --> Human: 401 Unauthorized
+Human -> Frontend: Request matches page
+Frontend -> Nginx: GET /api/users/matches\nAuthorization: Bearer <token>
+Nginx -> Users: Forward with auth header
+Users -> Users: Verify JWT token
+
+alt invalid token
+  Users --> Nginx: 401 Unauthorized
+  Nginx --> Frontend: 401 Unauthorized
+  Frontend --> Human: Redirect to login
+else valid token
+  Users --> Nginx: 200 + matches data
+  Nginx --> Frontend: 200 + matches data
+  Frontend --> Human: Display matches
+end
 ----
 
 *Notable Aspects:*
 
-- Ensures that only authenticated users can access match data.
-- Supports both JWT local validation and remote verification.
+- Ensures that only authenticated users can access match data
+- JWT validation happens in Users Service
+- React Frontend handles unauthorized responses by redirecting to login
+- Nginx simply routes requests without authentication logic
 
 === Runtime Scenario 3: Match Creation and Initial State Retrieval
 
-A user creates a new match by specifying board size, strategy, and difficulty.
-The UsersService persists the match and returns the initial YEN state.
+A user creates a new match by specifying board size, strategy, and difficulty through the React UI.
+The Users Service persists the match and returns the initial YEN state.
 
 [plantuml, "runtime-create-match", png]
 ----
-actor Human
-participant Api
-participant Users
-database DB
+actor "User (Browser)" as Human
+participant "React Frontend" as Frontend
+participant "Nginx" as Nginx
+participant "Users Service" as Users
+database "SQLite DB" as DB
 
-Human -> Api: POST /matches (size, strategy, difficulty)
-Api -> Users: POST /matches (userId, size, strategy, difficulty)
-Users -> DB: create match
+Human -> Frontend: Fill match form\n(size, strategy, difficulty)
+Frontend -> Nginx: POST /api/users/matches\n{size, strategy, difficulty, userId}\nAuthorization: Bearer <token>
+Nginx -> Users: Forward to port 3000
+Users -> Users: Validate token + params
+Users -> DB: INSERT INTO matches (size, strategy, difficulty, userId, status='ongoing')
 DB --> Users: matchId + persisted state
-Users --> Api: match + initial YEN
-Api --> Human: match + initial YEN
+Users --> Nginx: 201 Created\nmatch + initial YEN
+Nginx --> Frontend: 201 Created\nmatch + initial YEN
+Frontend -> Frontend: Update UI with game board
+Frontend --> Human: Display empty board ready to play
 ----
 
 *Notable Aspects:*
 
-- The UsersService owns match lifecycle and persistence.
-- Initial game state is always stored and returned in YEN format.
+- The Users Service owns match lifecycle and persistence
+- Initial game state is always stored and returned in YEN format
+- React Frontend renders the game board based on received YEN notation
+- Match creation requires authentication (JWT token)
 
 === Runtime Scenario 4: Player Move (Human Turn)
 
-The human player submits a move in YEN notation.
-The BFF retrieves the current match state, validates it, calls the Rust engine for the bot move, and persists the updated state.
+The human player submits a move by clicking on the game board in React.
+The frontend sends the current game state to the Game Server for bot move computation, then persists the updated state in Users Service.
 
 [plantuml, "runtime-human-move", png]
 ----
-actor Human
-participant Api
-participant Users
+actor "User (Browser)" as Human
+participant "React Frontend" as Frontend
+participant "Nginx" as Nginx
+participant "Users Service" as Users
 participant "Game Server\n(Rust)" as Engine
-database DB
+database "SQLite DB" as DB
 
-Human -> Api: POST /play (matchId, position=YEN, strategy, difficulty)
+Human -> Frontend: Click on board position
+Frontend -> Frontend: Update local game state with player move
 
-' 1) Validate and retrieve match state
-Api -> Users: GET /matches/{matchId}
-Users -> DB: read match + status
-DB --> Users: match state/status
-Users --> Api: match state/status
+' 1) Request bot move from Game Server
+Frontend -> Nginx: POST /api/gamey/ybot/choose/{botId}\n{position=YEN, strategy, difficulty}
+Nginx -> Engine: Forward to port 4000
+Engine -> Engine: Parse YEN\nValidate move\nCompute bot move
+Engine --> Nginx: 200 OK\nYenMoveDto {move, status}
+Nginx --> Frontend: YenMoveDto
 
-alt match finished
-  Api --> Human: 409 game finished
+alt invalid YEN or game finished
+  Frontend --> Human: Display error message
+else valid move
+  Frontend -> Frontend: Apply bot move to local state\nUpdate YEN notation
+
+  ' 2) Persist updated match state
+  Frontend -> Nginx: POST /api/users/matches/{matchId}/moves\n{updatedYEN, status, moves}\nAuthorization: Bearer <token>
+  Nginx -> Users: Forward to port 3000
+  Users -> Users: Verify token + matchId ownership
+  Users -> DB: UPDATE matches SET state=updatedYEN, status=...\nINSERT INTO moves (...)
+  DB --> Users: OK
+  Users --> Nginx: 200 OK {updated match}
+  Nginx --> Frontend: 200 OK {updated match}
+
+  Frontend -> Frontend: Render updated board
+  Frontend --> Human: Display updated game board
 end
-
-' 2) Compute bot move
-Api -> Engine: POST /ybot/choose/{botId} (position + params)
-Engine --> Api: YenMoveDto + status
-
-alt invalid YEN
-  Api --> Human: 400 invalid position
-end
-
-' 3) Persist updated state
-Api -> Users: POST /matches/{matchId}/moves (YenMoveDto + updatedYen + status)
-Users -> DB: persist move/result/stats
-DB --> Users: ok + updated aggregates
-Users --> Api: updated match + stats snapshot
-Api --> Human: move + updated YEN
 ----
 
 *Notable Aspects:*
 
-- UsersService is the authoritative source of match state.
-- The Rust engine is stateless and only computes moves.
-- All updates are persisted atomically in SQLite.
+- React Frontend coordinates the multi-step flow from the browser
+- Game Server (Rust) is stateless and only computes moves based on YEN input
+- Users Service is the authoritative source of match state persistence
+- All updates are persisted atomically in SQLite
+- Frontend manages client-side game state and UI updates
 
 === Runtime Scenario 5: Bot API Interaction
 
-Bots can play matches programmatically using the external API.
-The flow mirrors the human move scenario but uses bot credentials or API keys.
+External bots can play matches programmatically using the API.
+The flow mirrors the human move scenario but uses bot credentials or API keys for authentication.
 
 [plantuml, "runtime-bot-api", png]
 ----
 actor "Bot Client" as Bot
-participant Api
-participant Users
-participant Engine
-database DB
+participant "Nginx" as Nginx
+participant "Users Service" as Users
+participant "Game Server" as Engine
+database "SQLite DB" as DB
 
-Bot -> Api: POST /bot/play (matchId, position=YEN, strategy, difficulty)
+Bot -> Nginx: POST /api/gamey/bot/play\n{matchId, position=YEN, strategy, difficulty}\nAuthorization: Bearer <botToken>
 
-Api -> Users: GET /matches/{matchId} (auth/botKey)
+' 1) Verify bot credentials and get match state
+Nginx -> Users: GET /api/users/matches/{matchId}\n(verify botToken)
 Users -> DB: read match + status
 DB --> Users: match state/status
-Users --> Api: match state/status
+Users --> Nginx: match state/status
+Nginx -> Nginx: Check if match is ongoing
 
-Api -> Engine: POST /ybot/choose/{botId}
-Engine --> Api: YenMoveDto + status
+alt match finished or invalid
+  Nginx --> Bot: 409 Conflict (game finished)\nor 401 Unauthorized
+else match ongoing
+  ' 2) Compute bot move
+  Nginx -> Engine: POST /ybot/choose/{botId}\n{position=YEN}
+  Engine -> Engine: Compute move
+  Engine --> Nginx: YenMoveDto + status
 
-Api -> Users: POST /matches/{matchId}/moves (move + updated state)
-Users -> DB: persist move/result/stats
-DB --> Users: ok
-Users --> Api: ok
+  ' 3) Persist result
+  Nginx -> Users: POST /matches/{matchId}/moves\n{move, updatedYEN}
+  Users -> DB: persist move/result/stats
+  DB --> Users: OK
+  Users --> Nginx: OK + updated match
 
-Api --> Bot: move + updated YEN
+  Nginx --> Bot: 200 OK\nmove + updated YEN
+end
 ----
 
 *Notable Aspects:*
 
-- Bots interact with the same engine and match logic as human players.
-- API keys or bot credentials ensure secure automated access.
+- Bots interact with the same Game Server and Users Service as human players
+- Bot authentication uses API keys or JWT tokens
+- Nginx can handle bot-specific routing logic
+- External bots must follow the same YEN notation format
 
 === Runtime Scenario 6: Statistics and History Retrieval
 
-Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics.
+Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics through the React UI.
 
 [plantuml, "runtime-stats", png]
 ----
-actor Human
-participant Api
-participant Users
-database DB
+actor "User (Browser)" as Human
+participant "React Frontend" as Frontend
+participant "Nginx" as Nginx
+participant "Users Service" as Users
+database "SQLite DB" as DB
 
-Human -> Api: GET /stats
-Api -> Users: GET /stats (userId)
-Users -> DB: read stats/history
-DB --> Users: stats/history
-Users --> Api: StatsDto
-Api --> Human: StatsDto
+Human -> Frontend: Navigate to Statistics page
+Frontend -> Nginx: GET /api/users/stats\nAuthorization: Bearer <token>
+Nginx -> Users: Forward to port 3000
+Users -> Users: Verify JWT token
+Users -> DB: SELECT wins, losses, draws, total_matches\nFROM user_stats WHERE userId=...
+DB --> Users: stats/history records
+Users -> Users: Aggregate and format stats
+Users --> Nginx: 200 OK\nStatsDto {wins, losses, draws, ...}
+Nginx --> Frontend: StatsDto
+Frontend -> Frontend: Render charts/tables
+Frontend --> Human: Display statistics dashboard
 ----
 
 *Notable Aspects:*
 
-- Statistics are computed from persisted match data.
-- The UsersService exposes a unified Stats API for both frontend and bots.
+- Statistics are computed from persisted match data in SQLite
+- The Users Service exposes a unified Stats API
+- React Frontend handles visualization (charts, tables)
+- All stats queries require authentication
+- Nginx routes all statistics requests to Users Service

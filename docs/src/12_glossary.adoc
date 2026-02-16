@@ -3,42 +3,89 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-glossary]]
 == Glossary
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-The most important domain and technical terms that your stakeholders use when discussing the system.
-
-You can also see the glossary as source for translations if you work in multi-language teams.
-
-.Motivation
-You should clearly define your terms, so that all stakeholders
-
-* have an identical understanding of these terms
-* do not use synonyms and homonyms
-
-
-.Form
-
-A table with columns <Term> and <Definition>.
-
-Potentially more columns in case you need translations.
-
-
-.Further Information
-
-See https://docs.arc42.org/section-12/[Glossary] in the arc42 documentation.
-
-****
-endif::arc42help[]
-
 [cols="e,2e" options="header"]
 |===
 |Term |Definition
 
-|<Term-1>
-|<definition-1>
 
-|<Term-2>
-|<definition-2>
+|*API Gateway*
+|Architectural component that serves as the single public entry point, routing client requests to backend services and managing cross-cutting concerns
+
+|*Nginx*
+|Web server and reverse proxy used to implement the API Gateway pattern in this system
+
+|*Anonymous Play*
+|Game mode where unregistered users can play without persisting their statistics or match history
+
+|*Arc42*
+|Architecture documentation template followed in this project for structural consistency
+
+|*BFF (Backend for Frontend)*
+|Architectural pattern where the Web App Server orchestrates calls to multiple backend services (Users Service and Game Server)
+
+|*Barycentric Coordinates*
+|Coordinate system (x, y, z) used to represent positions on the hexagonal game board
+
+|*Board*
+|Hexagonal grid representing the Y game playing surface
+
+|*Bot Client*
+|External automated agent that plays through the system's Bot API
+
+|*CORS (Cross-Origin Resource Sharing)*
+|HTTP-header based mechanism that allows a server to indicate which origins are permitted to access its resources from a browser
+
+|*Docker*
+|Containerization platform used for packaging and deploying all system services
+
+|*Game Server*
+|Rust-based microservice responsible for core game logic, move validation, and bot AI strategies
+
+|*Match*
+|Game session between two players (human or bot) with a specific board size and strategy configuration
+
+|*Microservices*
+|Distributed architecture pattern where the system is decomposed into independent services (Frontend, Web App Server, Users Service, Game Server)
+
+|*Move/Movement*
+|Player action placing a piece at specific coordinates on the board
+
+|*PlantUML*
+|Tool used for generating architectural diagrams throughout the documentation
+
+|*Registered Player*
+|User with an account who can access match history, statistics, and personalized features
+
+|*Reverse Proxy*
+|Server (Nginx) that forwards client requests to appropriate backend services and returns responses
+
+|*SQLite*
+|Embedded relational database used for persisting users, matches, and statistics
+
+|*Stateless Service*
+|Service that does not maintain persistent state between requests (e.g., Game Server)
+
+|*Strategy*
+|AI difficulty level and bot behavior configuration (e.g., random, heuristic)
+
+|*Upstream*
+|Nginx configuration directive defining a group of backend servers that can handle requests (e.g., users_backend, gamey_backend)
+
+|*Users Service*
+|Node.js microservice that acts as the single point of access to the database, managing authentication, user accounts, match persistence, and statistics
+
+|*WAL (Write-Ahead Logging)*
+|SQLite mode that enables concurrent reads during writes, improving database performance
+
+|*Web App Server*
+|Node.js/Express/TypeScript service implementing the BFF pattern, orchestrating requests between Frontend, Users Service, and Game Server
+
+|*Win Checker*
+|Algorithm that detects Y-shaped winning connections on the board to determine game outcome
+
+|*YBot*
+|Rust trait/interface defining the contract for bot strategy implementations
+
+|*YEN (Y-Encoded Notation)*
+|Domain-specific format for representing board positions and moves in the Y game, used for inter-service communication
 |===

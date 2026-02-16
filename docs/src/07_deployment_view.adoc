@@ -3,7 +3,7 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-deployment-view]]
 == Deployment View
 
-The deployment view describes the technical infrastructure we use to run the Yovi system. It also shows how the software parts (building blocks) connect to that infrastructure. 
+The deployment view describes the technical infrastructure we use to run the Yovi system. It also shows how the software parts (building blocks) connect to that infrastructure.
 
 Because our system uses Docker containers, we describe the deployment in two main environments: the Production Environment and the Development Environment.
 
@@ -22,9 +22,10 @@ The main goal of this deployment strategy is to find a good balance between work
 
 **Quality and/or Performance Features**
 
-* **Security (Defense in Depth):** The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the API Gateway is the only part connected to the public internet.
+* **Security (Defense in Depth):** The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the Nginx API Gateway is the only part connected to the public internet.
 * **Portability:** By using Docker containers, the environment is always the same. The application works exactly the same way, no matter what physical server is running the Virtual Machine.
-* **Independent Scalability:** The system is divided into specific microservices (Users, Gamey, API Gateway). Because of this, developers can give more resources to the Rust game engine without affecting the Node.js user management system.
+* **Independent Scalability:** The system is divided into specific microservices (React Frontend, Users Service, Game Server). Because of this, developers can give more resources to the Rust game engine without affecting the Node.js Users Service.
+* **Separation of Concerns:** Users Service is the single point of access to the database, ensuring data consistency and security.
 
 **Mapping of Building Blocks to Infrastructure**
 
@@ -32,20 +33,20 @@ The main goal of this deployment strategy is to find a good balance between work
 |===
 | Software Artifact (Building Block) | Infrastructure Element
 
-| **Web Application (React/Vite)**
-| Deployed in a Docker container inside the VM. It serves the web interface (GUI) using static files over port 80 to the user's browser.
+| **React Frontend (Webapp)**
+| Deployed as static files (HTML, CSS, JS bundle) served by Nginx on port 80. The React application runs entirely in the user's browser. Built with Vite and bundled for production.
 
-| **API Gateway (Nginx)**
-| Deployed in a Docker container inside the VM. It works as a Reverse Proxy and is the only public entry point (Port 80/8080) to route the traffic.
+| **Nginx (API Gateway)**
+| Deployed in a Docker container inside the VM. It works as a Reverse Proxy and API Gateway. It is the only public entry point (Port 80) to route all incoming traffic. Handles CORS, rate limiting, and serves the React frontend static files. Routes API requests to backend services.
 
-| **User Management API (Node.js)**
-| Deployed in a Docker container inside the VM (Port 3000). It manages user registration, login, and sessions.
+| **Users Service (Node.js + Express + TypeScript)**
+| Deployed in a Docker container inside the VM (Port 3000, internal only). Single point of access to the database. Manages user registration, authentication, match persistence, and statistics. No other service can access the database directly.
 
-| **GameY Engine API (Rust)**
-| Deployed in a Docker container inside the VM (Port 4000). It calculates the math logic of the game and the bot movements in YEN format.
+| **Game Server (Rust)**
+| Deployed in a Docker container inside the VM (Port 4000, internal only). It calculates the game logic and bot movements in YEN format. Stateless service optimized for performance. No database access.
 
 | **SQLite Database**
-| A small database file saved on a Host Volume connected to the User Management container. This makes sure the data is not lost if the container restarts.
+| A database file saved on a Host Volume connected exclusively to the Users Service container. This makes sure the data is not lost if the container restarts. Only Users Service has read/write permissions.
 |===
 
 
@@ -60,7 +61,7 @@ Developers need a fast and reliable environment to write and test code on their 
 **Quality and/or Performance Features**
 
 * **Consistency:** It solves the classic "it works on my machine" problem.
-* **Fast Setup:** A new developer can start the complete system (Frontend, APIs, and Database) with just one `docker-compose up` command.
+* **Fast Setup:** A new developer can start the complete system (React Frontend, Nginx, Users Service, Game Server, and Database) with just one `docker-compose up` command.
 
 **Mapping of Building Blocks to Infrastructure**
 
@@ -77,6 +78,37 @@ image::deployment-level2-dataflow.png[Level 2 Data Flow Diagram, align="center"]
 
 **Internal Structure Explanation:**
 
-This level shows the internal Docker network rules. The **API Gateway (Nginx)** completely isolates the microservices from the public internet. External users can never reach the backend directly. 
+This level shows the internal Docker network rules. The **Nginx API Gateway** completely isolates the microservices from the public internet. External users can never reach the backend services directly. All requests must go through Nginx on port 80.
 
-Also, data storage is strictly controlled. The `SQLite` database is connected to a physical host volume. However, only the `User Management` container has permissions to read and write to this file. If the `GameY Engine` needs user data, it must ask via internal HTTP requests. This keeps the microservices properly separated.
+The request flow is as follows:
+
+* **User browser loads the app**: Nginx serves React static files (HTML, CSS, JS)
+* **React app runs in browser**: Makes API calls to `/api/users/*` and `/api/gamey/*`
+* **Nginx routes API requests** based on URL path:
+** `/api/users/*` → Users Service (port 3000)
+** `/api/gamey/*` → Game Server (port 4000)
+** `/*` (all other paths) → React frontend static files
+
+**Example User Flow:**
+
+1. User opens `http://yourapp.com` in browser
+2. Nginx serves `index.html` and React bundle from static files
+3. React app loads in browser, displays login screen
+4. User clicks "Login" → React sends `POST /api/users/auth/login` to Nginx
+5. Nginx routes request to Users Service (port 3000)
+6. Users Service validates credentials and returns JWT token
+7. React stores token and makes game requests to `/api/gamey/play`
+8. Nginx routes game requests to Game Server (port 4000)
+9. Game Server returns move validation and updated game state in YEN format
+10. React updates the UI with a new board state
+
+Also, data storage is strictly controlled. The `SQLite` database is connected to a physical host volume. However, only the `Users Service` container has permissions to read and write to this file. The Game Server has no database access and operates in a completely stateless manner. If game state needs to be persisted (for match history), it must be sent to Users Service, which stores it in the database.
+
+**Network Isolation:**
+
+All backend services (Users Service, Game Server) run on an internal Docker network. They cannot be accessed directly from outside the VM. Only Nginx has a public-facing port (80) exposed to the internet. This architecture ensures that:
+
+* Backend services are protected from direct attacks
+* All requests go through Nginx security layers (rate limiting, CORS)
+* Database is isolated behind Users Service
+* Services communicate only through defined internal APIs
