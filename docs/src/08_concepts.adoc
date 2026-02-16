@@ -20,10 +20,10 @@ They can include many different topics, such as
 
 
 .Motivation
-Concepts form the basis for _conceptual integrity_ (consistency, homogeneity) of the architecture. 
+Concepts form the basis for _conceptual integrity_ (consistency, homogeneity) of the architecture.
 Thus, they are an important contribution to achieve inner qualities of your system.
 
-Some of these concepts cannot be assigned to individual building blocks, e.g. security or safety. 
+Some of these concepts cannot be assigned to individual building blocks, e.g. security or safety.
 
 
 .Form
@@ -128,7 +128,8 @@ the game at all times.
 
 • Consistency: We try to keep the same style and
 interaction patterns across all pages so the user
-does not have to “relearn” how to use the app.
+does not have to "relearn" how to use the app.
+
 • Accessibility: Clear colors, readable text,
 and simple layouts help make the game accessible
 to a wider audience.
@@ -136,69 +137,89 @@ to a wider audience.
 === Safety and Security Concepts
 
 Security is a cross‑cutting concern because it
-affects both the backend and the frontend.
+affects both the backend services and the frontend.
 Even though this is an academic project, we still apply basic security principles.
 
-• Authentication and Authorization:
-Only authenticated users can access certain features, such as starting a game or viewing their profile.
+• **API Gateway Isolation:**
+Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while Users Service and Game Server run on internal Docker network ports.
 
-• Password Protection:
-Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database.
+• **Authentication and Authorization:**
+Only authenticated users can access certain features, such as creating matches or viewing their profile. The Users Service handles all authentication using JWT tokens.
 
-• Data Protection:
-We only store the minimum amount of user information needed for the system to work.
+• **Password Protection:**
+Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database using bcrypt or Argon2.
+
+• **Data Protection:**
+We only store the minimum amount of user information needed for the system to work. The database is accessible only through the Users Service, ensuring data access control.
+
+• **CORS and Rate Limiting:**
+Nginx handles Cross-Origin Resource Sharing (CORS) headers and rate limiting to prevent abuse and ensure legitimate API usage.
 
 === Architecture and Design Patterns
 
-The system follows a service‑based architecture. Instead of having one big monolithic
-application, we split the project into several smaller services:
+The system follows a microservice-based architecture. Instead of having one big monolithic
+application, we split the project into several smaller, independent services:
 
-• webapp (React + TypeScript): the user interface
-• users (Node.js + Express): user registration and authentication
-• gamey (Rust): the Y‑game engine and bot logic
+• **React Frontend (webapp/):** The user interface running in the browser. It is a single-page application (SPA) built with React, Vite, and TypeScript. The frontend manages UI state and coordinates API calls to backend services.
+
+• **Nginx:** The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, and serves the React frontend static files.
+
+• **Users Service (users/):** Node.js + Express + TypeScript service that manages user registration, authentication, match persistence, and statistics. It is the single point of access to the SQLite database.
+
+• **Game Server (gamey/):** Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.
 
 Some patterns we use:
 
-Game Engine Pattern:
-The Rust service encapsulates all the game logic, including move validation and board updates.
+**API Gateway Pattern:**
+Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (`/api/users/*`, `/api/gamey/*`, `/`).
 
-Separation of Concerns:
-The frontend separates UI components, state management, and API calls.
+**Repository Pattern:**
+The Users Service uses the Repository pattern to abstract database access, making it easier to test and maintain.
+
+**Strategy Pattern:**
+The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic) in an extensible way.
+
+**Separation of Concerns:**
+The frontend separates UI components, state management (React hooks/context), and API call logic into distinct layers.
 
 === Development Concepts
 
 These concepts describe the practices that the whole team follows during development.
 
-*Version Control:*
+**Version Control:**
 
 The project is developed collaboratively using GitHub. Branching, pull requests and code reviews
 ensure that all components evolve consistently.
 
-*Testing:*
+**Testing:**
 
 Each part of the system includes automated tests:
 
-• Rust engine: unit tests
-• Node.js service: API tests
-• React app: component and integration tests
+• Rust Game Server: unit tests for game logic and strategies
+• Users Service (Node.js): API endpoint tests and integration tests
+• React Frontend: component tests and end-to-end tests
 
 Testing is transversal because it guarantees correctness across all services.
 
-*Continuous Integration:*
+**Continuous Integration:**
 
 GitHub Actions automatically run builds and tests whenever code is pushed.
 This helps detect errors early and keeps all services aligned.
 
 === Persistence Layer
 
-The application relies on a SQL database (relational database) that will
-manage the data of the application related to the game sessions or related to the user.
+The application relies on a SQL database (SQLite - relational database) that will
+manage the data of the application related to user accounts, match history, and statistics.
 
-Game sessions are not permanently stored, since the game engine written in Rust is
-designed to compute the state of the board in memory. This simplifies the architecture
-and avoids unnecessary complexity. If persistence of matches is needed in the future
-(for example, to implement match history or resume functionality), the system can be
-extended without affecting the existing services thanks to the service‑based design.
+The database is accessed exclusively by the Users Service. This design decision ensures:
+
+• **Data Consistency:** Only one service manages database transactions
+• **Security:** Other services cannot directly access or modify the database
+• **Separation of Concerns:** Game Server remains stateless and focused on game logic
+
+Game sessions are computed in memory by the Rust Game Server, which is stateless. When a match needs to be persisted (for history or resuming later), the Users Service stores the game state in YEN notation in the SQLite database.
+
+If additional persistence requirements arise in the future (for example, caching or match replay functionality), the system can be extended without affecting the existing services thanks to the microservice-based design.
 
 === Error Handling
 
@@ -211,3 +232,12 @@ details. This prevents confusion and avoids leaking internal information. On the
 and the Rust game engine generate structured error messages and log them internally so developers can identify the
 cause of the problem more easily.
 
+**Error Handling Across Services:**
+
+• **React Frontend:** Displays user-friendly error messages for API failures, invalid moves, or authentication errors. Uses try-catch blocks and error boundaries for React component errors.
+
+• **Nginx:** Returns standard HTTP error codes (400, 401, 404, 500) and logs errors for monitoring.
+
+• **Users Service:** Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.
+
+• **Game Server:** Returns structured error responses for invalid YEN notation, illegal moves, or computation failures. Rust's Result type ensures explicit error handling.

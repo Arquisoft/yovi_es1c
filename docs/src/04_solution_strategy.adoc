@@ -15,22 +15,32 @@ This section outlines the fundamental architectural and technological decisions 
 |===
 | Decision | Rationale
 
+| **Nginx as API Gateway**
+a| • **Security**: Single public entry point isolates backend services from direct access
+• **Routing**: Centralized request routing based on URL paths (`/api/users/*`, `/api/gamey/*`)
+• **Cross-cutting concerns**: Handles CORS, rate limiting, and static file serving in one place
+• **Performance**: Efficient reverse proxy with minimal overhead
+• **Simplicity**: Easy configuration and widely adopted in production environments
+
 | **Separate Game Server (Rust)**
 a| • **Performance**: Rust provides memory safety without garbage collection, ensuring fast execution for game logic and move validation
 • **Concurrency**: Rust's ownership model enables safe concurrent processing of multiple game sessions
 • **Domain Separation**: Isolates core game logic from presentation and user management concerns
 • **Requirement**: Mandated by project specification to implement game engine in Rust
 
-| **Web App Server (Node.js + Express + TypeScript)**
+| **Users Service (Node.js + Express + TypeScript)**
 a| • **Rapid Development**: JavaScript/TypeScript ecosystem provides extensive libraries and tooling
-• **Full-stack TypeScript**: Enables code sharing between frontend and backend (DTOs, types)
-• **REST API**: Express simplifies RESTful API implementation for both web clients and bots
-• **Requirement**: TypeScript mandated by project specification for web application
+• **Database Integration**: Excellent SQLite support with mature ORM options
+• **REST API**: Express simplifies RESTful API implementation
+• **Single DB Access Point**: Encapsulates all database operations in one service
+• **Requirement**: TypeScript mandated by project specification
 
 | **Frontend (React + Vite + TypeScript)**
 a| • **Component-based UI**: React's declarative approach simplifies game board rendering and state management
 • **Fast Development**: Vite provides instant hot module replacement (HMR) for rapid iteration
 • **Type Safety**: TypeScript prevents runtime errors and improves code maintainability
+• **SPA Architecture**: Single-page application enables smooth user experience without page reloads
+• **Client-side coordination**: Frontend manages API call orchestration from the browser
 
 | **Database (SQLite)**
 a| • **Simplicity**: Zero-configuration embedded database, no separate server process required
@@ -42,7 +52,7 @@ a| • **Simplicity**: Zero-configuration embedded database, no separate server 
 
 === Architectural Patterns
 
-==== Microservices with BFF Pattern
+==== Microservices Architecture
 
 [plantuml, solution-architecture, png]
 ----
@@ -51,26 +61,49 @@ a| • **Simplicity**: Zero-configuration embedded database, no separate server 
 
 skinparam rectangle {
   BackgroundColor<<frontend>> LightGreen
-  BackgroundColor<<bff>> LightBlue
+  BackgroundColor<<gateway>> Orange
   BackgroundColor<<service>> LightYellow
 }
 
-RECTANGLE "React Frontend" as frontend <<frontend>>
-RECTANGLE "Web App Server\n(BFF - Backend for Frontend)" as bff <<bff>>
-RECTANGLE "Game Engine\n(Rust Service)" as game <<service>>
+actor "User (Browser)" as user
+
+RECTANGLE "React Frontend\n(Webapp)" as frontend <<frontend>>
+RECTANGLE "Nginx\n(API Gateway)" as nginx <<gateway>>
+RECTANGLE "Users Service\n(Node.js)" as users <<service>>
+RECTANGLE "Game Server\n(Rust)" as game <<service>>
 database "SQLite" as db
 
-frontend --> bff : REST API\n(User-friendly)
-bff --> game : REST API\n(YEN notation)
-bff --> db : Direct access
+user --> nginx : HTTP (80)
+nginx --> frontend : Static files
+nginx --> users : /api/users/*\nHTTP (3000)
+nginx --> game : /api/gamey/*\nHTTP (4000)
+frontend ..> nginx : API calls from browser
+users --> db : Direct access
 
-note right of bff
-  **BFF Responsibilities:**
-  • Orchestrates game and user services
-  • Transforms YEN ↔ User-friendly formats
-  • Authentication & authorization
-  • Session management
-  • Bot API aggregation
+note right of nginx
+  **API Gateway Responsibilities:**
+  • Single entry point (port 80)
+  • Request routing
+  • CORS handling
+  • Rate limiting
+  • Static file serving
+end note
+
+note right of frontend
+  **Frontend Responsibilities:**
+  • Game UI rendering
+  • User interaction handling
+  • Client-side state management
+  • API call coordination
+  • Runs entirely in browser
+end note
+
+note right of users
+  **Users Service Responsibilities:**
+  • User authentication & authorization
+  • Database access (single point)
+  • Match persistence
+  • Statistics aggregation
 end note
 
 note right of game
@@ -85,20 +118,38 @@ end note
 @enduml
 ----
 
-The system follows a **Backend for Frontend (BFF)** pattern where:
+The system follows a **microservices architecture** where:
 
-* **Web App Server** acts as a facade that orchestrates calls to the Game Server and Database
+* **Nginx** acts as the API Gateway, providing a single entry point and routing requests to appropriate services
+* **React Frontend** runs in the user's browser and coordinates API calls to backend services
+* **Users Service** manages all data persistence and is the single point of database access
 * **Game Server** remains stateless and focuses solely on game domain logic
-* **Shared contracts (DTOs)** define the boundaries between services using YEN notation
+* **YEN notation** defines the boundaries between services for game state communication
 
 ==== Layered Architecture within Services
-
-Each service follows a layered architecture:
 
 [plantuml, layered-architecture, png]
 ----
 @startuml
-package "Web App Server (TypeScript)" {
+
+package "React Frontend (Browser)" {
+  [Components] --> [State Management]
+  [State Management] --> [API Layer]
+  [API Layer] --> [HTTP Client]
+
+  note right of Components
+    React components
+    UI rendering
+  end note
+
+  note right of [State Management]
+    Game state
+    User session
+    Local storage
+  end note
+}
+
+package "Users Service (Node.js)" {
   [Controllers] --> [Services]
   [Services] --> [Repositories]
   [Repositories] --> [Database]
@@ -110,7 +161,7 @@ package "Web App Server (TypeScript)" {
 
   note right of Services
     Business logic
-    Orchestration
+    Authentication
   end note
 }
 
@@ -134,12 +185,19 @@ package "Game Server (Rust)" {
 @enduml
 ----
 
-**Web App Server Layers:**
+**React Frontend Layers:**
+
+* **Components**: React UI components for board, moves, statistics
+* **State Management**: Local game state and user session (React hooks/context)
+* **API Layer**: Abstraction over backend API calls
+* **HTTP Client**: Fetch/Axios for making HTTP requests to Nginx
+
+**Users Service Layers:**
 
 * **Controllers**: Handle HTTP requests, authentication, input validation
-* **Services**: Orchestrate business logic, coordinate Game Server calls
+* **Services**: Business logic for users, matches, statistics
 * **Repositories**: Abstract database access using Repository pattern
-* **DTOs**: Shared data contracts for inter-process communication
+* **Database**: SQLite persistence layer
 
 **Game Server Design:**
 
@@ -157,32 +215,47 @@ package "Game Server (Rust)" {
 a| • Rust for compute-intensive game logic
 • SQLite for fast read operations
 • Stateless game server for horizontal scaling
+• Nginx for efficient request routing
 a| • Move validation in O(n) time
 • Indexed database queries for rankings
-• Concurrent request handling
+• Concurrent request handling in Rust
+• Nginx caching for static files
 
 | **Scalability**
 a| • Stateless services enable horizontal scaling
 • Database optimized for read-heavy workload
+• Nginx can load balance multiple game server instances
 a| • Multiple game server instances possible
-• Connection pooling
+• Connection pooling in Users Service
 • Caching strategies for frequent queries
+• Independent service scaling
 
 | **Maintainability**
 a| • Clear separation of concerns
 • Type safety (TypeScript + Rust)
-• Shared DTOs between services
-a| • Layered architecture
+• Single database access point (Users Service)
+a| • Layered architecture in each service
 • Repository pattern for DB abstraction
-• Comprehensive API documentation
+• API documentation
+• Shared YEN notation contracts
 
 | **Interoperability**
 a| • REST API with JSON
 • Standardized YEN notation
-• External bot API
-a| • OpenAPI/Swagger documentation
+• External bot API support
+a| • HTTP-based communication
 • Versioned API endpoints
 • Cross-team bot competition support
+• Well-defined API contracts
+
+| **Security**
+a| • Nginx isolates backend services
+• Rate limiting and CORS at gateway level
+• Authentication in Users Service
+a| • JWT token-based authentication
+• Password hashing (bcrypt/Argon2)
+• No direct backend access
+• Input validation at API boundaries
 |===
 
 === Key Constraints
@@ -192,10 +265,10 @@ a| • OpenAPI/Swagger documentation
 | Constraint | Impact on Architecture
 
 | **Mandated Technologies**
-| TypeScript for web app and Rust for game engine are project requirements, limiting technology choices
+| TypeScript for frontend/backend and Rust for game engine are project requirements, limiting technology choices
 
 | **YEN Notation**
-| All game state communication must use YEN format, requiring transformation layers
+| All game state communication must use YEN format, requiring parsing/serialization layers
 
 | **Bot API Requirement**
 | System must expose external API for bot clients, influencing authentication and API design
@@ -204,16 +277,20 @@ a| • OpenAPI/Swagger documentation
 | Limited development time favors familiar technologies (React, Express) and simple deployment (SQLite)
 
 | **Web Deployment**
-| Application must be publicly accessible, requiring containerization and cloud deployment strategy
+| Application must be publicly accessible, requiring containerization and reverse proxy strategy
 
 | **Multiple Strategies**
 | Game engine must support extensible bot strategies, leading to Strategy pattern adoption
+
+| **Database Consistency**
+| A single database access point through Users Service ensures data integrity
 |===
 
 === Organizational Decisions
 
-* **Monorepo vs. Multi-repo**: Separate repositories for frontend, backend, and game server to enable independent development and deployment
-* **Shared contracts repository**: Common DTOs and types shared across services
-* **API-first development**: OpenAPI specification defines contracts before implementation
+* **Monorepo structure**: All services in one repository (`webapp/`, `users/`, `gamey/`, `nginx/`) for easier coordination
+* **Docker Compose**: Simplified local development with single command startup
+* **Shared YEN notation**: Common understanding of game state format across all services
+* **API-first approach**: Define API contracts before implementation
 * **Version control**: Git with feature branch workflow and code reviews
-* **Documentation**: arc42 for architecture, inline code documentation, API documentation with Swagger
+* **Documentation**: arc42 for architecture, inline code documentation, README files per service

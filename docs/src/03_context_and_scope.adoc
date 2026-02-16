@@ -98,11 +98,15 @@ a| • System status
 !include <C4/C4_Deployment>
 
 node "Client Browser" as browser {
-  artifact "React App\n(bundled JS)" as react
+  artifact "React App\n(Webapp)\nbundled JS" as react
 }
 
-node "Application Server" as appserver {
-  artifact "Node.js\nWeb App Server\n(Express + TS)" as nodejs
+node "API Gateway" as nginxnode {
+  artifact "Nginx\nReverse Proxy" as nginx
+}
+
+node "Users Service Server" as usersserver {
+  artifact "Node.js\nUsers Service\n(Express + TS)" as users
   database "SQLite DB\n(users.db)" as sqlitedb
 }
 
@@ -110,26 +114,34 @@ node "Game Engine Server" as gameserver {
   artifact "Rust Binary\n(Game Server)" as rust
 }
 
-browser -down-> nodejs : HTTPS (443)\nREST API\nJSON\nSession/JWT
-nodejs -right-> rust : HTTP (8080)\nREST API\nJSON (YEN format)
-nodejs -down-> sqlitedb : SQLite protocol\nSQL queries\n(embedded)
+browser -down-> nginx : HTTP (80)\nREST API\nJSON
+nginx -down-> react : Static files
+nginx -down-> users : HTTP (3000)\n/api/users/*
+nginx -down-> rust : HTTP (4000)\n/api/gamey/*
+users -down-> sqlitedb : SQLite protocol\nSQL queries\n(embedded)
 
 note right of browser
   **Client Environment**
   Modern web browser
   JavaScript runtime
+  React SPA
 end note
 
-note right of appserver
-  **Backend Infrastructure**
-  Linux/Docker container
-  Node.js runtime
-  Embedded database
+note right of nginxnode
+  **Entry Point**
+  Reverse proxy
+  Rate limiting, CORS
+  Routes: /api/users, /api/gamey, /
+end note
+
+note right of usersserver
+  **Data Layer**
+  Single DB access point
+  Auth, users, matches, stats
 end note
 
 note right of gameserver
   **Game Logic Service**
-  Linux/Docker container
   Stateless computation
   Fast move validation
 end note
@@ -143,23 +155,32 @@ end note
 |===
 | Component Connection | Protocol/Technology | Port/Channel | Purpose
 
-| **Web Browser → Web App Server**
-| HTTPS, REST API, WebSocket (future)
-| 443 (HTTPS)
-a| • User authentication
-• Match management
-• Game moves submission
-• Statistics retrieval
-
-| **Web App Server → Game Server**
+| **Web Browser → Nginx (API Gateway)**
 | HTTP, REST API
-| 8080 (HTTP)
+| 80 (HTTP)
+a| • Single public entry point
+• Request routing to backend services
+• CORS handling
+• Rate limiting
+• Static file serving (React frontend)
+
+| **Nginx → Users Service**
+| HTTP, REST API
+| 3000 (HTTP)
+a| • User authentication and registration
+• Match persistence
+• Statistics retrieval
+• Database access abstraction
+
+| **Nginx → Game Server**
+| HTTP, REST API
+| 4000 (HTTP)
 a| • Bot move computation
 • Move validation
 • Win condition checking
-• YEN format transformation
+• YEN format game logic
 
-| **Web App Server → Database**
+| **Users Service → Database**
 | SQLite native (embedded)
 | Local file access
 a| • User CRUD operations
@@ -167,37 +188,36 @@ a| • User CRUD operations
 • Statistics aggregation
 • Transaction management
 
-| **Bot Client → Web App Server**
-| HTTPS, REST API
-| 443 (HTTPS)
-a| • Bot authentication
-• Automated gameplay
-• Cross-team competition
+| **React Frontend (in Browser) → Nginx**
+| HTTP, REST API, AJAX
+| 80 (HTTP)
+a| • API calls to backend services
+• Game state updates
+• User authentication
+• Statistics queries
 |===
 
 ==== Key API Endpoints
 
-**Authentication & User Management:**
+**Authentication & User Management (via Nginx → Users Service):**
 
-* `POST /auth/register` - User registration
-* `POST /auth/login` - User authentication
-* `GET /matches` - Retrieve user matches (requires authentication)
+* `POST /api/users/auth/register` - User registration
+* `POST /api/users/auth/login` - User authentication
+* `GET /api/users/matches` - Retrieve user matches (requires authentication)
+* `POST /api/users/matches` - Create new match (size, strategy, difficulty)
+* `GET /api/users/stats` - Retrieve player statistics and match history
 
-**Match Management:**
+**Game Logic (via Nginx → Game Server):**
 
-* `POST /matches` - Create new match (size, strategy, difficulty)
-* `POST /play` - Submit player move (position=YEN, strategy, difficulty)
+* `POST /api/gamey/play` - Submit player move (position=YEN, strategy, difficulty)
 ** Returns: Updated YEN board state, move validation status
-
-**Bot API:**
-
-* `POST /bot/play` - Bot move submission (position=YEN, strategy, difficulty)
-* `POST /ybot/choose/{botId}` - Bot move computation via Game Server
+* `POST /api/gamey/ybot/choose/{botId}` - Bot move computation
 ** Returns: YenMoveDto + game status
+* `GET /api/gamey/validate` - Validate move without executing
 
-**Statistics & History:**
+**Bot API (External bots via Nginx):**
 
-* `GET /stats` - Retrieve player statistics and match history
+* `POST /api/gamey/bot/play` - Bot move submission (position=YEN, strategy, difficulty)
 
 ==== Data Formats
 
@@ -228,7 +248,9 @@ a| • Bot authentication
 
 ==== Deployment Considerations
 
-* **Containerization**: Both Web App Server and Game Server are containerized using Docker for consistent deployment
-* **Database**: SQLite file stored as volume mount for data persistence
-* **Scalability**: Game Server is stateless and can be horizontally scaled behind a load balancer
-* **Security**: HTTPS enforced for external communication, internal HTTP acceptable for trusted network
+* **Containerization**: All services (React Frontend, Nginx, Users Service, Game Server) are containerized using Docker for consistent deployment
+* **Database**: SQLite file stored as volume mount in Users Service for data persistence
+* **Scalability**: Game Server is stateless and can be horizontally scaled behind Nginx load balancer
+* **Security**: Nginx handles CORS, rate limiting, and request validation
+* **API Gateway**: Nginx isolates backend services from direct external access
+* **Frontend Deployment**: React app is built and served as static files through Nginx
