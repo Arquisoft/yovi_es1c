@@ -3,25 +3,70 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-technical-risks]]
 == Risks and Technical Debts
 
-
 ifdef::arc42help[]
 [role="arc42help"]
 ****
 .Contents
-A list of identified technical risks or technical debts, ordered by priority
-
-.Motivation
-“Risk management is project management for grown-ups” (Tim Lister, Atlantic Systems Guild.) 
-
-This should be your motto for systematic detection and evaluation of risks and technical debts in the architecture, which will be needed by management stakeholders (e.g. project managers, product owners) as part of the overall risk analysis and measurement planning.
-
-.Form
-List of risks and/or technical debts, probably including suggested measures to minimize, mitigate or avoid risks or reduce technical debts.
-
-
-.Further Information
-
-See https://docs.arc42.org/section-11/[Risks and Technical Debt] in the arc42 documentation.
-
+A list of identified technical risks or technical debts, ordered by priority.
 ****
 endif::arc42help[]
+
+We identified some technical risks that can affect the development of the Y game project.These risks must be identify and registered, and we can mitigate or accept them.
+
+=== Risks
+
+Risks can appear like part of Quality Attributes scenarios. We categorized the next ones based on the risk criteria of the project.
+
+.Risk table
+[options="header",cols="2,4,4,1,1,1"]
+|===
+|Area (Risk Criterion)
+|Brief Description
+|Mitigation measures
+|Probability (1-3)
+|Impact (1-3)
+|Total Risk
+
+|*Security* |The project needs to pass strict security tests. There is a risk to not complete these requirements when we implement the backend and expose vulnerabilities in the game or the connection.
+|Do early validations, use security tools integrated in the Rust compiler (cargo audit) and make exhaustive code reviews.
+| 2
+| 2
+| *4*
+
+|*Data Integrity* |The connection with the database for store client information can fail, resulting in lost of game data or corruption of user profiles.
+|Implement secure transactions in the database, make backups and validate all the inputs that come from the TypeScript frontend.
+| 1
+| 3
+| *3*
+
+|*Performance* |The game engine in Rust must allow to play against a bot with different strategies. If the decision algorithms of the robot are not optimized, the response time can degrade the experience of the user.
+|Design efficient AI strategies, measure times of execution (benchmarking) in the Rust engine from the first sprints and profile the code if there is bottlenecks.
+| 2
+| 2
+| *4*
+
+|*Unknowns*
+|Lack of deep knowledge in the ownership model of Rust and the typing of TypeScript.Sometimes we don't have enough information about how an architecture can satisfy the requirements.
+|Dedicate initial time to Proof of Concepts (PoC), read official documentation and establish pair programming for level the knowledge of the team.
+| 3
+| 3
+| *9*
+
+|===
+
+=== Technical debts
+
+[options="header",cols="3,5"]
+|===
+|Technical debt
+|Brief description
+
+|*External API Dependency*
+|Our app depends a lot of external services (like map services or data APIs). If that services change their API or go down, parts of our app will stop to work. Right now, we don't have a good abstraction layer for swap those services easily.
+
+|*Network Inconsistency*
+|The performance of the app depends directly of how good is the user's internet. We still didn't implement a solid offline mode or cache system (like Service Workers), so with bad connection the user experience will be very bad.
+
+|*Monolithic Configuration*
+|Because we don't have much experience with server deployment, our first configuration probably will be a bit hardcoded or less modular than it should be. Later we need to refactor this to move to a setup more scalable using environment variables.
+|===
