@@ -105,9 +105,19 @@ node "API Gateway" as nginxnode {
   artifact "Nginx\nReverse Proxy" as nginx
 }
 
+node "Auth Service Server" as authserver {
+  artifact "Node.js\nAuth Service\n(Express + TS)" as auth
+  database "SQLite DB\n(auth.db)" as authdb
+}
+
 node "Users Service Server" as usersserver {
   artifact "Node.js\nUsers Service\n(Express + TS)" as users
-  database "SQLite DB\n(users.db)" as sqlitedb
+  database "SQLite DB\n(users.db)" as usersdb
+}
+
+node "Game Service Server" as gameserviceserver {
+  artifact "Node.js\nGame Service\n(Express + TS)" as gameservice
+  database "SQLite DB\n(game.db)" as gamedb
 }
 
 node "Game Engine Server" as gameserver {
@@ -116,9 +126,13 @@ node "Game Engine Server" as gameserver {
 
 browser -down-> nginx : HTTP (80)\nREST API\nJSON
 nginx -down-> react : Static files
+nginx -down-> auth : HTTP (3001)\n/api/auth/*
 nginx -down-> users : HTTP (3000)\n/api/users/*
+nginx -down-> gameservice : HTTP (3002)\n/api/game/*
 nginx -down-> rust : HTTP (4000)\n/api/gamey/*
-users -down-> sqlitedb : SQLite protocol\nSQL queries\n(embedded)
+auth -down-> authdb : SQLite protocol\nSQL queries\n(embedded)
+users -down-> usersdb : SQLite protocol\nSQL queries\n(embedded)
+gameservice -down-> gamedb : SQLite protocol\nSQL queries\n(embedded)
 
 note right of browser
   **Client Environment**
@@ -131,13 +145,26 @@ note right of nginxnode
   **Entry Point**
   Reverse proxy
   Rate limiting, CORS
-  Routes: /api/users, /api/gamey, /
+  Routes: /api/auth, /api/users,
+  /api/game, /api/gamey, /
+end note
+
+note right of authserver
+  **Auth Layer**
+  Credentials & JWT
+  auth.db
 end note
 
 note right of usersserver
-  **Data Layer**
-  Single DB access point
-  Auth, users, matches, stats
+  **Profile Layer**
+  User profile data
+  users.db
+end note
+
+note right of gameserviceserver
+  **Game Data Layer**
+  Matches, moves, stats
+  game.db
 end note
 
 note right of gameserver
@@ -164,13 +191,26 @@ a| • Single public entry point
 • Rate limiting
 • Static file serving (React frontend)
 
+| **Nginx → Auth Service**
+| HTTP, REST API
+| 3001 (HTTP)
+a| • User authentication and registration
+• JWT token generation and validation
+• Credential management
+• Password hashing
+
 | **Nginx → Users Service**
 | HTTP, REST API
 | 3000 (HTTP)
-a| • User authentication and registration
-• Match persistence
+a| • User profile retrieval and updates
+• User search operations
+
+| **Nginx → Game Service**
+| HTTP, REST API
+| 3002 (HTTP)
+a| • Match creation and persistence
+• Move history storage
 • Statistics retrieval
-• Database access abstraction
 
 | **Nginx → Game Server**
 | HTTP, REST API
@@ -180,18 +220,30 @@ a| • Bot move computation
 • Win condition checking
 • YEN format game logic
 
-| **Users Service → Database**
+| **Auth Service → auth.db**
 | SQLite native (embedded)
 | Local file access
-a| • User CRUD operations
-• Match state persistence
-• Statistics aggregation
+a| • Credential CRUD operations
+• JWT token metadata persistence
 • Transaction management
+
+| **Users Service → users.db**
+| SQLite native (embedded)
+| Local file access
+a| • User profile CRUD operations
+• Transaction management
+
+| **Game Service → game.db**
+| SQLite native (embedded)
+| Local file access
+a| • Match state persistence
+• Move history storage
+• Statistics aggregation
 
 | **React Frontend (in Browser) → Nginx**
 | HTTP, REST API, AJAX
 | 80 (HTTP)
-a| • API calls to backend services
+a| • API calls to all backend services
 • Game state updates
 • User authentication
 • Statistics queries
@@ -199,13 +251,24 @@ a| • API calls to backend services
 
 ==== Key API Endpoints
 
-**Authentication & User Management (via Nginx → Users Service):**
+**Authentication (via Nginx → Auth Service):**
 
-* `POST /api/users/auth/register` - User registration
-* `POST /api/users/auth/login` - User authentication
-* `GET /api/users/matches` - Retrieve user matches (requires authentication)
-* `POST /api/users/matches` - Create new match (size, strategy, difficulty)
-* `GET /api/users/stats` - Retrieve player statistics and match history
+* `POST /api/auth/register` - User registration
+* `POST /api/auth/login` - User authentication, returns JWT token
+* `POST /api/auth/refresh` - JWT token refresh
+
+**User Profile Management (via Nginx → Users Service):**
+
+* `GET /api/users/{id}` - Retrieve user profile
+* `PUT /api/users/{id}` - Update user profile
+* `GET /api/users` - Search users
+
+**Game Data Management (via Nginx → Game Service):**
+
+* `POST /api/game/matches` - Create new match (size, strategy, difficulty)
+* `GET /api/game/matches/{id}` - Retrieve match state
+* `POST /api/game/matches/{id}/moves` - Persist a move and updated YEN state
+* `GET /api/game/stats/{userId}` - Retrieve player statistics and match history
 
 **Game Logic (via Nginx → Game Server):**
 
@@ -248,9 +311,10 @@ a| • API calls to backend services
 
 ==== Deployment Considerations
 
-* **Containerization**: All services (React Frontend, Nginx, Users Service, Game Server) are containerized using Docker for consistent deployment
-* **Database**: SQLite file stored as volume mount in Users Service for data persistence
-* **Scalability**: Game Server is stateless and can be horizontally scaled behind Nginx load balancer
-* **Security**: Nginx handles CORS, rate limiting, and request validation
-* **API Gateway**: Nginx isolates backend services from direct external access
+* **Containerization**: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server) are containerized using Docker for consistent deployment
+* **Databases**: Three independent SQLite files (`auth.db`, `users.db`, `game.db`), each stored as a separate volume mount in its respective service container
+* **Fault Isolation**: A failure or overload in one database does not affect the others; authentication, profile, and game data are independently available
+* **Scalability**: Game Server is stateless and can be horizontally scaled behind Nginx load balancer; each Node.js service can also be scaled independently
+* **Security**: Nginx handles CORS, rate limiting, and request validation; no backend service is directly accessible from outside
+* **API Gateway**: Nginx isolates all backend services from direct external access
 * **Frontend Deployment**: React app is built and served as static files through Nginx
