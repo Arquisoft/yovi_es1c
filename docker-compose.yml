@@ -8,6 +8,12 @@ services:
     networks:
       - monitor-net
 
+  auth:
+    build: ./auth
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./data/auth.db:/app/data/auth.db
   webapp:
     build:
       context: ./webapp
