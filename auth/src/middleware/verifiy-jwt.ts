@@ -1,32 +1,37 @@
 import type {Request, Response, NextFunction} from 'express';
 import jwt from 'jsonwebtoken';
 
-export async function verifyToken(req: Request, res: Response, next: NextFunction) {
-    const authHeader = req.headers.authorization;
+const UNAUTHORIZED_RESPONSE = { error: 'Unauthorized' };
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+export function verifyToken(req: Request, res: Response) {
+    const authHeader = req.headers.authorization?.trim();
+
+    const bearerMatch = authHeader?.match(/^Bearer (\S+)$/i);
+    const token = bearerMatch?.[1];
+
+    if (!token) {
+        return res.status(401).json(UNAUTHORIZED_RESPONSE);
     }
 
     try {
-        const token = authHeader.substring(7);
         const JWT_SECRET = process.env.JWT_SECRET;
 
         if (!JWT_SECRET) {
-            return res.status(500).json({ error: 'JWT_SECRET not configured' });
+            return res.status(401).json(UNAUTHORIZED_RESPONSE);
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; username: string };
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as jwt.JwtPayload;
+        const userId = typeof decoded.sub === 'string' ? decoded.sub : undefined;
+
+        if (!userId) {
+            return res.status(401).json(UNAUTHORIZED_RESPONSE);
+        }
 
         return res.status(200).json({
-            userId: decoded.userId,
-            username: decoded.username
+            userId
         });
 
-    } catch (error) {
-        if (error instanceof jwt.JsonWebTokenError) {
-            return res.status(401).json({ error: 'Invalid or expired token' });
-        }
-        return res.status(500).json({ error: 'Internal server error' });
+    } catch {
+        return res.status(401).json(UNAUTHORIZED_RESPONSE);
     }
 }

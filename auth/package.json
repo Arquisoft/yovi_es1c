@@ -7,9 +7,11 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "build": "tsc",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:watch": "vitest --watch"
+
   },
   "type": "module",
   "keywords": [],
@@ -31,6 +33,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.3.0",
     "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^4.0.18",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

@@ -75,6 +75,14 @@ end
 - React Frontend handles unauthorized responses by redirecting to login
 - Nginx simply routes requests without authentication logic
 
+Verify endpoint contract used by internal services:
+
+- Method and path: `POST /api/auth/verify`
+- Required header: `Authorization: Bearer <token>`
+- Success response (`200`): `{ "userId": "<sub claim>" }`
+- Error response (`401`): `{ "error": "Unauthorized" }` for missing, malformed, invalid, or expired tokens
+- Security boundary: `/api/auth/verify` must not be exposed publicly through Nginx and should be consumed only over internal service-to-service network calls
+
 === Runtime Scenario 3: Match Creation and Initial State Retrieval
 
 A user creates a new match by specifying board size, strategy, and difficulty through the React UI.

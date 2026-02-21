@@ -12,7 +12,7 @@ export class AuthService {
         const token = jwt.sign(
             { userId, username },
             process.env.JWT_SECRET!,
-            { expiresIn: '24h' }
+            { expiresIn: '24h', subject: String(userId), algorithm: 'HS256' }
         );
 
         return { userId, token };
@@ -27,7 +27,7 @@ export class AuthService {
         const token = jwt.sign(
             { userId: user.id, username },
             process.env.JWT_SECRET!,
-            { expiresIn: '24h' }
+            { expiresIn: '24h', subject: String(user.id), algorithm: 'HS256' }
         );
 
         return { userId: user.id, token };
