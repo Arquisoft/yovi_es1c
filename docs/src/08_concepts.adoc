@@ -144,7 +144,7 @@ Even though this is an academic project, we still apply basic security principle
 Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while Users Service and Game Server run on internal Docker network ports.
 
 • **Authentication and Authorization:**
-Only authenticated users can access certain features, such as creating matches or viewing their profile. The Users Service handles all authentication using JWT tokens.
+Only authenticated users can access certain features, such as creating matches or viewing their profile. The Auth Service handles JWT authentication and exposes token verification for internal service-to-service authorization checks.
 
 • **Password Protection:**
 Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database using bcrypt or Argon2.
