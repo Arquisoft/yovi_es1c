@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { verifyToken } from '../middleware/verifiy-jwt.js';
+import { verifyToken } from '../middleware/verify-jwt.js';
 
 const router = Router();
 

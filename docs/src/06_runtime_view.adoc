@@ -40,7 +40,7 @@ Frontend --> Human: Display success, store token
 === Runtime Scenario 2: Authorization Check
 
 When a user requests protected resources, the React Frontend includes the JWT token in the request headers.
-Nginx forwards the request to the appropriate service, which verifies the token internally or delegates to Auth Service.
+Nginx forwards the request to the appropriate service, which delegates JWT verification to Auth Service through an internal call to `/api/auth/verify`.
 
 [plantuml, "runtime-auth-check", png]
 ----
@@ -150,7 +150,9 @@ else valid move
   ' 2) Persist updated match state
   Frontend -> Nginx: POST /api/game/matches/{matchId}/moves\n{updatedYEN, status, moves}\nAuthorization: Bearer <token>
   Nginx -> GameService: Forward to port 3002
-  GameService -> GameService: Verify token + matchId ownership
+  GameService -> Auth: Verify JWT token
+  Auth --> GameService: 200 OK (token valid)
+  GameService -> GameService: Verify matchId ownership
   GameService -> GameDB: UPDATE matches SET state=updatedYEN, status=...\nINSERT INTO moves (...)
   GameDB --> GameService: OK
   GameService --> Nginx: 200 OK {updated match}

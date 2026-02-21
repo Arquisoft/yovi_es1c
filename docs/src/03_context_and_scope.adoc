@@ -256,6 +256,7 @@ a| • API calls to all backend services
 * `POST /api/auth/register` - User registration
 * `POST /api/auth/login` - User authentication, returns JWT token
 * `POST /api/auth/refresh` - JWT token refresh
+* `POST /api/auth/verify` - JWT verification endpoint for internal service-to-service authorization checks (must not be exposed publicly)
 
 **User Profile Management (via Nginx → Users Service):**
 
