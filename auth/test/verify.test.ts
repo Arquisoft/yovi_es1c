@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { app } from '../src/index.js';
+import { app } from '../src/app.js';
 import supertest from 'supertest';
 import jwt from 'jsonwebtoken';
 
