@@ -3,21 +3,31 @@ services:
     build: ./users
     container_name: users
     image: ghcr.io/arquisoft/yovi_es1c-users:latest
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     networks:
       - monitor-net
 
+  auth:
+    build: ./auth
+    container_name: auth
+    image: ghcr.io/arquisoft/yovi_es1c-auth:latest
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - monitor-net
+    volumes:
+      - ./data/auth.db:/app/data/auth.db
   webapp:
     build:
       context: ./webapp
       args:
-        - VITE_API_URL=http://localhost:3000
-        - VITE_GAMEY_API_URL=http://localhost:4000
+        - VITE_API_URL=/api/users
+        - VITE_GAMEY_API_URL=/api/gamey
     container_name: webapp
     image: ghcr.io/arquisoft/yovi_es1c-webapp:latest
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       - users
     networks:
@@ -27,10 +37,24 @@ services:
     build: ./gamey
     container_name: gamey
     image: ghcr.io/arquisoft/yovi_es1c-gamey:latest
-    ports:
-      - "4000:4000"
+    expose:
+      - "4000"
     networks:
       - monitor-net
+  nginx:
+    image: nginx:alpine
+    container_name: nginx_proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - webapp
+      - users
+      - gamey
+    networks:
+      - monitor-net
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus
