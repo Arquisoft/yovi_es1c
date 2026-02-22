@@ -10,8 +10,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "test:watch": "vitest --watch"
-
+    "test:watch": "vitest --watch",
+    "db:init": "tsx src/db/run-init.ts"
   },
   "type": "module",
   "keywords": [],
