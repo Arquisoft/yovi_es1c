@@ -227,7 +227,7 @@ The request flow is as follows:
 * **User browser loads the app**: Nginx serves React static files (HTML, CSS, JS)
 * **React app runs in browser**: Makes API calls to `/api/auth/*`, `/api/users/*`, `/api/game/*` and `/api/gamey/*`
 * **Nginx routes API requests** based on URL path:
-** `/api/auth/*` → Auth Service (port 3001)
+** `/api/auth/*` → Auth Service (port 3001), except `/api/auth/verify` (blocked externally with 403)
 ** `/api/users/*` → Users Service (port 3000)
 ** `/api/game/*` → Game Service (port 3002)
 ** `/api/gamey/*` → Game Server (port 4000)
@@ -250,6 +250,13 @@ The request flow is as follows:
 13. React persists the move → sends `POST /api/game/matches/{id}/moves` to Nginx
 14. Nginx routes to Game Service (port 3002), which stores the move in `game.db`
 15. React updates the UI with the new board state
+
+
+**Internal Auth verification call (service-to-service only):**
+
+* Internal URL env var: `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
+* Recommended timeout in callers: `500ms` to `1s`
+* Recommended retries: `0-1` (avoid retry storms)
 
 **Data Storage and Fault Isolation:**
 

@@ -150,7 +150,7 @@ Only authenticated users can access certain features, such as creating matches o
 Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database using bcrypt or Argon2.
 
 • **Data Protection:**
-We only store the minimum amount of user information needed for the system to work. The database is accessible only through the Users Service, ensuring data access control.
+We only store the minimum amount of user information needed for the system to work. Data is split by domain with strict ownership: `auth.db` is accessible only through Auth Service, `users.db` only through Users Service, and `game.db` only through Game Service.
 
 • **CORS and Rate Limiting:**
 Nginx handles Cross-Origin Resource Sharing (CORS) headers and rate limiting to prevent abuse and ensure legitimate API usage.
@@ -164,7 +164,9 @@ application, we split the project into several smaller, independent services:
 
 • **Nginx:** The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, and serves the React frontend static files.
 
-• **Users Service (users/):** Node.js + Express + TypeScript service that manages user registration, authentication, match persistence, and statistics. It is the single point of access to the SQLite database.
+• **Auth Service (auth/):** Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to `auth.db`.
+
+• **Users Service (users/):** Node.js + Express + TypeScript service that manages user profiles, match persistence, and statistics. It is the single point of access to `users.db`.
 
 • **Game Server (gamey/):** Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.
 
@@ -208,16 +210,15 @@ This helps detect errors early and keeps all services aligned.
 
 === Persistence Layer
 
-The application relies on a SQL database (SQLite - relational database) that will
-manage the data of the application related to user accounts, match history, and statistics.
+The application relies on SQL databases (SQLite - relational database) split by domain: `auth.db`, `users.db`, and `game.db`.
 
-The database is accessed exclusively by the Users Service. This design decision ensures:
+Each database is accessed exclusively by its owning service. This design decision ensures:
 
-• **Data Consistency:** Only one service manages database transactions
-• **Security:** Other services cannot directly access or modify the database
-• **Separation of Concerns:** Game Server remains stateless and focused on game logic
+• **Data Consistency:** each service manages transactions in its own domain
+• **Security:** other services cannot directly access or modify another service's database
+• **Separation of Concerns:** Auth handles credentials/tokens, Users handles profiles/statistics, and Game handles match state
 
-Game sessions are computed in memory by the Rust Game Server, which is stateless. When a match needs to be persisted (for history or resuming later), the Users Service stores the game state in YEN notation in the SQLite database.
+Game sessions are computed in memory by the Rust Game Server and persisted to `game.db` when needed (history/resume). Credentials and token metadata remain exclusive to Auth Service in `auth.db`.
 
 If additional persistence requirements arise in the future (for example, caching or match replay functionality), the system can be extended without affecting the existing services thanks to the microservice-based design.
 

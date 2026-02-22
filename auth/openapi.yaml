@@ -1,0 +1,309 @@
+openapi: 3.0.3
+info:
+  title: Auth Service API
+  version: 1.0.0
+  description: |
+    Authentication service API for registration, login, token refresh, and internal JWT verification.
+servers:
+  - url: http://localhost
+    description: Public entrypoint through Nginx
+  - url: http://auth:3001
+    description: Internal Docker network endpoint
+
+tags:
+  - name: Auth
+    description: Public authentication endpoints
+  - name: Internal
+    description: Internal-only endpoints for service-to-service calls
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '201':
+          description: User registered and session issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidInput:
+                  value:
+                    error: invalid_input
+                    message: Invalid input
+                    details:
+                      - field: username
+                        message: username is required and must be a non-empty string
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                userAlreadyExists:
+                  value:
+                    error: user_already_exists
+                    message: User already exists
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unexpectedError:
+                  value:
+                    error: unexpected_error
+                    message: Unexpected server error
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user and issue tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                badCredentials:
+                  value:
+                    error: bad_credentials
+                    message: Invalid credentials
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access/refresh pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Refresh successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRefreshToken:
+                  value:
+                    error: invalid_refresh_token
+                    message: Invalid or expired refresh token
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/verify:
+    post:
+      tags: [Internal]
+      summary: Verify access JWT for service-to-service authorization
+      description: |
+        INTERNAL endpoint.
+
+        Blocked by Nginx externally; only for internal service-to-service calls.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyBodyRequest'
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifySuccessResponse'
+        '401':
+          description: Invalid/missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyUnauthorizedResponse'
+              examples:
+                invalidToken:
+                  value:
+                    valid: false
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuthRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          example: alice
+        password:
+          type: string
+          minLength: 8
+          example: password123
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+
+    VerifyBodyRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Optional JWT when Authorization header is not used
+
+    AuthTokensResponse:
+      type: object
+      required: [accessToken, refreshToken]
+      properties:
+        accessToken:
+          type: string
+          description: Short-lived JWT access token
+        refreshToken:
+          type: string
+          description: Longer-lived refresh token
+
+    AuthSessionResponse:
+      allOf:
+        - $ref: '#/components/schemas/AuthTokensResponse'
+        - type: object
+          required: [user]
+          properties:
+            user:
+              $ref: '#/components/schemas/AuthUser'
+
+    AuthUser:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+
+    VerifySuccessResponse:
+      type: object
+      required: [valid, claims]
+      properties:
+        valid:
+          type: boolean
+          enum: [true]
+        claims:
+          type: object
+          required: [sub, tokenType]
+          properties:
+            sub:
+              type: string
+            username:
+              type: string
+            tokenType:
+              type: string
+              enum: [access]
+            iat:
+              type: integer
+            exp:
+              type: integer
+
+    VerifyUnauthorizedResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+          enum: [false]
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_input
+            - bad_credentials
+            - invalid_refresh_token
+            - user_already_exists
+            - unexpected_error
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
