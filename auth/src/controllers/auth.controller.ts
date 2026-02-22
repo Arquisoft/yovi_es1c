@@ -1,32 +1,33 @@
-import type { Request, Response } from 'express';
-import { AuthService } from '../services/auth.service.js';
-import { CredentialsRepository } from '../repositories/credentials.repository.js';
+import type { NextFunction, Request, Response } from 'express';
+import { parseAuthBody, parseRefreshBody } from '../validation/auth.schemas.js';
+import { getAuthService } from '../bootstrap/auth-context.js';
 
-let service: AuthService | null = null;
-function getService() {
-    if (!service) {
-        const dbPath = process.env.AUTH_DB_PATH ?? './data/auth.db';
-        service = new AuthService(new CredentialsRepository(dbPath));
-    }
-    return service;
-}
-
-export async function register(req: Request, res: Response) {
+export async function register(req: Request, res: Response, next: NextFunction) {
     try {
-        const { username, password } = req.body;
-        const result = await getService().register(username, password);
-        res.status(201).json(result);
-    } catch (error: any) {
-        res.status(409).json({ error: error.message });
+        const { username, password } = parseAuthBody(req.body);
+        const result = await getAuthService().register(username, password);
+        return res.status(201).json(result);
+    } catch (error) {
+        return next(error);
     }
 }
 
-export async function login(req: Request, res: Response) {
+export async function login(req: Request, res: Response, next: NextFunction) {
     try {
-        const { username, password } = req.body;
-        const result = await getService().login(username, password);
-        res.json(result);
-    } catch (error: any) {
-        res.status(401).json({ error: error.message });
+        const { username, password } = parseAuthBody(req.body);
+        const result = await getAuthService().login(username, password);
+        return res.status(200).json(result);
+    } catch (error) {
+        return next(error);
+    }
+}
+
+export async function refresh(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { refreshToken } = parseRefreshBody(req.body);
+        const result = await getAuthService().refresh(refreshToken);
+        return res.status(200).json(result);
+    } catch (error) {
+        return next(error);
     }
 }

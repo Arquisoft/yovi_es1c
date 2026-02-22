@@ -78,10 +78,12 @@ end
 Verify endpoint contract used by internal services:
 
 - Method and path: `POST /api/auth/verify`
-- Required header: `Authorization: Bearer <token>`
-- Success response (`200`): `{ "userId": "<sub claim>" }`
-- Error response (`401`): `{ "error": "Unauthorized" }` for missing, malformed, invalid, or expired tokens
+- Internal URL (Docker network): `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
+- Token input: preferred `Authorization: Bearer <accessToken>` (compatible fallback: JSON body `{ "token": "<accessToken>" }`)
+- Success response (`200`): `{ "valid": true, "claims": { "sub": "<userId>", "username": "<username>", "tokenType": "access", "iat": <epoch>, "exp": <epoch> } }`
+- Error response (`401`): `{ "valid": false }` for missing, malformed, invalid, expired, or non-access tokens
 - Security boundary: `/api/auth/verify` must not be exposed publicly through Nginx and should be consumed only over internal service-to-service network calls
+- Client resilience policy for internal callers: use short timeouts (`500ms` to `1s`) and `0-1` retries to avoid cascading failures
 
 === Runtime Scenario 3: Match Creation and Initial State Retrieval
 
