@@ -46,7 +46,7 @@ describe('AuthService', () => {
         expect(result.refreshToken).toBeTypeOf('string');
         expect(repo.createUser).toHaveBeenCalledTimes(1);
 
-        const [, storedHash] = repo.createUser.mock.calls[0];
+        const [, storedHash] = repo.createUser.mock.calls.at(0)!;
         expect(storedHash).not.toBe('password123');
         expect(await bcrypt.compare('password123', storedHash)).toBe(true);
     });
@@ -57,7 +57,9 @@ describe('AuthService', () => {
 
         const service = new AuthService(repo as any);
 
-        await expect(service.register('alice', 'password123')).rejects.toBeInstanceOf(UserAlreadyExistsError);
+        await expect(service.register('alice', 'password123')).rejects.toBeInstanceOf(
+            UserAlreadyExistsError
+        );
     });
 
     it('login_ok returns access token', async () => {
@@ -82,7 +84,9 @@ describe('AuthService', () => {
 
         const service = new AuthService(repo as any);
 
-        await expect(service.login('ghost', 'password123')).rejects.toBeInstanceOf(BadCredentialsError);
+        await expect(service.login('ghost', 'password123')).rejects.toBeInstanceOf(
+            BadCredentialsError
+        );
     });
 
     it('refresh_ok rotates refresh token and returns new tokens', async () => {
@@ -114,15 +118,19 @@ describe('AuthService', () => {
         expect(result.refreshToken).toBe('new-refresh-token');
         expect(repo.revokeRefreshToken).toHaveBeenCalledWith(15);
         expect(repo.storeRefreshToken).toHaveBeenCalledTimes(1);
-        expect(repo.storeRefreshToken.mock.calls[0][0]).toBe(9);
-        expect(repo.storeRefreshToken.mock.calls[0][2]).toBe('family-1');
+
+        const [storedUserId, , storedFamilyId] = repo.storeRefreshToken.mock.calls.at(0)!;
+        expect(storedUserId).toBe(9);
+        expect(storedFamilyId).toBe('family-1');
     });
 
     it('refresh_invalid_or_expired_or_revoked returns InvalidRefreshTokenError', async () => {
         const repo = buildRepoMock();
         const service = new AuthService(repo as any);
 
-        await expect(service.refresh('missing-token')).rejects.toBeInstanceOf(InvalidRefreshTokenError);
+        await expect(service.refresh('missing-token')).rejects.toBeInstanceOf(
+            InvalidRefreshTokenError
+        );
 
         const revokedToken = 'revoked-token';
         const revokedHash = crypto.createHash('sha256').update(revokedToken).digest('hex');
@@ -135,7 +143,9 @@ describe('AuthService', () => {
             revoked_at: new Date().toISOString(),
         });
 
-        await expect(service.refresh(revokedToken)).rejects.toBeInstanceOf(InvalidRefreshTokenError);
+        await expect(service.refresh(revokedToken)).rejects.toBeInstanceOf(
+            InvalidRefreshTokenError
+        );
         expect(repo.revokeRefreshTokenFamily).toHaveBeenCalledWith('family-r');
 
         const expiredToken = 'expired-token';
@@ -149,7 +159,9 @@ describe('AuthService', () => {
             revoked_at: null,
         });
 
-        await expect(service.refresh(expiredToken)).rejects.toBeInstanceOf(InvalidRefreshTokenError);
+        await expect(service.refresh(expiredToken)).rejects.toBeInstanceOf(
+            InvalidRefreshTokenError
+        );
         expect(repo.revokeRefreshToken).toHaveBeenCalledWith(21);
     });
 
@@ -160,7 +172,8 @@ describe('AuthService', () => {
         const service = new AuthService(repo as any);
         const result = await service.register('carol', 'password123');
 
-        const decoded = jwt.decode(result.accessToken) as jwt.JwtPayload;
-        expect(decoded.tokenType).toBe('access');
+        const decoded = jwt.decode(result.accessToken) as jwt.JwtPayload | null;
+        expect(decoded).not.toBeNull();
+        expect(decoded!.tokenType).toBe('access');
     });
 });
