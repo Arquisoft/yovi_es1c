@@ -6,45 +6,113 @@ ifndef::imagesdir[:imagesdir: ../images]
 === ADR 1: Microservices architecture
 * **Context:** The platform is expected to scale with increasing user demand, evolve over time with new features or game modes, and support parallel development by multiple team members. High availability and maintainability are important non-functional requirements.
 * **Status:** Accepted by the teacher and development team.
-* **Decision:** We decided to implement a microservice-based architecture with a clear separation between game logic, web APIs, and presentation layers. The system will consist of an independent Game Server (Rust) handling core game rules and state, a Web Application Server (Node.js + Express + TypeScript) exposing APIs and coordinating requests, and a Frontend application (React + Vite + TypeScript) for user interaction. Persistent data will be managed through a backend-controlled SQLite database. +
+* **Possible alternatives:**
+** **Monolithic architecture:** where all game logic, API web and data storage services would be integrated in a single backend app.
+Although it would have simplified the development at first, this solution presents big issues in terms of scalability and maintainability.
+* **Decision:** We decided to implement a microservice-based architecture with a clear separation between game logic, data persistence, and presentation layers. The system will consist of:
+** **Game Server (Rust)** handling core game rules, move validation, and bot strategies
+** **Auth Service (Node.js + Express + TypeScript)** managing user authentication, registration, and JWT token lifecycle, with exclusive access to `auth.db`
+** **Users Service (Node.js + Express + TypeScript)** managing user profile data, with exclusive access to `users.db`
+** **Game Service (Node.js + Express + TypeScript)** managing match persistence, move history, and statistics, with exclusive access to `game.db`
+** **React Frontend (Vite + TypeScript)** for user interaction, running entirely in the browser and coordinating API calls to backend services
+** **Nginx API Gateway** routing requests and handling cross-cutting concerns (CORS, rate limiting, security)
+** Each service owns its own database, ensuring fault isolation at the data layer +
 This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.
-* **Pros:** 
-** Clear separation of concerns between game logic, web APIs, and user interface.
-** Enables independent development and deployment of the Game Server and Web Application Server.
+* **Pros:**
+** Clear separation of concerns between game logic, data persistence, and user interface
+** Enables independent development and deployment of all services
+** Each database is isolated per domain, ensuring fault isolation
+** Nginx provides security isolation for backend services
 * **Cons:**
-** Increased architectural complexity compared to a single monolithic backend.
-** Introduces inter-service communication overhead and potential latency.
+** Increased architectural complexity compared to a single monolithic backend
+** Introduces inter-service communication overhead and potential latency
+** Frontend must coordinate multiple API calls for complex workflows
 
 === ADR 2: Rust for Game Server
 * **Context:** The game server must be performant, safe, and reliable, as errors in the game logic could compromise fairness or stability. Additionally, the engine may need to handle multiple concurrent games and interact efficiently with other services in the system.
 * **Status:** Accepted by the teacher and development team.
-* **Decision:** We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust.
-* **Pros:** 
-** Strong memory safety guarantees, reducing runtime errors and crashes.
-** Highg performance and excellent support for concurrency, which is important for managing game sessions in parallel.
+* **Possible alternatives:**
+** There were no possible alternatives because this was an imposed constraint, given by the course's teachers.
+* **Decision:** We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust. The Game Server will be completely stateless, with no database access. All persistence is delegated to the Game Service.
+* **Pros:**
+** Strong memory safety guarantees, reducing runtime errors and crashes
+** High performance and excellent support for concurrency, which is important for managing game sessions in parallel
+** Stateless design enables horizontal scaling
 * **Cons:**
-** Steeper learnig curve, as the development team is not familiar with this programming language.
+** Steeper learning curve, as the development team is not familiar with this programming language
 
 === ADR 3: Docker Containerization
 * **Context:** The platform is composed of multiple independent components implemented with different technologies and runtimes. A way to ensure consistent development, testing, and deployment across different environments is essential to reduce configuration issues and simplify setup for new team members.
 * **Status:** Accepted by the teacher and development team.
-* **Decision:** We decided to containerize all major components of the system using Docker. Each service will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
+* **Possible alternatives:**
+** There were no possible alternatives because this was an imposed constraint, given by the course's teachers.
+* **Decision:** We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
 * **Pros:**
-** Provides consistent environments across development, testing, and deployment.
-** Simplifies setup and onboarding by reducing manual configuration.
-** Enables easier deployment and scaling of individual services.
+** Provides consistent environments across development, testing, and deployment
+** Simplifies setup and onboarding by reducing manual configuration
+** Enables easier deployment and scaling of individual services
+** Isolated network for backend services through Docker networking
+** Each database file is mounted as an independent volume per service container
 * **Cons:**
-** Adds an extra layer of complexity to the development workflow.
-** Requires basic knowledge of Docker and container orchestration from the development team.
+** Adds an extra layer of complexity to the development workflow
+** Requires basic knowledge of Docker and container orchestration from the development team
 
 === ADR 4: SQLite as Database System
 * **Context:** The application requires persistent storage for game data, user information, and match states. The database solution should be simple to operate, easy to integrate with the existing backend services, and appropriate for an academic project deployed in a cloud environment.
 * **Status:** Proposed by the development team.
-* **Decision:** We decided to use SQLite as the primary database system for the application. The SQLite database will be accessed exclusively by backend services. This choice is also highly based on the development team's experience using relational databases.
+* **Possible alternatives:**
+** **MongoDB:** A document-oriented NoSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken.
+* **Decision:** We decided to use SQLite as the database system for all three data domains. Each service owns its own SQLite database file (`auth.db`, `users.db`, `game.db`), mounted as an independent Docker volume. No service has access to another service's database. This choice is also highly based on the development team's experience using relational databases.
 * **Pros:**
-** Easy integration with backend services and containerized environments.
-** Suitable for small-to-medium workloads.
-** Low learning curve, as the development team is used to working with relational databases.
+** Easy integration with backend services and containerized environments
+** Suitable for small-to-medium workloads
+** Low learning curve, as the development team is used to working with relational databases
+** Each service owns its own database file, enforcing data isolation
+** Embedded database requires no separate server process
 * **Cons:**
-** Limited scalability and concurrency support compared to cloud-native database solutions.
-** Not ideal for high-availability or horizontally scaled write-heavy workloads.
+** Limited scalability and concurrency support compared to cloud-native database solutions
+** Not ideal for high-availability or horizontally scaled write-heavy workloads
+
+=== ADR 5: Nginx as API Gateway
+* **Context:** The system requires a secure entry point for all external requests. Backend services (Auth Service, Users Service, Game Service, and Game Server) should not be directly accessible from the internet. Additionally, cross-cutting concerns such as CORS, rate limiting, and request routing need to be handled consistently.
+* **Status:** Proposed by the development team.
+* **Possible alternatives:**
+** **Direct access to backend services:** Each service could expose its own public port, but this would increase security risks and make it harder to manage cross-cutting concerns.
+** **Cloud API Gateway services (AWS API Gateway, Azure API Management):** These would provide more features but add complexity and cost for an academic project.
+* **Decision:** We decided to use Nginx as a reverse proxy and API Gateway. Nginx will be the only component with a publicly exposed port (80). It will route requests based on URL paths:
+** `/api/auth/*` → Auth Service (port 3001, internal)
+** `/api/users/*` → Users Service (port 3000, internal)
+** `/api/game/*` → Game Service (port 3002, internal)
+** `/api/gamey/*` → Game Server (port 4000, internal)
+** `/*` → React Frontend static files
+Nginx will also handle CORS headers, rate limiting, and request logging.
+* **Pros:**
+** Single public entry point enhances security (defense in depth)
+** Backend services are isolated on internal Docker network
+** Centralized handling of CORS, rate limiting, and logging
+** High performance and battle-tested in production environments
+** Simple configuration and widely known by the development community
+* **Cons:**
+** Adds an additional component to the system architecture
+** Requires learning Nginx configuration syntax
+** Single point of failure (mitigated by its reliability)
+
+=== ADR 6: Three Independent Databases for Fault Isolation
+* **Context:** The initial architecture used a single SQLite database accessed exclusively by the Users Service. As the system evolved and the number of concurrent users and game sessions grew, a concern arose: a single overloaded or failed database would bring down all data-dependent functionality simultaneously — authentication, user profiles, and game data would all fail together.
+* **Status:** Accepted by the teacher and development team.
+* **Possible alternatives:**
+** **Single database:** One SQLite file accessed by one service. Simple but creates a single point of failure at the data layer. If the database is locked or overloaded (e.g., by a high volume of match writes), authentication also fails.
+** **Single service with multiple internal connections:** A single backend service managing three internal database connections. This keeps one entry point but does not achieve true fault isolation at the service level — if the service crashes, all three databases become inaccessible anyway.
+* **Decision:** We decided to split the data layer into three independent services, each owning its own SQLite database:
+** **Auth Service** → `auth.db`: stores credentials and JWT token metadata
+** **Users Service** → `users.db`: stores user profile data
+** **Game Service** → `game.db`: stores matches, move history, and statistics
+Each database is mounted as an independent Docker volume, and no service has access to another service's database.
+* **Pros:**
+** **Fault isolation**: a failure or overload in `game.db` (e.g., caused by a high volume of concurrent matches) does not affect authentication or user profile access
+** **Independent scalability**: each service and its database can be scaled according to its own load profile
+** **Single responsibility**: each service has a clearly defined data domain, improving maintainability
+* **Cons:**
+** Queries that previously joined data across domains (e.g., linking statistics to a user profile) now require inter-service HTTP calls, adding latency and complexity
+** Three services to maintain instead of one, increasing development and operational overhead
+** Cross-service consistency (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level

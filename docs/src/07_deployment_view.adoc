@@ -1,100 +1,280 @@
 ifndef::imagesdir[:imagesdir: ../images]
 
 [[section-deployment-view]]
-
-
 == Deployment View
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Content
-The deployment view describes:
+The deployment view describes the technical infrastructure we use to run the Yovi system. It also shows how the software parts (building blocks) connect to that infrastructure.
 
- 1. technical infrastructure used to execute your system, with infrastructure elements like geographical locations, environments, computers, processors, channels and net topologies as well as other infrastructure elements and
+Because our system uses Docker containers, we describe the deployment in two main environments: the Production Environment and the Development Environment.
 
-2. mapping of (software) building blocks to that infrastructure elements.
+=== Infrastructure Level 1 - Production Environment
 
-Often systems are executed in different environments, e.g. development environment, test environment, production environment. In such cases you should document all relevant environments.
+This section describes the main production environment where the final users can access the system.
 
-Especially document a deployment view if your software is executed as distributed system with more than one computer, processor, server or container or when you design and construct your own hardware processors and chips.
+_**Overview Diagram**_
 
-From a software perspective it is sufficient to capture only those elements of an infrastructure that are needed to show a deployment of your building blocks. Hardware architects can go beyond that and describe an infrastructure to any level of detail they need to capture.
+[plantuml, deployment-level1-architecture, png]
+----
+@startuml
+!include <C4/C4_Deployment>
 
-.Motivation
-Software does not run without hardware.
-This underlying infrastructure can and will influence a system and/or some
-cross-cutting concepts. Therefore, there is a need to know the infrastructure.
+node "Internet" as internet {
+  actor "User (Browser)" as user
+}
 
-.Form
+node "Cloud Virtual Machine" as vm {
 
-Maybe a highest level deployment diagram is already contained in section 3.2. as
-technical context with your own infrastructure as ONE black box. In this section one can
-zoom into this black box using additional deployment diagrams:
+  node "Docker Network (internal)" as dockernet {
 
-* UML offers deployment diagrams to express that view. Use it, probably with nested diagrams,
-when your infrastructure is more complex.
-* When your (hardware) stakeholders prefer other kinds of diagrams rather than a deployment diagram, let them use any kind that is able to show nodes and channels of the infrastructure.
+    node "Nginx Container" as nginxcontainer {
+      artifact "Nginx\nAPI Gateway\n(Port 80 - public)" as nginx
+    }
+
+    node "Auth Service Container" as authcontainer {
+      artifact "Node.js\nAuth Service\n(Port 3001 - internal)" as auth
+    }
+
+    node "Users Service Container" as userscontainer {
+      artifact "Node.js\nUsers Service\n(Port 3000 - internal)" as users
+    }
+
+    node "Game Service Container" as gameservicecontainer {
+      artifact "Node.js\nGame Service\n(Port 3002 - internal)" as gameservice
+    }
+
+    node "Game Server Container" as gamecontainer {
+      artifact "Rust Binary\nGame Server\n(Port 4000 - internal)" as gameserver
+    }
+
+    database "auth.db\n(Host Volume)" as authdb
+    database "users.db\n(Host Volume)" as usersdb
+    database "game.db\n(Host Volume)" as gamedb
+  }
+}
+
+user -down-> nginx : HTTP (80)\nREST/JSON
+
+nginx -down-> auth : /api/auth/*\nHTTP (3001)
+nginx -down-> users : /api/users/*\nHTTP (3000)
+nginx -down-> gameservice : /api/game/*\nHTTP (3002)
+nginx -down-> gameserver : /api/gamey/*\nHTTP (4000)
+nginx -right-> nginx : Serves React\nstatic files
+
+auth -down-> authdb : SQLite
+users -down-> usersdb : SQLite
+gameservice -down-> gamedb : SQLite
+
+note right of nginxcontainer
+  Only public-facing port (80)
+  All other services are internal only
+end note
+
+note right of authdb
+  Each DB is an independent
+  Docker volume. A failure in
+  one does not affect the others.
+end note
+
+@enduml
+----
+
+**Motivation**
+
+The main goal of this deployment strategy is to find a good balance between working fast and keeping the system secure. Software needs hardware to run. By using a Virtual Machine (VM) as the main host, the system creates a secure border at the hardware level. Inside this VM, we use Docker containers to run the apps. This makes sure that the deployment is isolated and prevents problems with installed programs on the host machine.
+
+**Quality and/or Performance Features**
+
+* **Security (Defense in Depth):** The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the Nginx API Gateway is the only part connected to the public internet.
+* **Portability:** By using Docker containers, the environment is always the same. The application works exactly the same way, no matter what physical server is running the Virtual Machine.
+* **Independent Scalability:** The system is divided into specific microservices (React Frontend, Auth Service, Users Service, Game Service, Game Server). Because of this, developers can give more resources to a specific service without affecting the others.
+* **Fault Isolation:** Each service owns its own database volume. An overload or failure in `game.db` does not affect `auth.db` or `users.db`, meaning authentication and profile access remain available even if the game data layer is under stress.
+
+**Mapping of Building Blocks to Infrastructure**
+
+[cols="1,2", options="header"]
+|===
+| Software Artifact (Building Block) | Infrastructure Element
+
+| **React Frontend (Webapp)**
+| Deployed as static files (HTML, CSS, JS bundle) served by Nginx on port 80. The React application runs entirely in the user's browser. Built with Vite and bundled for production.
+
+| **Nginx (API Gateway)**
+| Deployed in a Docker container inside the VM. It works as a Reverse Proxy and API Gateway. It is the only public entry point (Port 80) to route all incoming traffic. Handles CORS, rate limiting, and serves the React frontend static files. Routes API requests to backend services.
+
+| **Auth Service (Node.js + Express + TypeScript)**
+| Deployed in a Docker container inside the VM (Port 3001, internal only). Exclusively manages user credentials, registration, authentication, and JWT token lifecycle. No other service has access to `auth.db`.
+
+| **Users Service (Node.js + Express + TypeScript)**
+| Deployed in a Docker container inside the VM (Port 3000, internal only). Exclusively manages user profile data. No other service has access to `users.db`.
+
+| **Game Service (Node.js + Express + TypeScript)**
+| Deployed in a Docker container inside the VM (Port 3002, internal only). Exclusively manages match persistence, move history, and player statistics. No other service has access to `game.db`.
+
+| **Game Server (Rust)**
+| Deployed in a Docker container inside the VM (Port 4000, internal only). Calculates game logic and bot movements in YEN format. Completely stateless service optimized for performance. No database access whatsoever.
+
+| **auth.db (SQLite)**
+| A database file saved on a dedicated Host Volume inside the VM, connected exclusively to the Auth Service container. Stores user credentials and JWT token metadata. Only Auth Service has read/write permissions.
+
+| **users.db (SQLite)**
+| A database file saved on a dedicated Host Volume inside the VM, connected exclusively to the Users Service container. Stores user profile data. Only Users Service has read/write permissions.
+
+| **game.db (SQLite)**
+| A database file saved on a dedicated Host Volume inside the VM, connected exclusively to the Game Service container. Stores matches, move history, and statistics. Only Game Service has read/write permissions.
+|===
 
 
-.Further Information
+=== Infrastructure Level 1 - Development Environment
 
-See https://docs.arc42.org/section-7/[Deployment View] in the arc42 documentation.
+Following the arc42 rules for multiple environments, the development environment uses the same Docker containers to be equal to production, but without the secure Virtual Machine.
 
-****
-endif::arc42help[]
+**Motivation**
 
-=== Infrastructure Level 1
+Developers need a fast and reliable environment to write and test code on their computers. We use Docker Compose to start the whole system on the developer's local machine.
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Describe (usually in a combination of diagrams, tables, and text):
+**Quality and/or Performance Features**
 
-* distribution of a system to multiple locations, environments, computers, processors, .., as well as physical connections between them
-* important justifications or motivations for this deployment structure
-* quality and/or performance features of this infrastructure
-* mapping of software artifacts to elements of this infrastructure
+* **Consistency:** It solves the classic "it works on my machine" problem.
+* **Fast Setup:** A new developer can start the complete system (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, and all three databases) with just one `docker-compose up` command.
 
-For multiple environments or alternative deployments please copy and adapt this section of arc42 for all relevant environments.
-****
-endif::arc42help[]
+**Mapping of Building Blocks to Infrastructure**
 
-_**<Overview Diagram>**_
-
-Motivation::
-
-_<explanation in text form>_
-
-Quality and/or Performance Features::
-
-_<explanation in text form>_
-
-Mapping of Building Blocks to Infrastructure::
-_<description of the mapping>_
+In this environment, the mapping is exactly the same as in Production. The only difference is the host hardware:
+* **Infrastructure Element:** The developer's personal computer (Localhost) running Docker Desktop, instead of a Cloud Virtual Machine.
 
 
 === Infrastructure Level 2
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-Here you can include the internal structure of (some) infrastructure elements from level 1.
+Here we explain the internal structure of the Docker environment from Level 1. We zoom into the isolated network and how data is saved.
 
-Please copy the structure from level 1 for each selected element.
-****
-endif::arc42help[]
+[plantuml, deployment-level2-dataflow, png]
+----
+@startuml
+!include <C4/C4_Deployment>
 
-==== _<Infrastructure Element 1>_
+node "Cloud Virtual Machine" as vm {
 
-_<diagram + explanation>_
+  node "Docker Network (internal)" as dockernet {
 
-==== _<Infrastructure Element 2>_
+    node "Nginx Container" as nginxcontainer {
+      artifact "Nginx" as nginx
+    }
 
-_<diagram + explanation>_
+    node "Auth Service Container" as authcontainer {
+      artifact "Auth Service\n(Node.js)" as auth
+      database "auth.db\n(Volume)" as authdb
+    }
 
-...
+    node "Users Service Container" as userscontainer {
+      artifact "Users Service\n(Node.js)" as users
+      database "users.db\n(Volume)" as usersdb
+    }
 
-==== _<Infrastructure Element n>_
+    node "Game Service Container" as gameservicecontainer {
+      artifact "Game Service\n(Node.js)" as gameservice
+      database "game.db\n(Volume)" as gamedb
+    }
 
-_<diagram + explanation>_
+    node "Game Server Container" as gamecontainer {
+      artifact "Game Server\n(Rust)\nStateless" as gameserver
+    }
+  }
+}
+
+actor "User Browser\n(React SPA)" as browser
+
+browser -down-> nginx : HTTP (80)\nAll API calls
+
+nginx --> auth : /api/auth/*\n(3001)
+nginx --> users : /api/users/*\n(3000)
+nginx --> gameservice : /api/game/*\n(3002)
+nginx --> gameserver : /api/gamey/*\n(4000)
+
+auth --> authdb
+users --> usersdb
+gameservice --> gamedb
+
+note right of authcontainer
+  Credentials & JWT
+  Isolated fault domain
+end note
+
+note right of userscontainer
+  User profiles
+  Isolated fault domain
+end note
+
+note right of gameservicecontainer
+  Matches, moves, stats
+  Isolated fault domain
+end note
+
+note right of gamecontainer
+  Pure computation
+  No DB access
+  Stateless
+end note
+
+@enduml
+----
+
+**Internal Structure Explanation:**
+
+This level shows the internal Docker network rules. The **Nginx API Gateway** completely isolates the microservices from the public internet. External users can never reach the backend services directly. All requests must go through Nginx on port 80.
+
+The request flow is as follows:
+
+* **User browser loads the app**: Nginx serves React static files (HTML, CSS, JS)
+* **React app runs in browser**: Makes API calls to `/api/auth/*`, `/api/users/*`, `/api/game/*` and `/api/gamey/*`
+* **Nginx routes API requests** based on URL path:
+** `/api/auth/*` → Auth Service (port 3001), except `/api/auth/verify` (blocked externally with 403)
+** `/api/users/*` → Users Service (port 3000)
+** `/api/game/*` → Game Service (port 3002)
+** `/api/gamey/*` → Game Server (port 4000)
+** `/*` (all other paths) → React frontend static files
+
+**Example User Flow:**
+
+1. User opens `http://yourapp.com` in browser
+2. Nginx serves `index.html` and React bundle from static files
+3. React app loads in browser, displays login screen
+4. User clicks "Login" → React sends `POST /api/auth/login` to Nginx
+5. Nginx routes request to Auth Service (port 3001)
+6. Auth Service validates credentials against `auth.db` and returns JWT token
+7. React stores token and creates a new match → React sends `POST /api/game/matches` to Nginx
+8. Nginx routes request to Game Service (port 3002)
+9. Game Service persists the new match in `game.db` and returns the match ID
+10. User makes a move → React sends `POST /api/gamey/play` to Nginx
+11. Nginx routes game logic request to Game Server (port 4000)
+12. Game Server computes the bot move and returns the updated YEN state
+13. React persists the move → sends `POST /api/game/matches/{id}/moves` to Nginx
+14. Nginx routes to Game Service (port 3002), which stores the move in `game.db`
+15. React updates the UI with the new board state
+
+
+**Internal Auth verification call (service-to-service only):**
+
+* Internal URL env var: `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
+* Recommended timeout in callers: `500ms` to `1s`
+* Recommended retries: `0-1` (avoid retry storms)
+
+**Data Storage and Fault Isolation:**
+
+Data storage is strictly controlled through three independent volumes, all inside the VM:
+
+* `auth.db` is mounted exclusively inside the Auth Service container. Only Auth Service has read/write permissions. Stores credentials and JWT metadata.
+* `users.db` is mounted exclusively inside the Users Service container. Only Users Service has read/write permissions. Stores user profile data.
+* `game.db` is mounted exclusively inside the Game Service container. Only Game Service has read/write permissions. Stores matches, moves, and statistics.
+
+If `game.db` becomes overloaded due to a high volume of concurrent matches, authentication (`auth.db`) and user profiles (`users.db`) remain fully operational. Each database fails independently.
+
+The Game Server has no database access and operates in a completely stateless manner. All game state persistence is delegated to the Game Service after each move.
+
+**Network Isolation:**
+
+All backend services (Auth Service, Users Service, Game Service, Game Server) run on an internal Docker network. They cannot be accessed directly from outside the VM. Only Nginx has a public-facing port (80) exposed to the internet. This architecture ensures that:
+
+* Backend services are protected from direct attacks
+* All requests go through Nginx security layers (rate limiting, CORS)
+* Each database is isolated behind its own service container
+* Services communicate only through defined internal APIs

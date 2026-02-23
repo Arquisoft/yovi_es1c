@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [webapp, users]
+        service: [webapp, users, auth]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,26 +59,64 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install users dependencies
-        run: |
-          cd users
-          npm ci
-      - name: Install webapp dependencies
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install webapp dependencies for Playwright
         run: |
           cd webapp
           npm ci
+
       - name: Install Playwright browsers
         run: |
           cd webapp
           npm run test:e2e:install-browsers
-      - name: Run E2E tests (start servers and run cucumber)
+
+      - name: Build and start all services with Docker Compose
+        run: |
+          docker compose up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to start..."
+          sleep 15
+          echo "Checking Nginx health..."
+          curl --retry 15 --retry-delay 2 --retry-connrefused http://localhost/health || (docker compose logs && exit 1)
+          echo "Services are ready!"
+
+      - name: Show running containers
+        run: |
+          docker compose ps
+
+      - name: Run E2E tests against Docker environment
         run: |
           cd webapp
-          npm run test:e2e
+          npm run test:e2e:docker
+
+      - name: Show Docker logs on failure
+        if: failure()
+        run: |
+          echo "=== Nginx logs ==="
+          docker compose logs nginx
+          echo "=== Users Service logs ==="
+          docker compose logs users
+          echo "=== Auth Service logs ==="
+          docker compose logs auth
+          echo "=== Game Server logs ==="
+          docker compose logs gamey
+          echo "=== Webapp logs ==="
+          docker compose logs webapp
+
+      - name: Stop Docker Compose
+        if: always()
+        run: |
+          docker compose down -v
 
   docker-push-users:
     name: Publish users image
@@ -99,6 +137,28 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           workdir: users
+          tags: "latest,${{ env.IMAGE_TAG }}"
+
+  docker-push-auth:
+    name: Publish auth image
+    runs-on: ubuntu-latest
+    needs: e2e
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish to Registry (auth)
+        uses: elgohr/Publish-Docker-Github-Action@v5
+        with:
+          name: ${{ github.repository_owner }}/${{ github.event.repository.name }}-auth
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          workdir: auth
+          tags: "latest,${{ env.IMAGE_TAG }}"
 
   docker-push-webapp:
     name: Publish webapp image
@@ -119,7 +179,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           workdir: webapp
-          buildargs: VITE_API_URL=http://${{ secrets.DEPLOY_HOST }}:3000
+          buildargs: VITE_API_URL=/api/users,VITE_GAMEY_API_URL=/api/gamey
+          tags: "latest,${{ env.IMAGE_TAG }}"
 
   docker-push-gamey:
     name: Publish gamey image
@@ -140,11 +201,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           workdir: gamey
+          tags: "latest,${{ env.IMAGE_TAG }}"
 
   deploy:
     name: Deploy over SSH
     runs-on: ubuntu-latest
-    needs: [docker-push-users, docker-push-webapp, docker-push-gamey]
+    needs: [docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey]
     steps:
       - name: Deploy over SSH
         uses: fifsky/ssh-action@master
@@ -153,6 +215,9 @@ jobs:
           user: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           command: |
+            mkdir -p nginx
             wget https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master/docker-compose.yml -O docker-compose.yml
+            wget https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master/nginx/nginx.conf -O nginx/nginx.conf
             docker compose down
-            docker compose up -d --pull always
+            docker compose pull
+            docker compose up -d

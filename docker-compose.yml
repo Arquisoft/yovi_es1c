@@ -8,6 +8,17 @@ services:
     networks:
       - monitor-net
 
+  auth:
+    build: ./auth
+    container_name: auth
+    image: ghcr.io/arquisoft/yovi_es1c-auth:latest
+    environment:
+      - JWT_SECRET=${JWT_SECRET}"
+      - AUTH_DB_PATH=${AUTH_DB_PATH:-/app/data/auth.db}
+    networks:
+      - monitor-net
+    volumes:
+      - ./data:/app/data
   webapp:
     build:
       context: ./webapp

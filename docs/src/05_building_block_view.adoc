@@ -14,21 +14,57 @@ ifndef::imagesdir[:imagesdir: ../images]
 
 skinparam componentStyle rectangle
 
+actor "User" as user
+
 package "Yovi System" {
-  component "Web Frontend\n(React + Vite + TS)" as frontend <<application>>
-  component "Web App Server\n(Node.js + Express + TS)" as webapp <<service>>
+  component "Nginx\n(API Gateway)" as nginx <<reverse proxy>>
+  component "React Frontend\n(Webapp)\n(Vite + TS)" as frontend <<application>>
+  component "Auth Service\n(Node.js + Express + TS)" as auth <<service>>
+  component "Users Service\n(Node.js + Express + TS)" as users <<service>>
+  component "Game Service\n(Node.js + Express + TS)" as gameservice <<service>>
   component "Game Server\n(Rust)" as gamey <<service>>
-  database "SQLite Database" as db <<database>>
+  database "auth.db\n(SQLite)" as authdb <<database>>
+  database "users.db\n(SQLite)" as usersdb <<database>>
+  database "game.db\n(SQLite)" as gamedb <<database>>
 }
 
-frontend -down-> webapp : HTTPS/REST\nJSON
-webapp -right-> gamey : HTTP/REST\nJSON (YEN)
-webapp -down-> db : SQLite\nSQL
+user -down-> nginx : HTTP (80)\nREST/JSON
+nginx -down-> frontend : Serve static files
+nginx -down-> auth : HTTP (3001)\n/api/auth/*
+nginx -down-> users : HTTP (3000)\n/api/users/*
+nginx -down-> gameservice : HTTP (3002)\n/api/game/*
+nginx -down-> gamey : HTTP (4000)\n/api/gamey/*
 
-note right of webapp
-  **Backend for Frontend (BFF)**
-  Orchestrates user management
-  and game logic
+frontend ..> nginx : API calls from browser\n(/api/auth/*, /api/users/*, /api/game/*, /api/gamey/*)
+
+auth -down-> authdb : SQLite\nSQL
+users -down-> usersdb : SQLite\nSQL
+gameservice -down-> gamedb : SQLite\nSQL
+
+note right of nginx
+  **API Gateway**
+  Single entry point
+  Routes all requests
+  Rate limiting, CORS
+end note
+
+note right of auth
+  **Auth Layer**
+  Registration & login
+  JWT management
+  Credentials (auth.db)
+end note
+
+note right of users
+  **Profile Layer**
+  User profile management
+  Profile data (users.db)
+end note
+
+note right of gameservice
+  **Game Data Layer**
+  Match & stats persistence
+  Game data (game.db)
 end note
 
 note right of gamey
@@ -42,12 +78,16 @@ end note
 
 **Motivation:**
 
-The Yovi system is decomposed into three main subsystems to achieve separation of concerns, independent scalability, and technology-specific optimization:
+The Yovi system is decomposed into five main subsystems to achieve separation of concerns, independent scalability, technology-specific optimization, and fault isolation across data domains:
 
-* **Web Frontend**: User interface layer for human players
-* **Web App Server**: Orchestration layer (BFF pattern) managing authentication, match lifecycle, and API routing
-* **Game Server**: Pure game logic engine optimized for performance (Rust)
-* **Database**: Persistent storage for users, matches, and statistics
+* **Nginx (API Gateway)**: Single public entry point for all requests, handling routing, rate limiting, and CORS
+* **React Frontend (Webapp)**: User interface layer running in the browser, managing UI state and coordinating API calls to backend services
+* **Auth Service**: Authentication layer with exclusive access to `auth.db`, managing credentials, registration, login, and JWT tokens
+* **Users Service**: Profile layer with exclusive access to `users.db`, managing user profile data
+* **Game Service**: Game data layer with exclusive access to `game.db`, managing match persistence, move history, and statistics
+* **Game Server**: Pure game logic engine optimized for performance (Rust), completely stateless
+
+Each service owns its own database. A failure or overload in one database does not propagate to the others, achieving fault isolation at the data layer.
 
 **Contained Building Blocks:**
 
@@ -55,102 +95,148 @@ The Yovi system is decomposed into three main subsystems to achieve separation o
 |===
 | Building Block | Responsibility
 
-| **Web Frontend**
-a| • Renders game board and UI components
+| **Nginx (API Gateway)**
+a| • Single public entry point on port 80
+• Routes requests based on URL paths:
+** `/api/auth/*` → Auth Service (port 3001)
+** `/api/users/*` → Users Service (port 3000)
+** `/api/game/*` → Game Service (port 3002)
+** `/api/gamey/*` → Game Server (port 4000)
+** `/*` → React Frontend static files
+• Handles CORS and rate limiting
+• Serves React frontend static files
+• Isolates backend services from direct external access
+
+| **React Frontend (Webapp)**
+a| • Single-page application (SPA) running in user's browser
+• Renders game board and UI components using React
 • Handles user interactions (login, game moves, statistics viewing)
-• Communicates with Web App Server via REST API
-• Manages client-side state
+• Manages client-side state (game state, user session)
+• Makes HTTP API calls to all backend services through Nginx
+• Coordinates game flow from the client side
 
-| **Web App Server (BFF)**
-a| • Acts as Backend for Frontend orchestrating multiple services
-• Provides REST API for web clients and bots
-• Manages user authentication and authorization
-• Coordinates Game Server and Database operations
-• Transforms between user-friendly formats and YEN notation
+| **Auth Service**
+a| • Single point of access to `auth.db`
+• Manages user registration and login
+• Password hashing (bcrypt/Argon2)
+• JWT token generation and validation
+• Token refresh logic
+• Exposes REST API on port 3001 (internal)
 
-| **Game Server**
+| **Users Service**
+a| • Single point of access to `users.db`
+• Manages user profile data (username, avatar, preferences)
+• Handles user CRUD operations
+• Provides user search and retrieval
+• Exposes REST API on port 3000 (internal)
+
+| **Game Service**
+a| • Single point of access to `game.db`
+• Manages match lifecycle (creation, updates, completion)
+• Persists move history and serialized YEN board states
+• Aggregates and provides player statistics and rankings
+• Exposes REST API on port 3002 (internal)
+
+| **Game Server (Rust)**
 a| • Implements core Y game rules and logic
 • Validates moves and checks win conditions
-• Computes bot moves using various strategies
-• Stateless service using YEN notation
-• Exposes REST API for game operations
+• Computes bot moves using various strategies (random, heuristic)
+• Completely stateless service using YEN notation
+• Exposes REST API on port 4000 (internal)
+• No database access, pure computation
 
-| **Database (SQLite)**
-a| • Stores user accounts and credentials
-• Persists match history and game state
+| **auth.db (SQLite)**
+a| • Stores user credentials (hashed passwords)
+• Persists JWT token metadata and refresh tokens
+• Accessible only through Auth Service
+• Isolated from profile and game data
+
+| **users.db (SQLite)**
+a| • Stores user profile information (username, avatar, preferences)
+• Accessible only through Users Service
+• Isolated from credentials and game data
+
+| **game.db (SQLite)**
+a| • Stores match records and metadata (size, strategy, difficulty, status)
+• Persists move history and serialized YEN board states
 • Maintains player statistics and rankings
-• Provides atomic transactions for data consistency
+• Accessible only through Game Service
+• Isolated from credentials and profile data
 |===
 
 **Important Interfaces:**
 
-* **Web Frontend → Web App Server**: REST API (`/auth/*`, `/matches/*`, `/play`, `/stats`)
-* **Web App Server → Game Server**: REST API (`/ybot/choose/{botId}`)
-* **Web App Server → Database**: SQLite native SQL queries
-* **Bot Client → Web App Server**: REST API (`/bot/play`)
+* **User → Nginx**: HTTP REST API (port 80, public)
+* **Nginx → React Frontend**: Static file serving (HTML, JS, CSS)
+* **Nginx → Auth Service**: REST API (`/api/auth/*`, port 3001, internal)
+* **Nginx → Users Service**: REST API (`/api/users/*`, port 3000, internal)
+* **Nginx → Game Service**: REST API (`/api/game/*`, port 3002, internal)
+* **Nginx → Game Server**: REST API (`/api/gamey/*`, port 4000, internal)
+* **React Frontend → Nginx**: AJAX/Fetch API calls from browser
+* **Auth Service → auth.db**: SQLite native SQL queries
+* **Users Service → users.db**: SQLite native SQL queries
+* **Game Service → game.db**: SQLite native SQL queries
+
+**Communication Flow Example:**
+
+1. User loads the app → Nginx serves React static files → React runs in browser
+2. User clicks "Login" → React calls `POST /api/auth/login` → Nginx routes to Auth Service
+3. Auth Service validates credentials against `auth.db` → Returns JWT token
+4. User creates a match → React calls `POST /api/game/matches` → Nginx routes to Game Service → persisted in `game.db`
+5. User makes a move → React calls `POST /api/gamey/play` → Nginx routes to Game Server → returns updated YEN
+6. Game Server returns move validation → React calls `POST /api/game/matches/{id}/moves` → Game Service persists in `game.db`
+7. React updates UI
 
 === Level 2
 
-==== White Box: Web App Server
+==== White Box: Auth Service
 
-[plantuml, level2-webapp, png]
+[plantuml, level2-auth, png]
 ----
 @startuml
-package "Web App Server (Node.js + Express + TypeScript)" {
+package "Auth Service (Node.js + TypeScript)" {
 
-  package "Controllers Layer" <<frame>> {
+  package "Controllers" <<frame>> {
     component [AuthController] <<TS>>
-    component [MatchesController] <<TS>>
-    component [StatsController] <<TS>>
-    component [BotApiController] <<TS>>
   }
 
-  package "Services Layer" <<frame>> {
-    component [GameOrchestrationService] <<TS>>
+  package "Services" <<frame>> {
+    component [AuthService] <<TS>>
   }
 
-  package "Clients Layer" <<frame>> {
-    component [UsersClient] <<TS>>
-    component [GameEngineClient] <<TS>>
+  package "Repositories" <<frame>> {
+    component [CredentialsRepository] <<TS>>
   }
 }
 
-component "UsersService\n(External)" as users <<external>>
-component "Game Server\n(External)" as game <<external>>
-component "SharedContracts\n(DTOs)" as contracts <<library>>
+database "auth.db (SQLite)" as authdb <<database>>
 
-[AuthController] ..> [GameOrchestrationService]
-[MatchesController] ..> [GameOrchestrationService]
-[StatsController] ..> [GameOrchestrationService]
-[BotApiController] ..> [GameOrchestrationService]
+[AuthController] ..> [AuthService]
+[AuthService] ..> [CredentialsRepository]
+[CredentialsRepository] --> authdb
 
-[GameOrchestrationService] ..> [UsersClient]
-[GameOrchestrationService] ..> [GameEngineClient]
+note right of [AuthController]
+  **Endpoints:**
+  POST /api/auth/register
+  POST /api/auth/login
+  POST /api/auth/refresh
+end note
 
-[UsersClient] --> users : HTTP/JSON
-[GameEngineClient] --> game : HTTP/JSON
+note right of [AuthService]
+  **Business Logic:**
+  Password hashing (bcrypt/Argon2)
+  JWT generation & validation
+  Token refresh
+end note
 
-[UsersClient] ..> contracts
-[GameEngineClient] ..> contracts
-
-note right of [GameOrchestrationService]
-  **Orchestration Responsibilities:**
-  - Coordinates UsersService calls
-  - Validates game state
-  - Calls Game Server for moves
-  - Transforms YEN ↔ User formats
+note right of [CredentialsRepository]
+  **Repository Pattern**
+  Abstracts auth.db access
+  Enables testing with mocks
 end note
 
 @enduml
 ----
-
-**Motivation:**
-
-The Web App Server follows a layered architecture with clear separation between HTTP handling (Controllers), business orchestration (Services), and external communication (Clients). This enables:
-
-* **Testability**: Each layer can be unit tested independently
-* **Maintainability**: Changes to external APIs are isolated in Client classes
-* **Reusability**: GameOrchestrationService can be used by multiple controllers
 
 **Contained Building Blocks:**
 
@@ -159,38 +245,183 @@ The Web App Server follows a layered architecture with clear separation between 
 | Component | Responsibility
 
 | **AuthController**
-a| • Handles HTTP requests for `/auth/register` and `/auth/login`
-• Validates user credentials
-• Returns JWT tokens or session cookies
+a| • Exposes REST API endpoints: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`
+• Input validation and error handling
+• Request/response mapping
 
-| **MatchesController**
-a| • Manages match creation (`POST /matches`)
-• Retrieves match history (`GET /matches`)
-• Requires authentication
+| **AuthService**
+a| • User registration logic
+• Password hashing and verification (bcrypt/Argon2)
+• JWT token generation and validation
+• Token refresh logic
 
-| **StatsController**
-a| • Provides player statistics endpoint (`GET /stats`)
-• Aggregates data from UsersService
+| **CredentialsRepository**
+a| • Database access layer for `auth.db`
+• SQL query execution and result mapping
+• Stores hashed passwords and token metadata
+|===
 
-| **BotApiController**
-a| • Exposes bot-specific API (`POST /bot/play`)
-• Handles bot authentication
-• Delegates to GameOrchestrationService
+==== White Box: Users Service
 
-| **GameOrchestrationService**
-a| • Core orchestration logic
-• Coordinates UsersClient and GameEngineClient
-• Implements game flow: validate state → compute move → persist result
-• Error handling and state management
+[plantuml, level2-users, png]
+----
+@startuml
+package "Users Service (Node.js + TypeScript)" {
 
-| **UsersClient**
-a| • HTTP client wrapping UsersService API
-• Handles user authentication, match persistence, statistics retrieval
+  package "Controllers" <<frame>> {
+    component [UsersController] <<TS>>
+  }
 
-| **GameEngineClient**
-a| • HTTP client wrapping Game Server API
-• Sends YEN positions and receives bot moves
-• Uses SharedContracts DTOs (YenPositionDto, YenMoveDto)
+  package "Services" <<frame>> {
+    component [UserService] <<TS>>
+  }
+
+  package "Repositories" <<frame>> {
+    component [UserRepository] <<TS>>
+  }
+}
+
+database "users.db (SQLite)" as usersdb <<database>>
+
+[UsersController] ..> [UserService]
+[UserService] ..> [UserRepository]
+[UserRepository] --> usersdb
+
+note right of [UsersController]
+  **Endpoints:**
+  GET /api/users/{id}
+  PUT /api/users/{id}
+  GET /api/users (search)
+end note
+
+note right of [UserService]
+  **Business Logic:**
+  Profile management
+  User CRUD
+end note
+
+note right of [UserRepository]
+  **Repository Pattern**
+  Abstracts users.db access
+  Enables testing with mocks
+end note
+
+@enduml
+----
+
+**Contained Building Blocks:**
+
+[cols="1,3", options="header"]
+|===
+| Component | Responsibility
+
+| **UsersController**
+a| • Exposes REST API endpoints: `GET /api/users/{id}`, `PUT /api/users/{id}`, `GET /api/users`
+• Input validation and authentication middleware (JWT verification via Auth Service)
+• Request/response mapping
+
+| **UserService**
+a| • CRUD operations for user profiles
+• User search and retrieval
+• Profile validation logic
+
+| **UserRepository**
+a| • Database access layer for `users.db`
+• SQL query execution and result mapping
+• Transaction management for profile operations
+|===
+
+==== White Box: Game Service
+
+[plantuml, level2-gameservice, png]
+----
+@startuml
+package "Game Service (Node.js + TypeScript)" {
+
+  package "Controllers" <<frame>> {
+    component [GameController] <<TS>>
+  }
+
+  package "Services" <<frame>> {
+    component [MatchService] <<TS>>
+    component [StatsService] <<TS>>
+  }
+
+  package "Repositories" <<frame>> {
+    component [MatchRepository] <<TS>>
+    component [StatsRepository] <<TS>>
+  }
+}
+
+database "game.db (SQLite)" as gamedb <<database>>
+
+[GameController] ..> [MatchService]
+[GameController] ..> [StatsService]
+[MatchService] ..> [MatchRepository]
+[StatsService] ..> [StatsRepository]
+[MatchRepository] --> gamedb
+[StatsRepository] --> gamedb
+
+note right of [GameController]
+  **Endpoints:**
+  POST /api/game/matches
+  GET /api/game/matches/{id}
+  POST /api/game/matches/{id}/moves
+  GET /api/game/stats/{userId}
+end note
+
+note right of [MatchService]
+  **Business Logic:**
+  Match lifecycle management
+  Move history persistence
+  YEN board state storage
+end note
+
+note right of [StatsRepository]
+  **Repository Pattern**
+  Abstracts game.db access
+  Enables testing with mocks
+  Single point of game DB access
+end note
+
+@enduml
+----
+
+**Contained Building Blocks:**
+
+[cols="1,3", options="header"]
+|===
+| Component | Responsibility
+
+| **GameController**
+a| • Exposes REST API endpoints for match and stats operations
+• Endpoints: `POST /api/game/matches`, `GET /api/game/matches/{id}`, `POST /api/game/matches/{id}/moves`, `GET /api/game/stats/{userId}`
+• Input validation and authentication middleware (JWT verification)
+• Request/response mapping
+
+| **MatchService**
+a| • Match creation and lifecycle management
+• Stores match metadata (size, strategy, difficulty, participants)
+• Updates match status (ongoing/finished)
+• Persists serialized YEN board states and move history
+• Match history queries
+
+| **StatsService**
+a| • Aggregates player statistics (wins/losses/draws)
+• Calculates rankings and metrics
+• Provides historical match data
+• Win rate calculations
+
+| **MatchRepository**
+a| • Database access layer for matches in `game.db`
+• Stores serialized YEN board states
+• Query optimization for match history
+• Match outcome persistence
+
+| **StatsRepository**
+a| • Database access layer for statistics in `game.db`
+• Optimized read queries for rankings
+• Computed statistics and performance metrics
 |===
 
 ==== White Box: Game Server
@@ -251,7 +482,7 @@ end note
 
 **Motivation:**
 
-The Game Server encapsulates all game-specific logic using Domain-Driven Design principles. The Strategy pattern allows for extensible bot implementations without modifying core game logic.
+The Game Server encapsulates all game-specific logic using Domain-Driven Design principles. The Strategy pattern allows for extensible bot implementations without modifying core game logic. This service is completely stateless and has no database dependencies. All persistence is delegated to the Game Service.
 
 **Contained Building Blocks:**
 
@@ -260,34 +491,40 @@ The Game Server encapsulates all game-specific logic using Domain-Driven Design 
 | Component | Responsibility
 
 | **EngineService**
-a| • REST API entry point (`POST /ybot/choose/{botId}`)
+a| • REST API entry point (`POST /api/gamey/play`, `POST /api/gamey/ybot/choose/{botId}`)
 • Parses YEN notation from requests
 • Delegates to NextMoveComputer or WinEvaluator
 • Returns YenMoveDto responses
+• Stateless request handling
 
 | **NextMoveComputer**
 a| • Computes next optimal move for a given bot strategy
 • Selects appropriate Strategy implementation based on botId/difficulty
 • Returns valid move in YEN notation
+• No side effects, pure computation
 
 | **WinEvaluator**
 a| • Checks if game has ended (win condition met)
 • Analyzes board for Y-connections (3-sided paths)
 • Returns game status (ongoing/won/draw)
+• Deterministic evaluation
 
 | **Strategy Interface**
 a| • Defines contract for bot implementations
 • `compute_move(board: &Board, difficulty: u8) -> Move`
+• Enables extensibility for new strategies
 
 | **RandomStrategy**
 a| • Implements random valid move selection
 • Low difficulty, fast execution
 • Used for testing and beginner difficulty
+• No lookahead or evaluation
 
 | **HeuristicStrategy**
 a| • Implements heuristic-based move evaluation
 • Considers board control, connection potential, blocking opponent
 • Configurable difficulty levels affect search depth
+• Position evaluation function
 
 | **GameDomain Package**
 a| • **Game**: Aggregates board, players, move history, game state
@@ -296,101 +533,4 @@ a| • **Game**: Aggregates board, players, move history, game state
 • **Player**: Entity representing B or R player
 • **Coordinate**: Barycentric coordinate (x, y, z)
 • **WinChecker**: Algorithm to detect Y-shaped winning connections
-|===
-
-==== White Box: UsersService
-
-[plantuml, level2-users, png]
-----
-@startuml
-package "UsersService (Node.js + TypeScript)" {
-
-  package "Controllers" <<frame>> {
-    component [UsersApiController] <<TS>>
-  }
-
-  package "Services" <<frame>> {
-    component [AuthService] <<TS>>
-    component [UserService] <<TS>>
-    component [MatchService] <<TS>>
-    component [StatsService] <<TS>>
-  }
-
-  package "Repositories" <<frame>> {
-    component [UserRepository] <<TS>>
-    component [MatchRepository] <<TS>>
-    component [StatsRepository] <<TS>>
-  }
-}
-
-database "SQLite DB" as db <<database>>
-
-[UsersApiController] ..> [AuthService]
-[UsersApiController] ..> [UserService]
-[UsersApiController] ..> [MatchService]
-[UsersApiController] ..> [StatsService]
-
-[AuthService] ..> [UserRepository]
-[UserService] ..> [UserRepository]
-[MatchService] ..> [MatchRepository]
-[StatsService] ..> [StatsRepository]
-
-[UserRepository] --> db
-[MatchRepository] --> db
-[StatsRepository] --> db
-
-note right of [MatchRepository]
-  **Repository Pattern**
-  Abstracts database access
-  Enables testing with mocks
-end note
-
-@enduml
-----
-
-**Motivation:**
-
-UsersService follows a clean architecture with Repository pattern for database abstraction. This service is the source of truth for user data and match state persistence.
-
-**Contained Building Blocks:**
-
-[cols="1,3", options="header"]
-|===
-| Component | Responsibility
-
-| **UsersApiController**
-a| • Exposes internal REST API for Web App Server
-• Endpoints: `/auth/*`, `/users/*`, `/matches/*`, `/stats/*`
-• Input validation and error handling
-
-| **AuthService**
-a| • User registration and authentication logic
-• Password hashing (Argon2)
-• JWT token generation and validation
-
-| **UserService**
-a| • CRUD operations for user accounts
-• User profile management
-
-| **MatchService**
-a| • Match creation and state persistence
-• Stores match metadata (size, strategy, difficulty, participants)
-• Updates match status (ongoing/finished)
-
-| **StatsService**
-a| • Aggregates player statistics (wins/losses/draws)
-• Calculates rankings and metrics
-• Provides historical match data
-
-| **UserRepository**
-a| • Database access layer for `users` table
-• SQL query execution and result mapping
-
-| **MatchRepository**
-a| • Database access layer for `matches` table
-• Stores serialized YEN board states
-
-| **StatsRepository**
-a| • Database access layer for aggregated statistics
-• Optimized read queries for rankings
 |===
