@@ -7,6 +7,8 @@ services:
       - "3000"
     networks:
       - monitor-net
+    volumes:
+      - ./data/users.db:/app/data/users.db
 
   auth:
     build: ./auth
@@ -64,6 +66,8 @@ services:
       - webapp
       - users
       - gamey
+      - gameservice
+      - auth
     networks:
       - monitor-net
     restart: unless-stopped
