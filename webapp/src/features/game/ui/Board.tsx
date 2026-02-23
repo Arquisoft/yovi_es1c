@@ -1,4 +1,4 @@
-import styles from './Board.module.css';
+import { Box, Button } from "@mui/material";
 
 interface BoardProps {
     layout: string;
@@ -8,63 +8,83 @@ interface BoardProps {
     isDark: boolean;
 }
 
-export function Board({ layout, size, onCellClick, currentPlayer, isDark }: BoardProps) {
-    const rows = layout.split('/');
+export function Board({
+                          layout,
+                          size,
+                          onCellClick,
+                          currentPlayer,
+                          isDark,
+                      }: BoardProps) {
+    const rows = layout.split("/");
 
-    const getCellSymbol = (rowIndex: number, colIndex: number): string => {
-        return rows[rowIndex]?.[colIndex] ?? '.';
+    const getCellSymbol = (rowIndex: number, colIndex: number) => {
+        return rows[rowIndex]?.[colIndex] ?? ".";
     };
 
-    const getCellClasses = (symbol: string, isEmpty: boolean): string => {
-        const classes = [styles.cell];
-
-        if (isDark) {
-            classes.push(styles.darkTheme);
-        } else {
-            classes.push(styles.lightTheme);
-        }
-
-        if (isEmpty) {
-            classes.push(styles.empty);
-            classes.push(currentPlayer === 0 ? styles.hoverBlue : styles.hoverRed);
-        } else if (symbol === 'B') {
-            classes.push(styles.blue);
-        } else if (symbol === 'R') {
-            classes.push(styles.red);
-        }
-
-        return classes.join(' ');
-    };
+    const playerColors = ["#4fc3f7", "#f44336"];
 
     return (
-        <div
-            className={`${styles.boardContainer} ${isDark ? styles.darkBoard : styles.lightBoard}`}
-            data-size={size}
+        <Box
+            sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 1,
+                width: "100%",
+            }}
         >
             {Array.from({ length: size }, (_, rowIndex) => {
                 const numCells = rowIndex + 1;
 
                 return (
-                    <div key={rowIndex} className={styles.row}>
+                    <Box
+                        key={rowIndex}
+                        sx={{
+                            display: "flex",
+                            justifyContent: "center",
+                            gap: 1,
+                        }}
+                    >
                         {Array.from({ length: numCells }, (_, colIndex) => {
                             const symbol = getCellSymbol(rowIndex, colIndex);
-                            const isEmpty = symbol === '.';
+                            const isEmpty = symbol === ".";
 
                             return (
-                                <button
+                                <Button
                                     key={colIndex}
                                     onClick={() => isEmpty && onCellClick(rowIndex, colIndex)}
                                     disabled={!isEmpty}
-                                    className={getCellClasses(symbol, isEmpty)}
-                                    aria-label={`Celda fila ${rowIndex + 1}, columna ${colIndex + 1}`}
+                                    sx={{
+                                        minWidth: 40,
+                                        minHeight: 40,
+                                        borderRadius: "50%",
+                                        bgcolor: isEmpty
+                                            ? isDark
+                                                ? "#455a64"
+                                                : "#e0f7fa"
+                                            : symbol === "B"
+                                                ? playerColors[0]
+                                                : playerColors[1],
+                                        color: "#fff",
+                                        fontWeight: "bold",
+                                        transition: "all 0.2s ease",
+                                        "&:hover": {
+                                            bgcolor: isEmpty
+                                                ? currentPlayer === 0
+                                                    ? playerColors[0] + "aa"
+                                                    : playerColors[1] + "aa"
+                                                : undefined,
+                                            transform: isEmpty ? "scale(1.1)" : undefined,
+                                        },
+                                    }}
                                 >
-                                    {symbol !== '.' ? symbol : ''}
-                                </button>
+                                    {symbol !== "." ? symbol : ""}
+                                </Button>
                             );
                         })}
-                    </div>
+                    </Box>
                 );
             })}
-        </div>
+        </Box>
     );
 }

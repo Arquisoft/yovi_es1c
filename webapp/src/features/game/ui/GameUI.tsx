@@ -1,140 +1,252 @@
+import { useLocation } from "react-router-dom";
 import { Board } from "./Board";
 import { useGameController } from "../hooks/useGameController";
-import { useState, useEffect } from 'react';
-import styles from './GameUI.module.css';
+import {
+    Box,
+    Typography,
+    Button,
+    Card,
+    CardContent,
+    Avatar,
+    Stack,
+    Paper,
+} from "@mui/material";
 
 export default function GameUI() {
-    const { state, actions } = useGameController();
-    const { gameMode, gameState, loading, error, message, gameOver, isBoardFull } = state;
-    const [isDark, setIsDark] = useState(
-        window.matchMedia('(prefers-color-scheme: dark)').matches
-    );
-    useEffect(() => {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        const handleChange = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    const location = useLocation();
+    const config = location.state as {
+        boardSize: number;
+        strategy: string;
+        difficulty: string;
+        mode: "BOT" | "LOCAL_2P";
+    } | null;
 
-        mediaQuery.addEventListener('change', handleChange);
-        return () => mediaQuery.removeEventListener('change', handleChange);
-    }, []);
+    const { state, actions } = useGameController(config?.boardSize, config?.mode);
+    const { gameState, loading, error, gameOver } = state;
+
+    const playerColors = ["#4fc3f7", "#f44336"];
 
     return (
-        <div className={styles.gameLayout}>
-            <aside className={styles.sidebar}>
-                <div className={styles.sidebarSection}>
-                    <h3 className={styles.sidebarTitle}>MODO DE JUEGO</h3>
-
-                    <button
-                        type="button"
-                        onClick={() => actions.selectMode("BOT")}
-                        className={`${styles.modeButton} ${gameMode === "BOT" ? styles.active : ''}`}
+        <Box
+            sx={{
+                display: "flex",
+                flexDirection: { xs: "column", md: "row" },
+                minHeight: "100vh",
+                bgcolor: "#e1f5fe",
+                overflowX: "hidden",
+            }}
+        >
+            {/* Sidebar */}
+            <Box
+                sx={{
+                    width: { xs: "100%", md: 280 },
+                    bgcolor: "#29b6f6",
+                    p: 3,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    borderTopRightRadius: { md: 24 },
+                    borderBottomRightRadius: { md: 24 },
+                    mb: { xs: 2, md: 0 },
+                }}
+            >
+                <Box>
+                    <Typography
+                        variant="h5"
+                        gutterBottom
+                        fontWeight="bold"
+                        color="white"
+                        textAlign="center"
                     >
-                        <span className={styles.modeIcon}>🤖</span>
-                        <span>VS Bot</span>
-                    </button>
+                        Información de partida
+                    </Typography>
 
-                    <button
-                        type="button"
-                        onClick={() => actions.selectMode("LOCAL_2P")}
-                        className={`${styles.modeButton} ${gameMode === "LOCAL_2P" ? styles.active : ''}`}
+                    <Stack spacing={2} mt={2}>
+                        {/* Turno */}
+                        <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
+                            <CardContent
+                                sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 2,
+                                    justifyContent: "center",
+                                }}
+                            >
+                                <Avatar
+                                    sx={{
+                                        bgcolor: playerColors[gameState.turn],
+                                        width: 50,
+                                        height: 50,
+                                    }}
+                                />
+                                <Box textAlign="center">
+                                    <Typography variant="subtitle1" fontWeight="bold">
+                                        Turno
+                                    </Typography>
+                                    <Typography variant="body2">
+                                        {gameState.turn === 0
+                                            ? "Jugador 1"
+                                            : config?.mode === "BOT"
+                                                ? "Bot"
+                                                : "Jugador 2"}
+                                    </Typography>
+                                </Box>
+                            </CardContent>
+                        </Card>
+
+                        {/* Modo */}
+                        <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
+                            <CardContent sx={{ textAlign: "center" }}>
+                                <Typography variant="subtitle2" fontWeight="bold">
+                                    Modo
+                                </Typography>
+                                <Typography variant="body2">
+                                    {config?.mode === "BOT" ? "VS Bot" : "2 Jugadores"}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+
+                        {/* Estrategia / dificultad */}
+                        {config?.mode === "BOT" && (
+                            <>
+                                <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
+                                    <CardContent sx={{ textAlign: "center" }}>
+                                        <Typography variant="subtitle2" fontWeight="bold">
+                                            Estrategia
+                                        </Typography>
+                                        <Typography variant="body2">{config.strategy}</Typography>
+                                    </CardContent>
+                                </Card>
+                                <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
+                                    <CardContent sx={{ textAlign: "center" }}>
+                                        <Typography variant="subtitle2" fontWeight="bold">
+                                            Dificultad
+                                        </Typography>
+                                        <Typography variant="body2">{config.difficulty}</Typography>
+                                    </CardContent>
+                                </Card>
+                            </>
+                        )}
+                    </Stack>
+                </Box>
+
+                <Button
+                    variant="contained"
+                    onClick={actions.newGame}
+                    sx={{
+                        mt: 4,
+                        py: 2,
+                        fontWeight: "bold",
+                        borderRadius: 12,
+                        bgcolor: "#03a9f4",
+                        "&:hover": { bgcolor: "#0288d1" },
+                        width: "100%",
+                        boxShadow: 5,
+                        fontSize: "1.2rem",
+                    }}
+                >
+                    🎮 Reiniciar partida
+                </Button>
+            </Box>
+
+            {/* Main Game Area */}
+            <Box
+                sx={{
+                    flexGrow: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "flex-start",
+                    p: { xs: 2, md: 4 },
+                }}
+            >
+                {/* Título gamificado */}
+                <Typography
+                    variant="h3"
+                    gutterBottom
+                    fontWeight="bold"
+                    sx={{
+                        textAlign: "center",
+                        mb: 2,
+                        background: "linear-gradient(90deg, #4fc3f7, #0288d1)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                    }}
+                >
+                    ¡Tu partida de Y!
+                </Typography>
+
+                {/* Mensajes */}
+                {error && (
+                    <Paper
+                        sx={{
+                            bgcolor: "#ffcdd2",
+                            p: 2,
+                            borderRadius: 4,
+                            my: 1,
+                            width: { xs: "100%", md: "80%" },
+                        }}
                     >
-                        <span className={styles.modeIcon}>👥</span>
-                        <span>2 Jugadores</span>
-                    </button>
-                </div>
+                        <Typography color="error" align="center">
+                            {error}
+                        </Typography>
+                    </Paper>
+                )}
 
-                <div className={styles.sidebarSection}>
-                    <h3 className={styles.sidebarTitle}>TAMAÑO</h3>
-
-                    <button
-                        type="button"
-                        onClick={() => actions.changeSize(8)}
-                        className={`${styles.sizeButton} ${gameState.size === 8 ? styles.active : ''}`}
+                {loading && (
+                    <Paper
+                        sx={{
+                            bgcolor: "#b3e5fc",
+                            p: 2,
+                            borderRadius: 4,
+                            my: 1,
+                            width: { xs: "100%", md: "80%" },
+                        }}
                     >
-                        8x8
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => actions.changeSize(16)}
-                        className={`${styles.sizeButton} ${gameState.size === 16 ? styles.active : ''}`}
-                    >
-                        16x16
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => actions.changeSize(32)}
-                        className={`${styles.sizeButton} ${gameState.size === 32 ? styles.active : ''}`}
-                    >
-                        32x32
-                    </button>
-                </div>
+                        <Typography color="info.main" align="center">
+                            Bot pensando...
+                        </Typography>
+                    </Paper>
+                )}
 
-                <div className={styles.statsSection}>
-                    <h3 className={styles.sidebarTitle}>ESTADÍSTICAS</h3>
-                    <div className={styles.statItem}>
-                        <span className={styles.statLabel}>Modo:</span>
-                        <span className={styles.statValue}>
-                            {gameMode === "BOT" ? "VS Bot" : "2P"}
-                        </span>
-                    </div>
-                    <div className={styles.statItem}>
-                        <span className={styles.statLabel}>Estado:</span>
-                        <span className={styles.statValue}>
-                            {gameOver ? "Finalizado" : "En juego"}
-                        </span>
-                    </div>
-                </div>
-            </aside>
-
-            <main className={styles.gameArea}>
-                <div className={styles.turnIndicator}>
-                    {gameMode === "BOT"
-                        ? (gameState.turn === 0 ? "Tu turno" : "Turno del Bot")
-                        : (gameState.turn === 0 ? "Jugador 1" : "Jugador 2")}
-                </div>
-
-                {message && <p className={styles.message}>{message}</p>}
-                {loading && gameMode === "BOT" && <p className={styles.loading}>Bot pensando...</p>}
-                {error && <p className={styles.error}>{error}</p>}
-
-                <div className={styles.boardWrapper}>
+                <Paper
+                    elevation={6}
+                    sx={{
+                        mt: 3,
+                        p: 2,
+                        borderRadius: 4,
+                        bgcolor: "#81d4fa",
+                        display: "flex",
+                        justifyContent: "center",
+                        overflow: "auto",
+                        width: "100%",
+                        maxWidth: 600,
+                    }}
+                >
                     <Board
                         layout={gameState.layout}
                         size={gameState.size}
                         onCellClick={actions.handleCellClick}
                         currentPlayer={gameState.turn}
-                        isDark={isDark}
+                        isDark={false}
                     />
-                </div>
+                </Paper>
 
-                {isBoardFull && gameOver && (
-                    <p className={styles.gameOver}>Partida terminada</p>
+                {gameOver && (
+                    <Typography
+                        variant="h4"
+                        color="secondary"
+                        sx={{
+                            mt: 3,
+                            fontWeight: "bold",
+                            textShadow: "1px 1px 2px #f44336",
+                            textAlign: "center",
+                        }}
+                    >
+                        ¡Partida terminada!
+                    </Typography>
                 )}
-            </main>
-
-            <footer className={styles.footer}>
-                <button
-                    type="button"
-                    onClick={actions.newGame}
-                    className={styles.newGameButton}
-                >
-                    🎮 Nueva Partida
-                </button>
-
-                <div className={styles.gameInfo}>
-                    <div className={styles.infoItem}>
-                        <span className={styles.infoLabel}>JUGADOR ACTUAL</span>
-                        <span className={styles.infoValue}>
-                            {gameState.turn === 0 ? "Azul" : "Rojo"}
-                        </span>
-                    </div>
-                    <div className={styles.infoItem}>
-                        <span className={styles.infoLabel}>TABLERO</span>
-                        <span className={styles.infoValue}>
-                            {gameState.size}x{gameState.size}
-                        </span>
-                    </div>
-                </div>
-            </footer>
-        </div>
+            </Box>
+        </Box>
     );
 }

@@ -3,6 +3,7 @@ import styles from './styles/App.module.css';
 import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
 import GameUI from '../features/game/ui/GameUI.tsx';
 import Nav from '../components/layout/Nav';
+import CreateMatchPage from '../features/game/ui/CreateMatchPage';
 
 function App() {
     return (
@@ -17,6 +18,8 @@ function App() {
                             <RegisterForm />
                         </div>
                     } />
+
+                    <Route path="/create-match" element={<CreateMatchPage />} />
 
                     <Route path="/gamey" element={<GameUI />} />
 

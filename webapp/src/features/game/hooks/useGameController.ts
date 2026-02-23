@@ -10,19 +10,27 @@ import {
 
 export type GameMode = "BOT" | "LOCAL_2P";
 
-const BOARD_SIZE = 8;
-
 const GAMEY_URL =
     import.meta.env.VITE_GAMEY_API_URL ?? "http://localhost:4000";
 
-export const useGameController = () => {
-    const [gameMode, setGameMode] = useState<GameMode>("BOT");
+export const useGameController = (
+    initialSize: number = 8,
+    initialMode: GameMode = "BOT"
+) => {
+    // Tamaño inicial del tablero
+    const boardSize = initialSize;
+
+    // Modo inicial (BOT o LOCAL_2P)
+    const [gameMode, setGameMode] = useState<GameMode>(initialMode);
+
+    // Estado inicial del tablero
     const [gameState, setGameState] = useState<YenPositionDto>(() =>
-        createEmptyYEN(BOARD_SIZE)
+        createEmptyYEN(boardSize)
     );
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [message, setMessage] = useState<string>("Click a cell to play");
+    const [message, setMessage] = useState<string>("Pulse en una celda para comenzar");
     const [gameOver, setGameOver] = useState(false);
 
     const isBoardFull = useMemo(() => {
@@ -37,18 +45,18 @@ export const useGameController = () => {
 
     const resetGame = (nextMode: GameMode) => {
         setGameMode(nextMode);
-        setGameState(createEmptyYEN(BOARD_SIZE));
+        setGameState(createEmptyYEN(boardSize));
         setLoading(false);
         setError(null);
         setGameOver(false);
-        setMessage("Click a cell to play");
+        setMessage("Pulse en una celda para comenzar");
     };
 
     const changeSize = (newSize: number) => {
         const emptyLayout = Array(newSize)
             .fill(null)
-            .map((_, i) => '.'.repeat(i + 1))
-            .join('/');
+            .map((_, i) => ".".repeat(i + 1)) // tablero triangular
+            .join("/");
 
         setGameState({
             ...gameState,
@@ -56,7 +64,8 @@ export const useGameController = () => {
             layout: emptyLayout,
             turn: 0,
         });
-        setMessage('');
+
+        setMessage("");
         setGameOver(false);
         setError(null);
     };
@@ -88,8 +97,8 @@ export const useGameController = () => {
                     setMessage("Board full — game over");
                 } else {
                     setMessage(
-                        `Turn: ${
-                            nextState.turn === 0 ? "Player 1 (Blue)" : "Player 2 (Red)"
+                        `Turno: ${
+                            nextState.turn === 0 ? "Jugador 1 (Azul)" : "Jugador 2 (Rojo)"
                         }`
                     );
                 }
@@ -99,6 +108,7 @@ export const useGameController = () => {
             return;
         }
 
+        // --- MODO BOT ---
         setGameState((prevState) => {
             const humanLayout = updateLayout(
                 prevState.layout,
@@ -131,6 +141,7 @@ export const useGameController = () => {
 
     const callBot = async (humanState: YenPositionDto) => {
         if (gameMode !== "BOT") return;
+
         setLoading(true);
         setError(null);
         setMessage("Bot is thinking...");
@@ -150,7 +161,7 @@ export const useGameController = () => {
                     const parsed = JSON.parse(rawBody) as { error?: string; message?: string };
                     serverMessage = parsed.error ?? parsed.message ?? rawBody;
                 } catch {
-                    // Text body is not JSON, so just use it as-is
+                    //
                 }
 
                 setError(`Bot error: ${serverMessage}`);
@@ -207,7 +218,6 @@ export const useGameController = () => {
             setLoading(false);
         }
     };
-
 
     return {
         state: { gameMode, gameState, loading, error, message, gameOver, isBoardFull },
