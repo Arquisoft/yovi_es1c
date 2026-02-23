@@ -3,25 +3,83 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-technical-risks]]
 == Risks and Technical Debts
 
-
 ifdef::arc42help[]
 [role="arc42help"]
 ****
 .Contents
-A list of identified technical risks or technical debts, ordered by priority
-
-.Motivation
-“Risk management is project management for grown-ups” (Tim Lister, Atlantic Systems Guild.) 
-
-This should be your motto for systematic detection and evaluation of risks and technical debts in the architecture, which will be needed by management stakeholders (e.g. project managers, product owners) as part of the overall risk analysis and measurement planning.
-
-.Form
-List of risks and/or technical debts, probably including suggested measures to minimize, mitigate or avoid risks or reduce technical debts.
-
-
-.Further Information
-
-See https://docs.arc42.org/section-11/[Risks and Technical Debt] in the arc42 documentation.
-
+A list of identified technical risks or technical debts, ordered by priority.
 ****
 endif::arc42help[]
+
+We identified some technical risks that can affect the development of the Y game project. These risks must be identified and registered, and we can mitigate or accept them.
+
+=== Risks
+
+Risks can appear like part of Quality Attributes scenarios. We categorized the next ones based on the risk criteria of the project.
+
+.Risk table
+[options="header",cols="2,4,4,1,1,1"]
+|===
+|Area (Risk Criterion)
+|Brief Description
+|Mitigation measures
+|Probability (1-3)
+|Impact (1-3)
+|Total Risk
+
+|*Security*
+|The project needs to pass strict security tests. There is a risk to not complete these requirements when we implement the backend and expose vulnerabilities in the game or the connection.
+|Do early validations, use security tools integrated in the Rust compiler (cargo audit) and make exhaustive code reviews.
+| 2
+| 2
+| *4*
+
+|*Data Integrity*
+|The system now uses three independent databases (`auth.db`, `users.db`, `game.db`). Operations that span multiple services (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level without native transaction support across services. This increases the risk of partial failures leaving data in an inconsistent state.
+|Implement compensating operations for cross-service data changes. Define clear ownership rules per data domain. Add integration tests that verify consistency across services after multi-step operations.
+| 2
+| 3
+| *6*
+
+|*Performance*
+|The game engine in Rust must allow to play against a bot with different strategies. If the decision algorithms of the robot are not optimized, the response time can degrade the experience of the user.
+|Design efficient AI strategies, measure times of execution (benchmarking) in the Rust engine from the first sprints and profile the code if there is bottlenecks.
+| 2
+| 2
+| *4*
+
+|*Inter-service Communication Complexity*
+|The separation into three independent backend services (Auth Service, Users Service, Game Service) introduces inter-service HTTP calls for operations that previously were internal (e.g., JWT verification, linking statistics to user profiles). This adds latency, increases the number of potential failure points, and complicates local development and debugging.
+|Define clear and versioned internal API contracts between services. Use Docker Compose to simplify local multi-service orchestration. Implement timeouts and fallback strategies for inter-service calls. Add end-to-end tests that cover cross-service flows.
+| 2
+| 2
+| *4*
+
+|*Unknowns*
+|Lack of deep knowledge in the ownership model of Rust and the typing of TypeScript. Sometimes we don't have enough information about how an architecture can satisfy the requirements.
+|Dedicate initial time to Proof of Concepts (PoC), read official documentation and establish pair programming to level the knowledge of the team.
+| 3
+| 3
+| *9*
+
+|===
+
+=== Technical debts
+
+[options="header",cols="3,5"]
+|===
+|Technical debt
+|Brief description
+
+|*External API Dependency*
+|Our app depends a lot of external services (like map services or data APIs). If those services change their API or go down, parts of our app will stop working. Right now, we don't have a good abstraction layer to swap those services easily.
+
+|*Network Inconsistency*
+|The performance of the app depends directly on how good the user's internet connection is. We still haven't implemented a solid offline mode or cache system (like Service Workers), so with a bad connection the user experience will be very bad.
+
+|*Monolithic Configuration*
+|Because we don't have much experience with server deployment, our first configuration will probably be a bit hardcoded or less modular than it should be. Later we need to refactor this to move to a more scalable setup using environment variables.
+
+|*Cross-service Data Consistency*
+|Operations that affect multiple data domains (e.g., user deletion, which must remove records from `auth.db`, `users.db`, and `game.db`) currently have no distributed transaction mechanism. This is accepted as a technical debt for the academic scope of the project and should be addressed with compensating transactions or a saga pattern in a production-grade system.
+|===
