@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { act } from 'react';
-import GameUI from '../features/game/ui/GameUI';
+import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as useGameControllerModule from '../features/game/hooks/useGameController';
 

@@ -1,0 +1,47 @@
+/* Contenedor que permite scroll si el tablero es demasiado grande */
+.board-container {
+    width: 100%;
+    max-width: 100%;
+    max-height: 80vh; /* no ocupar más del 80% de la pantalla vertical */
+    overflow: auto; /* scroll horizontal y vertical si hace falta */
+    padding: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.board {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.row {
+    display: flex;
+    justify-content: center;
+}
+
+.cell {
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* MEDIA QUERIES para móviles y tablets */
+@media (max-width: 768px) {
+    .cell {
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        min-height: 24px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .cell {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+        min-height: 20px !important;
+    }
+}

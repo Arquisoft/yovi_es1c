@@ -1,45 +1,26 @@
 import { useMemo, useState } from "react";
-import type { ChooseMoveResponseDto, YenPositionDto } from "../../../shared/contracts";
-import {
-    checkWinner,
-    createEmptyYEN,
-    getCellSymbol,
-    rowColFromCoords,
-    updateLayout,
-} from "../domain/yen";
+import type { YenPositionDto } from "../../../shared/contracts";
+import { checkWinner, updateLayout, getCellSymbol, createEmptyYEN } from "../domain/yen";
 
 export type GameMode = "BOT" | "LOCAL_2P";
 
-const GAMEY_URL =
-    import.meta.env.VITE_GAMEY_API_URL ?? "http://localhost:4000";
-
 export const useGameController = (
     initialSize: number = 8,
-    initialMode: GameMode = "BOT"
+    initialMode: GameMode = "BOT",
+    initialYEN?: YenPositionDto
 ) => {
-    // Tamaño inicial del tablero
     const boardSize = initialSize;
-
-    // Modo inicial (BOT o LOCAL_2P)
     const [gameMode, setGameMode] = useState<GameMode>(initialMode);
-
-    // Estado inicial del tablero
-    const [gameState, setGameState] = useState<YenPositionDto>(() =>
-        createEmptyYEN(boardSize)
-    );
+    const [gameState, setGameState] = useState<YenPositionDto>(() => initialYEN ?? createEmptyYEN(boardSize));
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [message, setMessage] = useState<string>("Pulse en una celda para comenzar");
     const [gameOver, setGameOver] = useState(false);
 
-    const isBoardFull = useMemo(() => {
-        return !gameState.layout.includes(".");
-    }, [gameState.layout]);
+    const isBoardFull = useMemo(() => !gameState.layout.includes("."), [gameState.layout]);
 
     const announceWinner = (label: string) => {
         setGameOver(true);
-        setMessage(`¡Felicidades ${label}!`);
         window.alert(`¡Felicidades ${label}!`);
     };
 
@@ -49,183 +30,32 @@ export const useGameController = (
         setLoading(false);
         setError(null);
         setGameOver(false);
-        setMessage("Pulse en una celda para comenzar");
     };
 
-    const changeSize = (newSize: number) => {
-        const emptyLayout = Array(newSize)
-            .fill(null)
-            .map((_, i) => ".".repeat(i + 1)) // tablero triangular
-            .join("/");
-
-        setGameState({
-            ...gameState,
-            size: newSize,
-            layout: emptyLayout,
-            turn: 0,
-        });
-
-        setMessage("");
-        setGameOver(false);
-        setError(null);
-    };
-
-    const handleCellClick = async (row: number, col: number) => {
+    const handleCellClick = (row: number, col: number) => {
         if (loading || gameOver) return;
         if (gameMode === "BOT" && gameState.turn !== 0) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
 
-        if (gameMode === "LOCAL_2P") {
-            setGameState((prevState) => {
-                const nextSymbol =
-                    prevState.turn === 0 ? prevState.players[0] : prevState.players[1];
+        setGameState(prev => {
+            const nextSymbol = prev.turn === 0 ? prev.players[0] : prev.players[1];
+            const newLayout = updateLayout(prev.layout, row, col, nextSymbol);
+            const nextState = { ...prev, layout: newLayout, turn: prev.turn === 0 ? 1 : 0 };
 
-                const nextLayout = updateLayout(prevState.layout, row, col, nextSymbol);
-
-                const nextState: YenPositionDto = {
-                    ...prevState,
-                    layout: nextLayout,
-                    turn: prevState.turn === 0 ? 1 : 0,
-                };
-
-                if (checkWinner(nextLayout, prevState.size, nextSymbol)) {
-                    announceWinner(
-                        nextSymbol === prevState.players[0] ? "Jugador 1" : "Jugador 2"
-                    );
-                } else if (!nextLayout.includes(".")) {
-                    setGameOver(true);
-                    setMessage("Board full — game over");
-                } else {
-                    setMessage(
-                        `Turno: ${
-                            nextState.turn === 0 ? "Jugador 1 (Azul)" : "Jugador 2 (Rojo)"
-                        }`
-                    );
-                }
-
-                return nextState;
-            });
-            return;
-        }
-
-        // --- MODO BOT ---
-        setGameState((prevState) => {
-            const humanLayout = updateLayout(
-                prevState.layout,
-                row,
-                col,
-                prevState.players[0]
-            );
-
-            const humanState: YenPositionDto = {
-                ...prevState,
-                layout: humanLayout,
-                turn: 1,
-            };
-
-            if (checkWinner(humanLayout, prevState.size, prevState.players[0])) {
-                announceWinner("Jugador 1");
-                return humanState;
+            if (checkWinner(newLayout, prev.size, nextSymbol)) {
+                announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
             }
 
-            if (!humanLayout.includes(".")) {
-                setGameOver(true);
-                setMessage("Board full — game over");
-                return humanState;
-            }
-
-            callBot(humanState);
-            return humanState;
+            return nextState;
         });
     };
 
-    const callBot = async (humanState: YenPositionDto) => {
-        if (gameMode !== "BOT") return;
-
-        setLoading(true);
-        setError(null);
-        setMessage("Bot is thinking...");
-
-        try {
-            const res = await fetch(`${GAMEY_URL}/v1/ybot/choose/random_bot`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(humanState),
-            });
-
-            if (!res.ok) {
-                const rawBody = await res.text();
-                let serverMessage = rawBody;
-
-                try {
-                    const parsed = JSON.parse(rawBody) as { error?: string; message?: string };
-                    serverMessage = parsed.error ?? parsed.message ?? rawBody;
-                } catch {
-                    //
-                }
-
-                setError(`Bot error: ${serverMessage}`);
-                setMessage("Error talking to bot");
-                setGameState({ ...humanState, turn: 0 });
-                return;
-            }
-
-            const data: ChooseMoveResponseDto = await res.json();
-            const mapped = rowColFromCoords(data.coords, humanState.size);
-
-            if (!mapped) {
-                setMessage(
-                    `Bot suggested coords (${data.coords.x}, ${data.coords.y}, ${data.coords.z})`
-                );
-                setGameState({ ...humanState, turn: 0 });
-                return;
-            }
-
-            if (getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
-                setMessage(`Bot suggested an occupied cell (${mapped.row}, ${mapped.col})`);
-                setGameState({ ...humanState, turn: 0 });
-                return;
-            }
-
-            const botLayout = updateLayout(
-                humanState.layout,
-                mapped.row,
-                mapped.col,
-                humanState.players[1]
-            );
-
-            const botState: YenPositionDto = {
-                ...humanState,
-                layout: botLayout,
-                turn: 0,
-            };
-
-            setGameState(botState);
-
-            if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
-                announceWinner("Jugador 2 (Bot)");
-            } else if (!botLayout.includes(".")) {
-                setGameOver(true);
-                setMessage("Board full — game over");
-            } else {
-                setMessage(`Bot played at (${mapped.row}, ${mapped.col}) — your turn again`);
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Error");
-            setMessage("Error talking to bot");
-            setGameState({ ...humanState, turn: 0 });
-        } finally {
-            setLoading(false);
-        }
-    };
-
+    // ← Aquí al final del hook retornas el estado y las acciones
     return {
-        state: { gameMode, gameState, loading, error, message, gameOver, isBoardFull },
+        state: { gameMode, gameState, loading, error, gameOver, isBoardFull },
         actions: {
-            selectMode: resetGame,
-            newGame: () => resetGame(gameMode),
+            newGame: () => resetGame(gameMode), // ahora puedes usar actions.newGame
             handleCellClick,
-            changeSize,
         },
     };
 };

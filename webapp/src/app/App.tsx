@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import styles from './styles/App.module.css';
 import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
-import GameUI from '../features/game/ui/GameUI.tsx';
+import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
-import CreateMatchPage from '../features/game/ui/CreateMatchPage';
+import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
 
 function App() {
     return (

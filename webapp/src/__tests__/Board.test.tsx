@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Board } from '../features/game/ui/Board';
+import { Board } from '../features/game/ui/tsx/Board.tsx';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 describe('Board Component', () => {

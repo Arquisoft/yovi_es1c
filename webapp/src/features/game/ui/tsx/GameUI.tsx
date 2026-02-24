@@ -1,6 +1,6 @@
 import { useLocation } from "react-router-dom";
-import { Board } from "./Board";
-import { useGameController } from "../hooks/useGameController";
+import { Board } from "./Board.tsx";
+import { useGameController } from "../../hooks/useGameController.ts";
 import {
     Box,
     Typography,
@@ -11,8 +11,9 @@ import {
     Stack,
     Paper,
 } from "@mui/material";
-import fondo from "./fondo.jpg";
-import styles from "./GameUI.module.css";
+import fondo from "../../images/fondo.jpg";
+import styles from "../css/GameUI.module.css";
+import type {YenPositionDto} from "../../../../shared/contracts";
 
 export default function GameUI() {
     const location = useLocation();
@@ -21,9 +22,10 @@ export default function GameUI() {
         strategy: string;
         difficulty: string;
         mode: "BOT" | "LOCAL_2P";
+        initialYEN?: YenPositionDto;
     } | null;
 
-    const { state, actions } = useGameController(config?.boardSize, config?.mode);
+    const { state, actions } = useGameController(config?.boardSize, config?.mode, config?.initialYEN);
     const { gameState, loading, error, gameOver } = state;
     const playerColors = ["#00fff7", "#ff00d4"]; // neon colors
 

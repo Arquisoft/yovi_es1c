@@ -1,5 +1,5 @@
 import { Box, Button } from "@mui/material";
-import styles from "./Board.module.css";
+import styles from "../css/Board.module.css";
 
 interface BoardProps {
     layout: string;
@@ -18,6 +18,7 @@ export function Board({ layout, size, onCellClick }: BoardProps) {
     };
 
     return (
+        <Box className={styles["board-container"]}>
         <Box
             className={styles.board}
             sx={{
@@ -64,6 +65,7 @@ export function Board({ layout, size, onCellClick }: BoardProps) {
                     })}
                 </Box>
             ))}
+        </Box>
         </Box>
     );
 }

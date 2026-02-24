@@ -91,3 +91,41 @@
     text-shadow: 0 0 10px #00fff7, 0 0 15px #ff00d4;
     text-align: center;
 }
+
+/* Mobile tweaks */
+@media (max-width: 600px) {
+    .mainBox {
+        border-radius: 12px;
+        box-shadow: 0 0 10px rgba(0,255,255,0.2), 0 0 10px rgba(255,0,212,0.2);
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid rgba(0,255,255,0.5);
+        padding: 16px;
+    }
+
+    .gameTitle {
+        font-size: 1.8rem;
+    }
+
+    .restartButton {
+        width: 100%;
+        font-size: 1rem;
+        padding: 12px;
+    }
+}
+
+/* Tablet tweaks */
+@media (min-width: 601px) and (max-width: 960px) {
+    .mainBox {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        max-width: none;
+        border-right: none;
+        border-bottom: 1px solid rgba(0,255,255,0.5);
+    }
+}
