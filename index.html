@@ -1200,6 +1200,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p><code>POST /api/auth/refresh</code> - JWT token refresh</p>
 </li>
+<li>
+<p><code>POST /api/auth/verify</code> - JWT verification endpoint for internal service-to-service authorization checks (must not be exposed publicly)</p>
+</li>
 </ul>
 </div>
 <div class="paragraph">
@@ -2747,7 +2750,7 @@ The frontend makes API calls through Nginx, which routes authentication requests
 <h3 id="_runtime_scenario_2_authorization_check">6.2. Runtime Scenario 2: Authorization Check</h3>
 <div class="paragraph">
 <p>When a user requests protected resources, the React Frontend includes the JWT token in the request headers.
-Nginx forwards the request to the appropriate service, which verifies the token internally or delegates to Auth Service.</p>
+Nginx forwards the request to the appropriate service, which delegates JWT verification to Auth Service through an internal call to <code>/api/auth/verify</code>.</p>
 </div>
 <div class="imageblock">
 <div class="content">
@@ -2770,6 +2773,34 @@ Nginx forwards the request to the appropriate service, which verifies the token 
 </li>
 <li>
 <p>Nginx simply routes requests without authentication logic</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Verify endpoint contract used by internal services:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Method and path: <code>POST /api/auth/verify</code></p>
+</li>
+<li>
+<p>Internal URL (Docker network): <code>AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify</code></p>
+</li>
+<li>
+<p>Token input: preferred <code>Authorization: Bearer &lt;accessToken&gt;</code> (compatible fallback: JSON body <code>{ "token": "&lt;accessToken&gt;" }</code>)</p>
+</li>
+<li>
+<p>Success response (<code>200</code>): <code>{ "valid": true, "claims": { "sub": "&lt;userId&gt;", "username": "&lt;username&gt;", "tokenType": "access", "iat": &lt;epoch&gt;, "exp": &lt;epoch&gt; } }</code></p>
+</li>
+<li>
+<p>Error response (<code>401</code>): <code>{ "valid": false }</code> for missing, malformed, invalid, expired, or non-access tokens</p>
+</li>
+<li>
+<p>Security boundary: <code>/api/auth/verify</code> must not be exposed publicly through Nginx and should be consumed only over internal service-to-service network calls</p>
+</li>
+<li>
+<p>Client resilience policy for internal callers: use short timeouts (<code>500ms</code> to <code>1s</code>) and <code>0-1</code> retries to avoid cascading failures</p>
 </li>
 </ul>
 </div>
@@ -2816,7 +2847,7 @@ The frontend sends the current game state to the Game Server for bot move comput
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/runtime-human-move.png" alt="runtime human move" width="1077" height="974">
+<img src="./images/runtime-human-move.png" alt="runtime human move" width="1130" height="1034">
 </div>
 </div>
 <div class="paragraph">
@@ -3075,7 +3106,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <div class="ulist">
 <ul>
 <li>
-<p><code>/api/auth/*</code> → Auth Service (port 3001)</p>
+<p><code>/api/auth/*</code> → Auth Service (port 3001), except <code>/api/auth/verify</code> (blocked externally with 403)</p>
 </li>
 <li>
 <p><code>/api/users/*</code> → Users Service (port 3000)</p>
@@ -3145,6 +3176,22 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p>React updates the UI with the new board state</p>
 </li>
 </ol>
+</div>
+<div class="paragraph">
+<p><strong>Internal Auth verification call (service-to-service only):</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Internal URL env var: <code>AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify</code></p>
+</li>
+<li>
+<p>Recommended timeout in callers: <code>500ms</code> to <code>1s</code></p>
+</li>
+<li>
+<p>Recommended retries: <code>0-1</code> (avoid retry storms)</p>
+</li>
+</ul>
 </div>
 <div class="paragraph">
 <p><strong>Data Storage and Fault Isolation:</strong></p>
@@ -3360,7 +3407,7 @@ Nginx acts as the single public entry point, isolating backend services from dir
 </li>
 <li>
 <p><strong>Authentication and Authorization:</strong>
-Only authenticated users can access certain features, such as creating matches or viewing their profile. The Users Service handles all authentication using JWT tokens.</p>
+Only authenticated users can access certain features, such as creating matches or viewing their profile. The Auth Service handles JWT authentication and exposes token verification for internal service-to-service authorization checks.</p>
 </li>
 <li>
 <p><strong>Password Protection:</strong>
@@ -3368,7 +3415,7 @@ Passwords are never stored in plain text. Instead, they are hashed and salted be
 </li>
 <li>
 <p><strong>Data Protection:</strong>
-We only store the minimum amount of user information needed for the system to work. The database is accessible only through the Users Service, ensuring data access control.</p>
+We only store the minimum amount of user information needed for the system to work. Data is split by domain with strict ownership: <code>auth.db</code> is accessible only through Auth Service, <code>users.db</code> only through Users Service, and <code>game.db</code> only through Game Service.</p>
 </li>
 <li>
 <p><strong>CORS and Rate Limiting:</strong>
@@ -3392,7 +3439,10 @@ application, we split the project into several smaller, independent services:</p
 <p><strong>Nginx:</strong> The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, and serves the React frontend static files.</p>
 </li>
 <li>
-<p><strong>Users Service (users/):</strong> Node.js + Express + TypeScript service that manages user registration, authentication, match persistence, and statistics. It is the single point of access to the SQLite database.</p>
+<p><strong>Auth Service (auth/):</strong> Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to <code>auth.db</code>.</p>
+</li>
+<li>
+<p><strong>Users Service (users/):</strong> Node.js + Express + TypeScript service that manages user profiles, match persistence, and statistics. It is the single point of access to <code>users.db</code>.</p>
 </li>
 <li>
 <p><strong>Game Server (gamey/):</strong> Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.</p>
@@ -3464,27 +3514,26 @@ This helps detect errors early and keeps all services aligned.</p>
 <div class="sect2">
 <h3 id="_persistence_layer">8.6. Persistence Layer</h3>
 <div class="paragraph">
-<p>The application relies on a SQL database (SQLite - relational database) that will
-manage the data of the application related to user accounts, match history, and statistics.</p>
+<p>The application relies on SQL databases (SQLite - relational database) split by domain: <code>auth.db</code>, <code>users.db</code>, and <code>game.db</code>.</p>
 </div>
 <div class="paragraph">
-<p>The database is accessed exclusively by the Users Service. This design decision ensures:</p>
+<p>Each database is accessed exclusively by its owning service. This design decision ensures:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Data Consistency:</strong> Only one service manages database transactions</p>
+<p><strong>Data Consistency:</strong> each service manages transactions in its own domain</p>
 </li>
 <li>
-<p><strong>Security:</strong> Other services cannot directly access or modify the database</p>
+<p><strong>Security:</strong> other services cannot directly access or modify another service&#8217;s database</p>
 </li>
 <li>
-<p><strong>Separation of Concerns:</strong> Game Server remains stateless and focused on game logic</p>
+<p><strong>Separation of Concerns:</strong> Auth handles credentials/tokens, Users handles profiles/statistics, and Game handles match state</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p>Game sessions are computed in memory by the Rust Game Server, which is stateless. When a match needs to be persisted (for history or resuming later), the Users Service stores the game state in YEN notation in the SQLite database.</p>
+<p>Game sessions are computed in memory by the Rust Game Server and persisted to <code>game.db</code> when needed (history/resume). Credentials and token metadata remain exclusive to Auth Service in <code>auth.db</code>.</p>
 </div>
 <div class="paragraph">
 <p>If additional persistence requirements arise in the future (for example, caching or match replay functionality), the system can be extended without affecting the existing services thanks to the microservice-based design.</p>
@@ -4277,7 +4326,7 @@ Each database is mounted as an independent Docker volume, and no service has acc
 <div id="footer">
 <div id="footer-text">
 Version 8.2 EN<br>
-Last updated 2026-01-27 09:51:23 +0100
+Last updated 2026-02-22 22:23:46 +0100
 </div>
 </div>
 </body>
