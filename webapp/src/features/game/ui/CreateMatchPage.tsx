@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-    Container,
     Paper,
     Typography,
     FormControl,
@@ -16,9 +15,9 @@ import {
 export default function CreateMatchPage() {
     const navigate = useNavigate();
 
-    const [boardSize, setBoardSize] = useState(8);
-    const [strategy, setStrategy] = useState("random");
-    const [difficulty, setDifficulty] = useState("medium");
+    const [boardSize, setBoardSize] = useState<number>(8);
+    const [strategy, setStrategy] = useState<string>("random");
+    const [difficulty, setDifficulty] = useState<string>("medium");
     const [mode, setMode] = useState<"BOT" | "LOCAL_2P">("BOT");
 
     const handleCreateMatch = () => {
@@ -27,43 +26,68 @@ export default function CreateMatchPage() {
     };
 
     return (
-        <Container maxWidth="sm" sx={{ mt: 6, mb: 6 }}>
+        <Box
+            sx={{
+                position: "absolute",
+                top: 70,
+                left: 0,
+                right: 0,
+                minHeight: "calc(100vh - 70px)",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                p: 2,
+                overflow: "auto",
+                background: "radial-gradient(circle at top, #000 0%, #001133 70%)",
+            }}
+        >
             <Paper
-                elevation={6}
+                elevation={12}
                 sx={{
-                    p: 4,
-                    borderRadius: 5,
-                    backgroundColor: "#fff",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+                    width: "100%",
+                    maxWidth: 500,
+                    padding: 4,
+                    borderRadius: 2,
+                    backgroundColor: "#111",
+                    boxShadow: "0 0 10px #ff00d4, 0 0 20px #ff00d4",
+                    border: "1px solid #ff00d4",
+                    margin: "0 auto",
                 }}
             >
                 <Box textAlign="center" mb={4}>
                     <Typography
                         variant="h4"
-                        fontWeight="bold"
-                        color="#0288d1"
-                        mt={1}
-                        mb={1}
+                        sx={{
+                            fontWeight: "bold",
+                            color: "#fff",
+                            textShadow: "0 0 5px #ff00d4",
+                            mb: 1,
+                        }}
                     >
                         Crear nueva partida
                     </Typography>
-                    <Typography variant="subtitle1" color="#555">
+                    <Typography variant="subtitle1" sx={{ color: "#ccc" }}>
                         Configura tu partida y empieza a jugar
                     </Typography>
                 </Box>
 
                 <Stack spacing={3}>
-                    {/* Tamaño del tablero */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#f5f5f5", borderRadius: 3 }}>
+                    <FormControl
+                        fullWidth
+                        sx={{
+                            backgroundColor: "#222",
+                            borderRadius: 2,
+                            border: "1px solid #ff00d4",
+                            "& .MuiInputLabel-root": { color: "#fff" },
+                            "& .MuiInputLabel-root.Mui-focused": { color: "#fff" },
+                        }}
+                    >
                         <InputLabel>Tamaño del tablero</InputLabel>
                         <Select
                             value={boardSize}
-                            label="Tamaño del tablero"
-                            onChange={(e) => setBoardSize(Number(e.target.value))}
-                            sx={{
-                                borderRadius: 3,
-                                "& .MuiSelect-select": { padding: "12px" },
-                            }}
+                            onChange={(e) =>
+                                setBoardSize(Number(e.target.value))}
+                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value={8}>8 x 8</MenuItem>
                             <MenuItem value={16}>16 x 16</MenuItem>
@@ -71,34 +95,42 @@ export default function CreateMatchPage() {
                         </Select>
                     </FormControl>
 
-                    {/* Estrategia */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#f5f5f5", borderRadius: 3 }}>
+                    <FormControl
+                        fullWidth
+                        sx={{
+                            backgroundColor: "#222",
+                            borderRadius: 2,
+                            border: "1px solid #ff00d4",
+                            "& .MuiInputLabel-root": { color: "#fff" },
+                            "& .MuiInputLabel-root.Mui-focused": { color: "#fff" },
+                        }}
+                    >
                         <InputLabel>Estrategia</InputLabel>
                         <Select
                             value={strategy}
-                            label="Estrategia"
                             onChange={(e) => setStrategy(e.target.value)}
-                            sx={{
-                                borderRadius: 3,
-                                "& .MuiSelect-select": { padding: "12px" },
-                            }}
+                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value="random">Random</MenuItem>
                             <MenuItem value="heuristic">Heuristic</MenuItem>
                         </Select>
                     </FormControl>
 
-                    {/* Dificultad */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#f5f5f5", borderRadius: 3 }}>
+ç                    <FormControl
+                        fullWidth
+                        sx={{
+                            backgroundColor: "#222",
+                            borderRadius: 2,
+                            border: "1px solid #ff00d4",
+                            "& .MuiInputLabel-root": { color: "#fff" },
+                            "& .MuiInputLabel-root.Mui-focused": { color: "#fff" },
+                        }}
+                    >
                         <InputLabel>Dificultad</InputLabel>
                         <Select
                             value={difficulty}
-                            label="Dificultad"
                             onChange={(e) => setDifficulty(e.target.value)}
-                            sx={{
-                                borderRadius: 3,
-                                "& .MuiSelect-select": { padding: "12px" },
-                            }}
+                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value="easy">Fácil</MenuItem>
                             <MenuItem value="medium">Media</MenuItem>
@@ -106,39 +138,45 @@ export default function CreateMatchPage() {
                         </Select>
                     </FormControl>
 
-                    {/* Modo de juego */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#f5f5f5", borderRadius: 3 }}>
+                    <FormControl
+                        fullWidth
+                        sx={{
+                            backgroundColor: "#222",
+                            borderRadius: 2,
+                            border: "1px solid #ff00d4",
+                            "& .MuiInputLabel-root": { color: "#fff" },
+                            "& .MuiInputLabel-root.Mui-focused": { color: "#fff" },
+                        }}
+                    >
                         <InputLabel>Modo de juego</InputLabel>
                         <Select
                             value={mode}
-                            label="Modo de juego"
-                            onChange={(e) => setMode(e.target.value as "BOT" | "LOCAL_2P")}
-                            sx={{
-                                borderRadius: 3,
-                                "& .MuiSelect-select": { padding: "12px" },
-                            }}
+                            onChange={(e) =>
+                                setMode(e.target.value as "BOT" | "LOCAL_2P")}
+                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value="BOT">VS Bot</MenuItem>
                             <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
                         </Select>
                     </FormControl>
 
-                    {/* Botón crear partida */}
                     <Button
-                        variant="contained"
-                        size="large"
                         onClick={handleCreateMatch}
                         sx={{
-                            mt: 2,
-                            py: 2,
-                            borderRadius: 5,
+                            px: 4,
+                            py: 1,
+                            borderRadius: 3,
                             fontWeight: "bold",
-                            fontSize: "1.2rem",
-                            backgroundColor: "#03a9f4",
-                            color: "#fff",
-                            transition: "all 0.3s",
+                            fontSize: "1.1rem",
+                            backgroundColor: "#ff00d4",
+                            color: "#000",
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
+                            boxShadow: "0 0 8px #ff00d4, 0 0 20px #ff00d4",
+                            transition: "all 0.3s ease",
                             "&:hover": {
-                                backgroundColor: "#0288d1",
+                                backgroundColor: "#e600c9",
+                                boxShadow: "0 0 15px #ff00d4, 0 0 25px #ff00d4",
                                 transform: "scale(1.05)",
                             },
                         }}
@@ -147,6 +185,6 @@ export default function CreateMatchPage() {
                     </Button>
                 </Stack>
             </Paper>
-        </Container>
+        </Box>
     );
 }

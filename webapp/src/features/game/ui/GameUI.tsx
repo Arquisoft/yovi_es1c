@@ -11,6 +11,8 @@ import {
     Stack,
     Paper,
 } from "@mui/material";
+import fondo from "./fondo.jpg";
+import styles from "./GameUI.module.css";
 
 export default function GameUI() {
     const location = useLocation();
@@ -24,228 +26,90 @@ export default function GameUI() {
     const { state, actions } = useGameController(config?.boardSize, config?.mode);
     const { gameState, loading, error, gameOver } = state;
 
-    const playerColors = ["#4fc3f7", "#f44336"];
+    const playerColors = ["#00fff7", "#ff00d4"]; // neon colors
 
     return (
         <Box
+            className={styles.container}
             sx={{
+                position: "absolute",
+                top: "100px",
+                left: 0,
+                right: 0,
+                minHeight: "calc(100vh - 100px)",
                 display: "flex",
-                flexDirection: { xs: "column", md: "row" },
-                minHeight: "100vh",
-                bgcolor: "#e1f5fe",
-                overflowX: "hidden",
+                justifyContent: "center",
+                alignItems: "center",
+                p: 2,
+                overflow: "auto",
+                backgroundImage: `url(${fondo})`,
             }}
         >
-            {/* Sidebar */}
             <Box
-                sx={{
-                    width: { xs: "100%", md: 280 },
-                    bgcolor: "#29b6f6",
-                    p: 3,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    borderTopRightRadius: { md: 24 },
-                    borderBottomRightRadius: { md: 24 },
-                    mb: { xs: 2, md: 0 },
-                }}
+                className={styles.mainBox}
+                sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, width: "100%", maxWidth: 1200,
+                    minHeight: "80vh" }}
             >
-                <Box>
-                    <Typography
-                        variant="h5"
-                        gutterBottom
-                        fontWeight="bold"
-                        color="white"
-                        textAlign="center"
-                    >
+                <Box className={styles.sidebar} sx={{ width: { xs: "100%", md: 280 } }}>
+                    <Typography variant="h5" className={styles.title}>
                         Información de partida
                     </Typography>
 
                     <Stack spacing={2} mt={2}>
-                        {/* Turno */}
-                        <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
-                            <CardContent
-                                sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 2,
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <Avatar
-                                    sx={{
-                                        bgcolor: playerColors[gameState.turn],
-                                        width: 50,
-                                        height: 50,
-                                    }}
-                                />
+                        <Card className={styles.cardStatic}>
+                            <CardContent className={styles.cardContent}>
+                                <Avatar className={styles.avatarStatic} sx={{ bgcolor: playerColors[gameState.turn] }} />
                                 <Box textAlign="center">
-                                    <Typography variant="subtitle1" fontWeight="bold">
-                                        Turno
-                                    </Typography>
-                                    <Typography variant="body2">
-                                        {gameState.turn === 0
-                                            ? "Jugador 1"
-                                            : config?.mode === "BOT"
-                                                ? "Bot"
-                                                : "Jugador 2"}
+                                    <Typography variant="subtitle1" color="#fff">Turno</Typography>
+                                    <Typography variant="body2" color="#fff">
+                                        {gameState.turn === 0 ? "Jugador 1" : config?.mode === "BOT" ? "Bot"
+                                            : "Jugador 2"}
                                     </Typography>
                                 </Box>
                             </CardContent>
                         </Card>
 
-                        {/* Modo */}
-                        <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
-                            <CardContent sx={{ textAlign: "center" }}>
-                                <Typography variant="subtitle2" fontWeight="bold">
-                                    Modo
-                                </Typography>
-                                <Typography variant="body2">
-                                    {config?.mode === "BOT" ? "VS Bot" : "2 Jugadores"}
-                                </Typography>
+                        <Card className={styles.cardStatic} sx={{ boxShadow: "0 0 8px #00fff7",
+                            border: "1px solid #00fff7" }}>
+                            <CardContent className={styles.cardContent} sx={{ textAlign: "center" }}>
+                                <Typography variant="subtitle2" color="#fff">Modo</Typography>
+                                <Typography variant="body2" color="#fff">{config?.mode === "BOT" ? "VS Bot"
+                                    : "2 Jugadores"}</Typography>
                             </CardContent>
                         </Card>
-
-                        {/* Estrategia / dificultad */}
-                        {config?.mode === "BOT" && (
-                            <>
-                                <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
-                                    <CardContent sx={{ textAlign: "center" }}>
-                                        <Typography variant="subtitle2" fontWeight="bold">
-                                            Estrategia
-                                        </Typography>
-                                        <Typography variant="body2">{config.strategy}</Typography>
-                                    </CardContent>
-                                </Card>
-                                <Card sx={{ borderRadius: 4, bgcolor: "#ffffffcc", p: 1 }}>
-                                    <CardContent sx={{ textAlign: "center" }}>
-                                        <Typography variant="subtitle2" fontWeight="bold">
-                                            Dificultad
-                                        </Typography>
-                                        <Typography variant="body2">{config.difficulty}</Typography>
-                                    </CardContent>
-                                </Card>
-                            </>
-                        )}
                     </Stack>
+
+                    <Button onClick={actions.newGame} sx={{ bgcolor: "#00fff7", color: "#000", "&:hover": {
+                        bgcolor: "#00d9d9" }, boxShadow: "0 0 15px #00fff7" }} className={styles.restartButton}>
+                        🎮 Reiniciar partida
+                    </Button>
                 </Box>
 
-                <Button
-                    variant="contained"
-                    onClick={actions.newGame}
-                    sx={{
-                        mt: 4,
-                        py: 2,
-                        fontWeight: "bold",
-                        borderRadius: 12,
-                        bgcolor: "#03a9f4",
-                        "&:hover": { bgcolor: "#0288d1" },
-                        width: "100%",
-                        boxShadow: 5,
-                        fontSize: "1.2rem",
-                    }}
-                >
-                    🎮 Reiniciar partida
-                </Button>
-            </Box>
-
-            {/* Main Game Area */}
-            <Box
-                sx={{
-                    flexGrow: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    p: { xs: 2, md: 4 },
-                }}
-            >
-                {/* Título gamificado */}
-                <Typography
-                    variant="h3"
-                    gutterBottom
-                    fontWeight="bold"
-                    sx={{
-                        textAlign: "center",
-                        mb: 2,
-                        background: "linear-gradient(90deg, #4fc3f7, #0288d1)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                    }}
-                >
-                    ¡Tu partida de Y!
-                </Typography>
-
-                {/* Mensajes */}
-                {error && (
-                    <Paper
-                        sx={{
-                            bgcolor: "#ffcdd2",
-                            p: 2,
-                            borderRadius: 4,
-                            my: 1,
-                            width: { xs: "100%", md: "80%" },
-                        }}
-                    >
-                        <Typography color="error" align="center">
-                            {error}
-                        </Typography>
-                    </Paper>
-                )}
-
-                {loading && (
-                    <Paper
-                        sx={{
-                            bgcolor: "#b3e5fc",
-                            p: 2,
-                            borderRadius: 4,
-                            my: 1,
-                            width: { xs: "100%", md: "80%" },
-                        }}
-                    >
-                        <Typography color="info.main" align="center">
-                            Bot pensando...
-                        </Typography>
-                    </Paper>
-                )}
-
-                <Paper
-                    elevation={6}
-                    sx={{
-                        mt: 3,
-                        p: 2,
-                        borderRadius: 4,
-                        bgcolor: "#81d4fa",
-                        display: "flex",
-                        justifyContent: "center",
-                        overflow: "auto",
-                        width: "100%",
-                        maxWidth: 600,
-                    }}
-                >
-                    <Board
-                        layout={gameState.layout}
-                        size={gameState.size}
-                        onCellClick={actions.handleCellClick}
-                        currentPlayer={gameState.turn}
-                        isDark={false}
-                    />
-                </Paper>
-
-                {gameOver && (
-                    <Typography
-                        variant="h4"
-                        color="secondary"
-                        sx={{
-                            mt: 3,
-                            fontWeight: "bold",
-                            textShadow: "1px 1px 2px #f44336",
-                            textAlign: "center",
-                        }}
-                    >
-                        ¡Partida terminada!
+                <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                    justifyContent: "center", p: { xs: 2, md: 4 } }}>
+                    <Typography variant="h3" sx={{ color: "#fff", textShadow: "0 0 5px #00fff7, 0 0 10px #ff00d4" }}
+                                className={styles.gameTitle}>
+                        ¡Tu partida de Y!
                     </Typography>
-                )}
+
+                    {error && <Paper sx={{ bgcolor: "rgba(255,0,0,0.7)", p: 2, borderRadius: 4, my: 1, width: {
+                        xs: "100%", md: "80%" }, textAlign: "center", color: "#fff" }}>{error}</Paper>}
+
+                    {loading && <Paper sx={{ bgcolor: "rgba(0,255,255,0.3)", p: 2, borderRadius: 4, my: 1, width: {
+                        xs: "100%", md: "80%" }, textAlign: "center", color: "#000" }}>Bot pensando...</Paper>}
+
+                    <Paper sx={{ mt: 3, padding: {
+                        xs: "8px", sm: "12px", md: "16px" }, borderRadius: 4, bgcolor: "rgba(0,0,0,0.7)",
+                        boxShadow: "0 0 10px #00fff7", display: "inline-flex", justifyContent: "center",
+                        alignItems: "center", width: "fit-content", maxWidth: "100%", overflow: "visible" }}>
+                        <Board layout={gameState.layout} size={gameState.size} onCellClick={actions.handleCellClick}
+                               currentPlayer={gameState.turn} />
+                    </Paper>
+
+                    {gameOver && <Typography variant="h4" sx={{ mt: 3, fontWeight: "bold", color: "#fff",
+                        textShadow: "0 0 10px #00fff7, 0 0 15px #ff00d4", textAlign: "center" }}
+                                             className={styles.gameOver}>¡Partida terminada!</Typography>}
+                </Box>
             </Box>
         </Box>
     );

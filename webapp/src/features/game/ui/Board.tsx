@@ -1,90 +1,69 @@
 import { Box, Button } from "@mui/material";
+import styles from "./Board.module.css";
 
 interface BoardProps {
     layout: string;
     size: number;
     onCellClick: (row: number, col: number) => void;
     currentPlayer: number;
-    isDark: boolean;
 }
 
-export function Board({
-                          layout,
-                          size,
-                          onCellClick,
-                          currentPlayer,
-                          isDark,
-                      }: BoardProps) {
+export function Board({ layout, size, onCellClick }: BoardProps) {
     const rows = layout.split("/");
+    const playerColors = ["#00fff7", "#ff00d4"]; // neon colors
+    const CELL_SIZE = Math.max(16, Math.min(40, Math.floor(600 / size)));
 
     const getCellSymbol = (rowIndex: number, colIndex: number) => {
         return rows[rowIndex]?.[colIndex] ?? ".";
     };
 
-    const playerColors = ["#4fc3f7", "#f44336"];
-
     return (
         <Box
+            className={styles.board}
             sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 1,
-                width: "100%",
+                gap: `${CELL_SIZE * 0.15}px`,
             }}
         >
-            {Array.from({ length: size }, (_, rowIndex) => {
-                const numCells = rowIndex + 1;
+            {Array.from({ length: size }, (_, rowIndex) => (
+                <Box
+                    key={rowIndex}
+                    className={styles.row}
+                    sx={{
+                        gap: `${CELL_SIZE * 0.15}px`,
+                    }}
+                >
+                    {Array.from({ length: rowIndex + 1 }, (_, colIndex) => {
+                        const symbol = getCellSymbol(rowIndex, colIndex);
+                        const isEmpty = symbol === ".";
+                        const playerColor = symbol === "B" ? playerColors[0] : playerColors[1];
 
-                return (
-                    <Box
-                        key={rowIndex}
-                        sx={{
-                            display: "flex",
-                            justifyContent: "center",
-                            gap: 1,
-                        }}
-                    >
-                        {Array.from({ length: numCells }, (_, colIndex) => {
-                            const symbol = getCellSymbol(rowIndex, colIndex);
-                            const isEmpty = symbol === ".";
-
-                            return (
-                                <Button
-                                    key={colIndex}
-                                    onClick={() => isEmpty && onCellClick(rowIndex, colIndex)}
-                                    disabled={!isEmpty}
-                                    sx={{
-                                        minWidth: 40,
-                                        minHeight: 40,
-                                        borderRadius: "50%",
-                                        bgcolor: isEmpty
-                                            ? isDark
-                                                ? "#455a64"
-                                                : "#e0f7fa"
-                                            : symbol === "B"
-                                                ? playerColors[0]
-                                                : playerColors[1],
-                                        color: "#fff",
-                                        fontWeight: "bold",
-                                        transition: "all 0.2s ease",
-                                        "&:hover": {
-                                            bgcolor: isEmpty
-                                                ? currentPlayer === 0
-                                                    ? playerColors[0] + "aa"
-                                                    : playerColors[1] + "aa"
-                                                : undefined,
-                                            transform: isEmpty ? "scale(1.1)" : undefined,
-                                        },
-                                    }}
-                                >
-                                    {symbol !== "." ? symbol : ""}
-                                </Button>
-                            );
-                        })}
-                    </Box>
-                );
-            })}
+                        return (
+                            <Button
+                                key={colIndex}
+                                onClick={() => isEmpty && onCellClick(rowIndex, colIndex)}
+                                disabled={!isEmpty}
+                                className={`${styles.cell} ${isEmpty ? styles.empty : styles.occupied}`}
+                                sx={{
+                                    width: CELL_SIZE,
+                                    height: CELL_SIZE,
+                                    minWidth: CELL_SIZE,
+                                    minHeight: CELL_SIZE,
+                                    borderRadius: "50%",
+                                    bgcolor: isEmpty ? "rgba(0,0,0,0.3)" : playerColor,
+                                    border: isEmpty ? "1px solid rgba(255,255,255,0.2)" : "2px solid #fff",
+                                    boxShadow: isEmpty
+                                        ? "none"
+                                        : `0 0 8px ${playerColor}, 0 0 15px ${playerColor}`,
+                                    transition: "all 0.15s ease",
+                                    "&:hover": {
+                                        transform: isEmpty ? "scale(1.15)" : undefined,
+                                    },
+                                }}
+                            />
+                        );
+                    })}
+                </Box>
+            ))}
         </Box>
     );
 }
