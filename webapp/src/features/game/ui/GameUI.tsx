@@ -25,7 +25,6 @@ export default function GameUI() {
 
     const { state, actions } = useGameController(config?.boardSize, config?.mode);
     const { gameState, loading, error, gameOver } = state;
-
     const playerColors = ["#00fff7", "#ff00d4"]; // neon colors
 
     return (
