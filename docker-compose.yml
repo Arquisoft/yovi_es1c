@@ -7,6 +7,8 @@ services:
       - "3000"
     networks:
       - monitor-net
+    volumes:
+      - ./data/users.db:/app/data/users.db
 
   auth:
     build: ./auth
@@ -18,7 +20,19 @@ services:
     networks:
       - monitor-net
     volumes:
-      - ./data:/app/data
+      - ./data/auth.db:/app/data/auth.db
+
+  gameservice:
+    build: ./gameservice
+    container_name: gameservice
+    image: ghcr.io/arquisoft/yovi_es1c-gameservice:latest
+    expose:
+      - "3002"
+    networks:
+      - monitor-net
+    volumes:
+      - ./data/game.db:/app/data/game.db
+      
   webapp:
     build:
       context: ./webapp
@@ -53,6 +67,8 @@ services:
       - webapp
       - users
       - gamey
+      - gameservice
+      - auth
     networks:
       - monitor-net
     restart: unless-stopped
