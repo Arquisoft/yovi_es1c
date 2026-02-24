@@ -228,3 +228,16 @@ Each component has its own set of scripts defined in its `package.json`. Here ar
 - `cargo test`: Runs the unit tests.
 - `cargo run`: Runs the gamey application.
 - `cargo doc`: Generates documentation for the GameY engine application
+
+## Environment Configuration
+
+Before running the project (especially with Docker), you must create a `.env` file in the root directory. This file is not committed to the repository for security reasons.
+
+Create a file named `.env` and add the following variables:
+
+```properties
+# Secret key used to sign JWT tokens for authentication
+JWT_SECRET=yovi_es1c_2526
+
+# Internal path where the services will look for the database files inside the containers
+DB_PATH=/app/data/
