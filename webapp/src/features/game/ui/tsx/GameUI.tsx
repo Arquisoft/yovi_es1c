@@ -1,4 +1,4 @@
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Board } from "./Board.tsx";
 import { useGameController } from "../../hooks/useGameController.ts";
 import {
@@ -17,6 +17,7 @@ import type {YenPositionDto} from "../../../../shared/contracts";
 
 export default function GameUI() {
     const location = useLocation();
+    const navigate = useNavigate();
     const config = location.state as {
         boardSize: number;
         strategy: string;
@@ -25,7 +26,17 @@ export default function GameUI() {
         initialYEN?: YenPositionDto;
     } | null;
 
+
     const { state, actions } = useGameController(config?.boardSize, config?.mode, config?.initialYEN);
+    if (!config) {
+        return (
+            <Paper sx={{ p:4, mt:10, textAlign:"center" }}>
+                <Typography variant="h5" sx={{ mb:2 }}>No se encontró la configuración de la partida</Typography>
+                <Typography sx={{ mb:2 }}>Vuelve a la página de crear partida para iniciar un juego.</Typography>
+                <Button onClick={() => navigate("/create-match")} variant="contained">Crear partida</Button>
+            </Paper>
+        )
+    }
     const { gameState, loading, error, gameOver } = state;
     const playerColors = ["#00fff7", "#ff00d4"]; // neon colors
 
