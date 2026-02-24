@@ -22,7 +22,7 @@ app.use(express.json());
 
   app.use("/api/game", createGameController(matchService, statsService));
 
-  app.listen(3003, () => {
-    console.log("GameService running on port 3003");
+  app.listen(3002, () => {
+    console.log("GameService running on port 3002");
   });
 })();
