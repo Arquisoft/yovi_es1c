@@ -1,0 +1,131 @@
+.container {
+    position: absolute;
+    top: 100px;
+    left: 0;
+    right: 0;
+    min-height: calc(100vh - 100px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+    overflow: auto;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.mainBox {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 1200px;
+    min-height: 80vh;
+    background-color: rgba(0,0,0,0.8);
+    border-radius: 16px;
+    box-shadow: 0 0 20px rgba(0,255,255,0.3), 0 0 20px rgba(255,0,212,0.3);
+    overflow: hidden;
+    border: 1px solid rgba(0,255,255,0.5);
+}
+
+.sidebar {
+    width: 100%;
+    max-width: 280px;
+    background-color: rgba(0,0,0,0.7);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border-right: 1px solid rgba(0,255,255,0.5);
+}
+
+.title {
+    color: #ffffff;
+    text-align: center;
+    font-weight: bold;
+    text-shadow: 0 0 5px #00fff7;
+}
+
+.cardStatic {
+    border-radius: 16px;
+    background-color: rgba(0,0,0,0.7) !important; /* 🔥 fuerza el fondo */
+    border: 1px solid #00fff7;
+    box-shadow: 0 0 8px #00fff7;
+}
+
+.cardContent {
+    background-color: transparent !important; /* 🔥 evita blanco */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+.avatarStatic {
+    width: 50px;
+    height: 50px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 10px #00fff7;
+}
+
+.restartButton {
+    margin-top: 32px;
+    padding: 16px;
+    border-radius: 12px;
+    background-color: #00fff7 !important;
+    color: #000 !important;
+    box-shadow: 0 0 15px #00fff7;
+    font-size: 1.2rem;
+}
+
+.gameTitle {
+    color: #ffffff;
+    text-align: center;
+    margin-bottom: 16px;
+    text-shadow: 0 0 5px #00fff7, 0 0 10px #ff00d4;
+}
+
+.gameOver {
+    margin-top: 24px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 10px #00fff7, 0 0 15px #ff00d4;
+    text-align: center;
+}
+
+/* Mobile tweaks */
+@media (max-width: 600px) {
+    .mainBox {
+        border-radius: 12px;
+        box-shadow: 0 0 10px rgba(0,255,255,0.2), 0 0 10px rgba(255,0,212,0.2);
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid rgba(0,255,255,0.5);
+        padding: 16px;
+    }
+
+    .gameTitle {
+        font-size: 1.8rem;
+    }
+
+    .restartButton {
+        width: 100%;
+        font-size: 1rem;
+        padding: 12px;
+    }
+}
+
+/* Tablet tweaks */
+@media (min-width: 601px) and (max-width: 960px) {
+    .mainBox {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        max-width: none;
+        border-right: none;
+        border-bottom: 1px solid rgba(0,255,255,0.5);
+    }
+}

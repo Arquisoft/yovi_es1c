@@ -1,1 +1,1 @@
-export { default as GameUI } from "./ui/GameUI";
+export { default as GameUI } from "./ui/tsx/GameUI.tsx";

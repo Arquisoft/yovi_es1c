@@ -2,10 +2,22 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { act } from 'react';
 import Nav from '../components/layout/Nav';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 describe('Nav Component', () => {
-    it('renders navigation links', () => {
+    beforeEach(() => {
+        // Mock básico de matchMedia
+        window.matchMedia = window.matchMedia || function(query) {
+            return {
+                matches: false,
+                media: query,
+                addEventListener: () => {},
+                removeEventListener: () => {},
+            } as unknown as MediaQueryList;
+        };
+    });
+
+    it('renders navigation links correctly', () => {
         render(
             <BrowserRouter>
                 <Nav />
@@ -13,51 +25,50 @@ describe('Nav Component', () => {
         );
 
         expect(screen.getByText('Home')).toBeInTheDocument();
-        expect(screen.getByText('Play')).toBeInTheDocument();
+        expect(screen.getByText('New game')).toBeInTheDocument(); // actualizado
         expect(screen.getByText('Stats')).toBeInTheDocument();
-    });
-
-    it('handles dark mode detection at mount', () => {
-        act(() => {
-            window.__setMatchMedia?.(true);
-        });
-
-        render(
-            <BrowserRouter>
-                <Nav />
-            </BrowserRouter>
-        );
-
         expect(screen.getByAltText('Game Y Logo')).toBeInTheDocument();
     });
 
-    it('handles media query change events', () => {
+    it('applies dark mode class if prefers-color-scheme is dark', () => {
+        // Simula dark mode
+        window.matchMedia = () => ({
+            matches: true,
+            media: '(prefers-color-scheme: dark)',
+            addEventListener: () => {},
+            removeEventListener: () => {},
+        } as unknown as MediaQueryList);
+
         render(
             <BrowserRouter>
                 <Nav />
             </BrowserRouter>
         );
 
-        act(() => {
-            window.__setMatchMedia?.(true);
-            window.__setMatchMedia?.(false);
-        });
+        const nav = document.querySelector('nav');
+        expect(nav?.className).toContain('dark');
     });
 
-    it('handles scroll events to show/hide nav', () => {
+    it('toggles visibility on scroll', () => {
         render(
             <BrowserRouter>
                 <Nav />
             </BrowserRouter>
         );
 
-        Object.defineProperty(window, 'scrollY', { writable: true, value: 100 });
-        fireEvent.scroll(window);
+        const nav = document.querySelector('nav');
+        if (!nav) throw new Error('Nav not found');
 
-        Object.defineProperty(window, 'scrollY', { writable: true, value: 50 });
-        fireEvent.scroll(window);
+        act(() => {
+            Object.defineProperty(window, 'scrollY', { writable: true, value: 100 });
+            fireEvent.scroll(window);
+        });
+        expect(nav.className).toContain('hidden');
 
-        Object.defineProperty(window, 'scrollY', { writable: true, value: 0 });
-        fireEvent.scroll(window);
+        act(() => {
+            Object.defineProperty(window, 'scrollY', { writable: true, value: 0 });
+            fireEvent.scroll(window);
+        });
+        expect(nav.className).toContain('visible');
     });
 });
