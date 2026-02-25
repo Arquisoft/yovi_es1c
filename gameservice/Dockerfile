@@ -25,6 +25,6 @@ RUN npm run build
 # Copiar archivos SQL a dist (necesario para runtime)
 COPY src/database/schema.sql ./dist/database/
 
-EXPOSE 3003
+EXPOSE 3002
 
 CMD ["npm", "start"]
