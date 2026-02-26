@@ -63,6 +63,7 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /webapp/dist:/usr/share/nginx/html:ro
     depends_on:
       - webapp
       - users
