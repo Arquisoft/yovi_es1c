@@ -47,7 +47,6 @@ export default function CreateMatchPage() {
             }
 
             const data = await res.json();
-            // data: { matchId, initialYEN }
 
             navigate("/gamey", { state: { matchId: data.matchId, initialYEN: data.initialYEN, boardSize, mode } });
         } catch (err) {

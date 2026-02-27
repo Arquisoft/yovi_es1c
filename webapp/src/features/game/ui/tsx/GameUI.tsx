@@ -19,6 +19,7 @@ export default function GameUI() {
     const location = useLocation();
     const navigate = useNavigate();
     const config = location.state as {
+        matchId: string;
         boardSize: number;
         strategy: string;
         difficulty: string;
@@ -26,8 +27,13 @@ export default function GameUI() {
         initialYEN?: YenPositionDto;
     } | null;
 
-
-    const { state, actions } = useGameController(config?.boardSize, config?.mode, config?.initialYEN);
+    const { state, actions } = useGameController(
+        config?.boardSize,
+        config?.mode,
+        config?.initialYEN,
+        config?.matchId
+    );
+    
     if (!config) {
         return (
             <Paper sx={{ p:4, mt:10, textAlign:"center" }}>
@@ -38,7 +44,7 @@ export default function GameUI() {
         )
     }
     const { gameState, loading, error, gameOver } = state;
-    const playerColors = ["#00fff7", "#ff00d4"]; // neon colors
+    const playerColors = ["#00fff7", "#ff00d4"];
 
     return (
         <Box
