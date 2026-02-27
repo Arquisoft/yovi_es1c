@@ -6,7 +6,11 @@ export function createGameController(matchService: MatchService, statsService: S
   const router = Router();
 
   router.post("/matches", async (req, res) => {
-    const { userId, boardSize, strategy, difficulty } = req.body;
+    const userId = req.userId ? Number(req.userId) : undefined;
+    if (!userId) {
+      return res.status(401).json({ error: 'Invalid user ID in token' });
+    }
+    const { boardSize, strategy, difficulty } = req.body;
     const id = await matchService.createMatch(userId, boardSize, strategy, difficulty);
     res.json({ matchId: id });
   });
