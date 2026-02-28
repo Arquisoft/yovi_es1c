@@ -16,6 +16,8 @@ use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use std::fmt::Display;
 use std::sync::Arc;
+use crate::bot::minimax::MinimaxBot;
+use crate::bot::set_based_heuristic::SetBasedHeuristic;
 
 /// Command-line arguments for the GameY application.
 #[derive(Parser, Debug)]
@@ -69,7 +71,12 @@ pub fn run_cli_game() -> Result<()> {
     let args = CliArgs::parse();
     let mut render_options = crate::RenderOptions::default();
     let mut rl = DefaultEditor::new()?;
-    let bots_registry = YBotRegistry::new().with_bot(Arc::new(RandomBot));
+    //We add the bots to the registry
+    let bots_registry = YBotRegistry::new()
+        .with_bot(Arc::new(RandomBot))
+        .with_bot(Arc::new(
+            MinimaxBot::new(SetBasedHeuristic, 4)
+        ));
     let bot: Arc<dyn YBot> = match bots_registry.find(&args.bot) {
         Some(b) => b,
         None => {
