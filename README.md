@@ -19,7 +19,8 @@ This project is a template with some basic functionality for the ASW labs.
 The project is divided into three main components, each in its own directory:
 
 - `webapp/`: A frontend application built with React, Vite, and TypeScript.
-- `users/`: A backend service for managing users, built with Node.js and Express.
+- `users/`: A backend service for managing users and profile/statistics data, built with Node.js and Express.
+- `auth/`: A backend authentication service (Node.js + Express + TypeScript) for register/login/refresh and internal JWT verification.
 - `gamey/`: A Rust game engine and bot service.
 - `docs/`: Architecture documentation sources following Arc42 template
 
@@ -50,6 +51,29 @@ The `users` service is a simple REST API built with [Node.js](https://nodejs.org
 - `users-service.js`: The main file for the user service. It defines an endpoint `/createuser` to handle user creation.
 - `package.json`: Contains scripts to start the service.
 - `Dockerfile`: Defines the Docker image for the user service.
+
+
+### Auth Service
+
+The `auth` service is the authentication backend built with [Node.js](https://nodejs.org/), [Express](https://expressjs.com/) and TypeScript.
+
+- `src/index.ts`: Entry point and route mounting under `/api/auth`.
+- `src/routes/auth.routes.ts`: Auth endpoints (`register`, `login`, `refresh`, `verify`).
+- `openapi.yaml`: OpenAPI 3.x contract for Auth endpoints.
+- `package.json`: Contains scripts for run/test/coverage.
+
+Auth endpoints:
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/verify` (**internal only; blocked externally in Nginx**)
+
+Important env vars:
+- `JWT_SECRET` (required)
+- `AUTH_DB_PATH` (defaults to `/app/data/auth.db` in compose)
+
+Internal verification URL for service-to-service calls:
+- `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify` (recommended timeout: 500ms–1s)
 
 ### Gamey
 
@@ -138,7 +162,40 @@ npm run dev
 
 The web application will be available at `http://localhost:5173`.
 
-#### 3. Running the GameY application
+#### 3. Running the Auth Service
+
+Navigate to the `auth` directory:
+
+```bash
+cd auth
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the service:
+
+```bash
+npm run start
+```
+
+Run tests and coverage:
+
+```bash
+npm test
+npm run test:coverage
+```
+
+Verify `auth.db` exists (from monorepo root, when running with compose volume `./data:/app/data`):
+
+```bash
+test -f ./data/auth.db && echo "auth.db exists"
+```
+
+#### 4. Running the GameY application
 
 At this moment the GameY application is not needed but once it is needed you should also start it from the command line.
 
@@ -157,6 +214,13 @@ Each component has its own set of scripts defined in its `package.json`. Here ar
 
 - `npm start`: Starts the user service.
 - `npm test`: Runs the tests for the service.
+
+### Auth (`auth/package.json`)
+
+- `npm run start`: Starts the auth service.
+- `npm test`: Runs auth service tests.
+- `npm run test:coverage`: Runs auth tests with coverage.
+- `npm run db:init`: Initializes the auth database schema.
 
 ### Gamey (`gamey/Cargo.toml`)
 

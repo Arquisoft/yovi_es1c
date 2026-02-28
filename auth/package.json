@@ -10,8 +10,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "test:watch": "vitest --watch"
-
+    "test:watch": "vitest --watch",
+    "db:init": "tsx src/db/run-init.ts"
   },
   "type": "module",
   "keywords": [],
@@ -19,7 +19,6 @@
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
