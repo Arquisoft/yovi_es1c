@@ -14,7 +14,7 @@ try {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 } catch (e) {
   console.log(e);
-}
+} 
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
