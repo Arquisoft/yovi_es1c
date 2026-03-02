@@ -56,8 +56,7 @@ export default function Nav() {
                     <Link to="/" className={styles.link}>Home</Link>
                 </li>
                 <li>
-                    <Link to="/gamey" className={styles.link}>Play</Link>
-                </li>
+                    <Link to="/create-match" className={styles.link}>New game</Link>                </li>
                 <li>
                     <Link to="/stats" className={styles.link}>Stats</Link>
                 </li>

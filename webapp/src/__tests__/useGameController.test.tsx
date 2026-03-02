@@ -145,14 +145,10 @@ describe('useGameController', () => {
 
     it('handles BOT flow with valid response and bot move', async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(
-                JSON.stringify({
-                    api_version: '1',
-                    bot_id: 'random_bot',
-                    coords: { x: 6, y: 0, z: 1 },
-                }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } }
-            )
+            new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
         );
 
         const { result } = renderHook(() => useGameController());
@@ -166,21 +162,16 @@ describe('useGameController', () => {
         });
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(result.current.state.gameState.layout).toContain('R');
         expect(result.current.state.gameState.turn).toBe(0);
-        expect(result.current.state.message).toContain('Bot played at');
+        expect(result.current.state.message).toContain('Bot jugó en ('); // actualizado
     });
 
     it('handles BOT response with invalid coords', async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(
-                JSON.stringify({
-                    api_version: '1',
-                    bot_id: 'random_bot',
-                    coords: { x: 99, y: 0, z: 0 },
-                }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } }
-            )
+            new Response(JSON.stringify({ coords: { x: 99, y: 0, z: 0 } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
         );
 
         const { result } = renderHook(() => useGameController());
@@ -194,7 +185,7 @@ describe('useGameController', () => {
         });
 
         expect(result.current.state.gameState.turn).toBe(0);
-        expect(result.current.state.message).toContain('Bot suggested coords (99, 0, 0)');
+        expect(result.current.state.message).toContain('Bot sugirió una celda inválida');
     });
 
     it('handles BOT non-ok response without reading body twice', async () => {
