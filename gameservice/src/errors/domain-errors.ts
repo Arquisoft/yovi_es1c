@@ -18,8 +18,15 @@ export class InvalidMoveError extends HttpError {
     }
 }
 
+
 export class UnexpectedError extends HttpError {
     constructor() {
         super(500, 'unexpected_error', 'Unexpected server error');
+    }
+}
+
+export class ValidationError extends HttpError {
+    constructor(message: string) {
+        super(400, 'validation_error', message);
     }
 }
