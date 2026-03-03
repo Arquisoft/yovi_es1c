@@ -21,17 +21,6 @@ services:
       - monitor-net
     volumes:
       - ./data:/app/data
-
-  gameservice:
-    build: ./gameservice
-    container_name: gameservice
-    image: ghcr.io/arquisoft/yovi_es1c-gameservice:latest
-    expose:
-      - "3002"
-    networks:
-      - monitor-net
-    volumes:
-      - ./data/game.db:/app/data/game.db
       
   webapp:
     build:
@@ -73,6 +62,22 @@ services:
     networks:
       - monitor-net
     restart: unless-stopped
+
+  gameservice:
+    build: ./gameservice
+    container_name: gameservice
+    image: ghcr.io/arquisoft/yovi_es1c-gameservice:latest
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - GAME_DB_PATH=/app/data/game.db
+    volumes:
+      - ./gameservice/data:/app/data
+    expose:
+      - "3002"
+    ports:
+    - "3002:3002"
+    networks:
+      - monitor-net
 
   prometheus:
     image: prom/prometheus
