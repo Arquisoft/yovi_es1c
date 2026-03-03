@@ -8,6 +8,8 @@ pub(crate) struct PlayerSet {
     pub touches_side_a: bool,
     pub touches_side_b: bool,
     pub touches_side_c: bool,
+    // Number of pieces in the set
+    pub size: usize,
 }
 
 impl PlayerSet {
