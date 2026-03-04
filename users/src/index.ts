@@ -1,6 +1,7 @@
 import express from 'express';
 
 const app = express();
+app.disable('x-powered-by');
 const port = 3000;
 
 app.use(express.json());
