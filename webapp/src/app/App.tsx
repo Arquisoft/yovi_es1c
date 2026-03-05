@@ -4,6 +4,7 @@ import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
 import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
 import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
+import StatsUI from '../features/stats/ui/StatsUI.tsx';
 
 function App() {
     return (
@@ -23,12 +24,7 @@ function App() {
 
                     <Route path="/gamey" element={<GameUI />} />
 
-                    <Route path="/stats" element={
-                        <div className={styles['content-wrapper']}>
-                            <h2>Estadísticas</h2>
-                            <p>Aquí irán las estadísticas del juego</p>
-                        </div>
-                    } />
+                    <Route path="/stats" element={<StatsUI />} />
                 </Routes>
             </div>
         </BrowserRouter>
