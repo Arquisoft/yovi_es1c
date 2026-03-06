@@ -8,7 +8,7 @@ services:
     networks:
       - monitor-net
     volumes:
-      - ./data/users.db:/app/data/users.db
+      - ./users/data:/app/data
 
   auth:
     build: ./auth
