@@ -20,7 +20,7 @@ describe('Nav Component', () => {
         renderNav();
 
         expect(screen.getByText('Home')).toBeInTheDocument();
-        expect(screen.getByText('Play')).toBeInTheDocument();
+        expect(screen.getByText('New game')).toBeInTheDocument(); // actualizado
         expect(screen.getByText('Stats')).toBeInTheDocument();
     });
 
@@ -39,6 +39,28 @@ describe('Nav Component', () => {
         renderNav();
 
         expect(screen.getByAltText('Game Y Logo')).toBeInTheDocument();
+    });
+
+    it('shows login and register links when not authenticated', () => {
+        renderNav();
+
+        expect(screen.getByText('Login')).toBeInTheDocument();
+        expect(screen.getByText('Register')).toBeInTheDocument();
+    });
+
+    it('applies dark mode class if prefers-color-scheme is dark', () => {
+        // Simula dark mode
+        window.matchMedia = () => ({
+            matches: true,
+            media: '(prefers-color-scheme: dark)',
+            addEventListener: () => {},
+            removeEventListener: () => {},
+        } as unknown as MediaQueryList);
+
+        renderNav();
+
+        const nav = document.querySelector('nav');
+        expect(nav?.className).toContain('dark');
     });
 
     it('handles media query change events', () => {
