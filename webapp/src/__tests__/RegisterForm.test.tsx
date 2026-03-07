@@ -36,7 +36,7 @@ describe('RegisterForm', () => {
   });
 
   test('submits and displays success response', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         accessToken: 'fake-token',
@@ -55,7 +55,7 @@ describe('RegisterForm', () => {
   });
 
   test('shows API error message on non-ok responses', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 409,
       json: async () => ({ message: 'Username already exists' }),
@@ -71,7 +71,7 @@ describe('RegisterForm', () => {
   });
 
   test('shows network error when fetch rejects', async () => {
-    global.fetch = vi.fn().mockRejectedValueOnce(new Error('Network down'));
+    globalThis.fetch = vi.fn().mockRejectedValueOnce(new Error('Network down'));
 
     renderWithProviders(<RegisterForm />);
 
@@ -81,6 +81,39 @@ describe('RegisterForm', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Network down')).toBeInTheDocument();
+    });
+  });
+
+  test('shows generic success when response has no username', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        accessToken: 'fake-token',
+        refreshToken: 'fake-refresh',
+        user: { id: 1 },
+      }),
+    } as Response);
+
+    renderWithProviders(<RegisterForm />);
+
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+
+    expect(await screen.findByText('Registration completed successfully.')).toBeInTheDocument();
+  });
+
+  test('shows fallback error when non-Error is thrown', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValueOnce('unexpected failure');
+
+    renderWithProviders(<RegisterForm />);
+
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Network error')).toBeInTheDocument();
     });
   });
 });

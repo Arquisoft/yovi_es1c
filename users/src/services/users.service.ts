@@ -1,2 +1,1 @@
-export class UsersService {
-}
+export class UsersService {} // NOSONAR

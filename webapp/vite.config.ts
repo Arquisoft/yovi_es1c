@@ -25,10 +25,9 @@ export default defineConfig({
         '**/index.ts',
         'src/main.tsx',
 
-        /*TODO: Se excluyen de momento porque ahora mismo no tienen funcionalidad alguna.
+        /*Se excluyen de momento porque ahora mismo no tienen funcionalidad alguna.
             Quitar cuando se implementen para probarlas.
         */
-        'src/features/auth/api/authApi.ts',
         'src/features/game/api/gameyClient.ts',
         'src/features/botApi/ui/BotApiUI.tsx',
         'src/features/stats/ui/StatsUI.tsx',

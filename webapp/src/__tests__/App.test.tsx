@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../app/App';
 
@@ -31,6 +31,11 @@ vi.mock('../features/game/ui/tsx/GameUI.tsx', () => ({
 describe('App Routing', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
+    });
+
+    afterEach(() => {
+        localStorage.clear();
     });
 
 describe('App', () => {
@@ -71,4 +76,5 @@ describe('App', () => {
             expect(screen.getByText('LoginForm Mock')).toBeInTheDocument();
         });
     });
+
 })});

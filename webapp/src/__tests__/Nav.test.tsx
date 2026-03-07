@@ -71,6 +71,8 @@ describe('Nav Component', () => {
             g.__setMatchMedia?.(true);
             g.__setMatchMedia?.(false);
         });
+
+        expect(screen.getByText('Home')).toBeInTheDocument();
     });
 
     it('handles scroll events to show/hide nav', () => {
@@ -84,5 +86,29 @@ describe('Nav Component', () => {
 
         Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 0 });
         fireEvent.scroll(globalThis as unknown as Window);
+
+        expect(screen.getByText('Home')).toBeInTheDocument();
+    });
+
+    it('shows username and logout button when authenticated', () => {
+        localStorage.setItem('auth_token', 'test-token');
+        localStorage.setItem('auth_user', JSON.stringify({ id: 1, username: 'Pablo' }));
+
+        renderNav();
+
+        expect(screen.getByText('Pablo')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /logout/i })).toBeInTheDocument();
+
+        localStorage.clear();
+    });
+
+    it('clears session when clicking logout', () => {
+        localStorage.setItem('auth_token', 'test-token');
+        localStorage.setItem('auth_user', JSON.stringify({ id: 1, username: 'Pablo' }));
+
+        renderNav();
+        fireEvent.click(screen.getByRole('button', { name: /logout/i }));
+
+        expect(localStorage.getItem('auth_token')).toBeNull();
     });
 });

@@ -35,7 +35,7 @@ describe('LoginForm', () => {
   });
 
   test('calls fetch and logs in on success', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         accessToken: 'fake-token',
@@ -51,12 +51,12 @@ describe('LoginForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalled();
+      expect(globalThis.fetch).toHaveBeenCalled();
     });
   });
 
   test('shows API error message on non-ok response', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 401,
       json: async () => ({ message: 'Invalid credentials' }),
@@ -72,7 +72,7 @@ describe('LoginForm', () => {
   });
 
   test('shows network error when fetch rejects', async () => {
-    global.fetch = vi.fn().mockRejectedValueOnce(new Error('Network down'));
+    globalThis.fetch = vi.fn().mockRejectedValueOnce(new Error('Network down'));
 
     renderWithProviders(<LoginForm />);
 
@@ -82,6 +82,20 @@ describe('LoginForm', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Network down')).toBeInTheDocument();
+    });
+  });
+
+  test('shows fallback error when non-Error is thrown', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValueOnce('unexpected failure');
+
+    renderWithProviders(<LoginForm />);
+
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Network error')).toBeInTheDocument();
     });
   });
 });
