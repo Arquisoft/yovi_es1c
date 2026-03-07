@@ -62,6 +62,14 @@ impl GameY {
         &self.status
     }
 
+    /// Returns the winner of the game, in case there is one
+    pub fn winner(&self) -> Option<PlayerId> {
+        match self.status {
+            GameStatus::Ongoing { .. } => None,
+            GameStatus::Finished { winner } => Some(winner),
+        }
+    }
+
     /// Returns true if the game has ended (has a winner).
     pub fn check_game_over(&self) -> bool {
         match self.status {
@@ -106,6 +114,31 @@ impl GameY {
         } else {
             None
         }
+    }
+
+    /// Returns the opposing player to the one who should make the next move, or None if the game is over.
+    pub fn opponent_player(&self) -> Option<PlayerId> {
+        if let GameStatus::Ongoing { next_player } = self.status {
+            Some(other_player(next_player))
+        } else {
+            None
+        }
+    }
+
+    /// Returns an iterator over the sets and their player
+    pub fn iter_sets(&self) -> impl Iterator<Item = (usize, &PlayerSet, PlayerId)> + '_ {
+        self.board_map.iter().map(move |(coords, (set_idx, player))| (*set_idx, &self.sets[*set_idx], *player))
+    }
+
+    /// Returns all the set indexes of an specific player
+    pub fn sets_of_player(&self, player: PlayerId) -> Vec<&PlayerSet> {
+        let mut result = Vec::new();
+        for (_, (set_idx, p)) in &self.board_map {
+            if *p == player {
+                result.push(&self.sets[*set_idx]);
+            }
+        }
+        result
     }
 
     /// Loads a game state from a YEN format file.
@@ -245,6 +278,7 @@ impl GameY {
             touches_side_a: coords.touches_side_a(),
             touches_side_b: coords.touches_side_b(),
             touches_side_c: coords.touches_side_c(),
+            size: 1,
         };
         self.sets.push(new_set);
         self.board_map.insert(coords, (set_idx, player));
@@ -435,6 +469,10 @@ impl GameY {
             self.sets[root_j].touches_side_a |= self.sets[root_i].touches_side_a;
             self.sets[root_j].touches_side_b |= self.sets[root_i].touches_side_b;
             self.sets[root_j].touches_side_c |= self.sets[root_i].touches_side_c;
+
+            // We add their sizes
+            self.sets[root_j].size += self.sets[root_i].size;
+
             return self.sets[root_j].touches_side_a
                 && self.sets[root_j].touches_side_b
                 && self.sets[root_j].touches_side_c;

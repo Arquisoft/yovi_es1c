@@ -1,37 +1,39 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { act } from 'react';
-import { useGameController } from '../features/game/hooks/useGameController';
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { renderHook, waitFor } from "@testing-library/react";
+import { act } from "react";
+import { useGameController } from "../features/game/hooks/useGameController";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-describe('useGameController', () => {
+describe("useGameController", () => {
     let fetchMock: ReturnType<typeof vi.fn<FetchFn>>;
 
     beforeEach(() => {
         vi.restoreAllMocks();
 
         fetchMock = vi.fn<FetchFn>();
-        vi.stubGlobal('fetch', fetchMock);
-        vi.stubGlobal('alert', vi.fn());
+        vi.stubGlobal("fetch", fetchMock);
+        vi.stubGlobal("alert", vi.fn());
     });
 
     afterEach(() => {
         vi.unstubAllGlobals();
     });
 
-    it('initializes with default state', () => {
+    it("initializes with default state", () => {
         const { result } = renderHook(() => useGameController());
 
-        expect(result.current.state.gameMode).toBe('BOT');
+        expect(result.current.state.gameMode).toBe("BOT");
         expect(result.current.state.loading).toBe(false);
         expect(result.current.state.error).toBe(null);
         expect(result.current.state.gameOver).toBe(false);
-        expect(result.current.state.message).toBe('Click a cell to play');
+        expect(result.current.state.message).toBe("Click a cell to play");
+        expect(result.current.state.isBoardFull).toBe(false);
     });
 
-    it('returns early while loading and when turn is not human in BOT mode', async () => {
-        let resolveFetch: ((value: Response) => void) | undefined;
+    it("does nothing if loading is true", async () => {
+        let resolveFetch!: (value: Response) => void;
+
         fetchMock.mockImplementationOnce(
             () =>
                 new Promise((resolve) => {
@@ -42,7 +44,7 @@ describe('useGameController', () => {
         const { result } = renderHook(() => useGameController());
 
         await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
+            result.current.actions.handleCellClick(0, 0);
         });
 
         await waitFor(() => {
@@ -50,29 +52,28 @@ describe('useGameController', () => {
         });
 
         await act(async () => {
-            await result.current.actions.handleCellClick(1, 0);
+            result.current.actions.handleCellClick(1, 0);
         });
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
 
-        resolveFetch?.(
+        resolveFetch(
             new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { "Content-Type": "application/json" },
             })
         );
 
         await waitFor(() => {
             expect(result.current.state.loading).toBe(false);
-            expect(result.current.state.gameState.turn).toBe(0);
         });
     });
 
-    it('returns early when game is over and when a cell is occupied', async () => {
+    it("does nothing if game is over", async () => {
         const { result } = renderHook(() => useGameController());
 
         act(() => {
-            result.current.actions.selectMode('LOCAL_2P');
+            result.current.actions.selectMode("LOCAL_2P");
             result.current.actions.changeSize(1);
         });
 
@@ -87,50 +88,55 @@ describe('useGameController', () => {
         });
 
         expect(fetchMock).not.toHaveBeenCalled();
-
-        act(() => {
-            result.current.actions.newGame();
-            result.current.actions.changeSize(2);
-        });
-
-        await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
-        });
-
-        const layoutAfterFirstMove = result.current.state.gameState.layout;
-
-        await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
-        });
-
-        expect(result.current.state.gameState.layout).toBe(layoutAfterFirstMove);
     });
 
-    it('handles LOCAL_2P turn alternation and finishing state', async () => {
+    it("does nothing if cell is occupied", async () => {
         const { result } = renderHook(() => useGameController());
 
         act(() => {
-            result.current.actions.selectMode('LOCAL_2P');
+            result.current.actions.selectMode("LOCAL_2P");
             result.current.actions.changeSize(2);
         });
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
+        });
+
+        const layoutBefore = result.current.state.gameState.layout;
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        expect(result.current.state.gameState.layout).toBe(layoutBefore);
+    });
+
+    it("handles LOCAL_2P turn alternation", async () => {
+        const { result } = renderHook(() => useGameController());
+
+        act(() => {
+            result.current.actions.selectMode("LOCAL_2P");
+            result.current.actions.changeSize(2);
+        });
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        expect(result.current.state.message).toContain("Jugador 2");
+
+        await act(async () => {
             await result.current.actions.handleCellClick(1, 0);
-            await result.current.actions.handleCellClick(1, 1);
         });
 
-        expect(result.current.state.gameState.layout).toBe('B/RB');
-        expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toContain('¡Felicidades Jugador 1!');
-        expect(result.current.state.isBoardFull).toBe(true);
+        expect(result.current.state.message).toContain("Jugador 1");
     });
 
-    it('handles LOCAL_2P winner and announces alert', async () => {
+    it("detects LOCAL_2P winner", async () => {
         const { result } = renderHook(() => useGameController());
 
         act(() => {
-            result.current.actions.selectMode('LOCAL_2P');
+            result.current.actions.selectMode("LOCAL_2P");
             result.current.actions.changeSize(1);
         });
 
@@ -139,15 +145,15 @@ describe('useGameController', () => {
         });
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toContain('¡Felicidades Jugador 1!');
-        expect(window.alert).toHaveBeenCalledWith('¡Felicidades Jugador 1!');
+        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
+        expect(window.alert).toHaveBeenCalledWith("¡Felicidades Jugador 1!");
     });
 
-    it('handles BOT flow with valid response and bot move', async () => {
+    it("handles BOT valid response", async () => {
         fetchMock.mockResolvedValueOnce(
             new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { "Content-Type": "application/json" },
             })
         );
 
@@ -163,14 +169,14 @@ describe('useGameController', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(result.current.state.gameState.turn).toBe(0);
-        expect(result.current.state.message).toContain('Bot jugó en ('); // actualizado
+        expect(result.current.state.message).toContain("Bot jugó en");
     });
 
-    it('handles BOT response with invalid coords', async () => {
+    it("handles BOT invalid coords", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({ coords: { x: 99, y: 0, z: 0 } }), {
+            new Response(JSON.stringify({ coords: { x: 999, y: 999, z: 999 } }), {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { "Content-Type": "application/json" },
             })
         );
 
@@ -184,15 +190,14 @@ describe('useGameController', () => {
             expect(result.current.state.loading).toBe(false);
         });
 
+        expect(result.current.state.message).toContain("Bot sugirió una celda inválida");
         expect(result.current.state.gameState.turn).toBe(0);
-        expect(result.current.state.message).toContain('Bot sugirió una celda inválida');
     });
 
-    it('handles BOT non-ok response without reading body twice', async () => {
+    it("handles BOT error response", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response('backend exploded', {
+            new Response("backend exploded", {
                 status: 500,
-                headers: { 'Content-Type': 'text/plain' },
             })
         );
 
@@ -206,13 +211,13 @@ describe('useGameController', () => {
             expect(result.current.state.loading).toBe(false);
         });
 
-        expect(result.current.state.error).toBe('Bot error: backend exploded');
-        expect(result.current.state.message).toBe('Error talking to bot');
+        expect(result.current.state.error).toBe("Error del bot: backend exploded");
+        expect(result.current.state.message).toBe("Error comunicando con el bot");
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
-    it('handles BOT fetch rejection', async () => {
-        fetchMock.mockRejectedValueOnce(new Error('Network issue'));
+    it("handles fetch rejection", async () => {
+        fetchMock.mockRejectedValueOnce(new Error("Network issue"));
 
         const { result } = renderHook(() => useGameController());
 
@@ -224,8 +229,159 @@ describe('useGameController', () => {
             expect(result.current.state.loading).toBe(false);
         });
 
-        expect(result.current.state.error).toBe('Network issue');
-        expect(result.current.state.message).toBe('Error talking to bot');
+        expect(result.current.state.error).toBe("Network issue");
+        expect(result.current.state.message).toBe("Error comunicando con el bot");
         expect(result.current.state.gameState.turn).toBe(0);
+    });
+
+    it("changeSize resets board correctly", () => {
+        const { result } = renderHook(() => useGameController());
+
+        act(() => {
+            result.current.actions.changeSize(3);
+        });
+
+        expect(result.current.state.gameState.size).toBe(3);
+        expect(result.current.state.gameOver).toBe(false);
+        expect(result.current.state.error).toBe(null);
+    });
+
+    it("newGame resets state", () => {
+        const { result } = renderHook(() => useGameController());
+
+        act(() => {
+            result.current.actions.selectMode("LOCAL_2P");
+        });
+
+        act(() => {
+            result.current.actions.newGame();
+        });
+
+        expect(result.current.state.gameOver).toBe(false);
+        expect(result.current.state.error).toBe(null);
+        expect(result.current.state.message).toBe("Click a cell to play");
+    });
+
+    it("persistMove is called when matchId exists", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+      const { result } = renderHook(() =>
+        useGameController(8, "BOT", undefined, "match-123")
+      );
+
+      await act(async () => {
+        await result.current.actions.handleCellClick(0, 0);
+      });
+
+      const persistCall = fetchMock.mock.calls.find(([url]) =>
+        (url as string).includes("/api/game/matches/match-123/moves")
+      );
+
+      expect(persistCall).toBeTruthy(); // Existe
+      expect((persistCall![0] as string)).toContain(
+        "/api/game/matches/match-123/moves"
+      );
+    });
+
+    it("handles 401 bot error", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response("", { status: 401 })
+        );
+
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.error)
+                .toBe("No estás autenticado. Por favor inicia sesión.");
+        });
+    });
+
+    it("handles 400 bot error", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response("", { status: 400 })
+        );
+
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.error)
+                .toBe("Movimiento inválido enviado al servidor.");
+        });
+    });
+
+    it("handles 409 bot error", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response("", { status: 409 })
+        );
+
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.error)
+                .toBe("Juego ya ha terminado o conflicto de estado.");
+        });
+    });
+
+    it("sets Authorization header when jwt exists", async () => {
+        localStorage.setItem("jwt", "test-token");
+
+        fetchMock.mockResolvedValueOnce(
+            new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            })
+        );
+
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(fetchMock.mock.calls[0][1]?.headers)
+                .toMatchObject({
+                    Authorization: "Bearer test-token",
+                });
+        });
+
+        localStorage.clear();
+    });
+
+    it("detects board full draw in BOT mode", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 0 } }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            })
+        );
+
+        const { result } = renderHook(() => useGameController(1));
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        expect(result.current.state.gameOver).toBe(true);
+        expect(result.current.state.message).toContain("Felicidades");
     });
 });

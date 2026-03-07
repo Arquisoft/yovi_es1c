@@ -37,7 +37,9 @@ describe('GameUI Component', () => {
         });
     });
 
-    const renderWithConfig = (stateConfig = { boardSize: 8, mode: 'BOT', strategy: 'random', difficulty: 'easy' }) => {
+    const defaultConfig = { boardSize: 8, mode: 'BOT' as const, strategy: 'random', difficulty: 'easy' };
+    
+    const renderWithConfig = (stateConfig = defaultConfig) => {
         render(
             <MemoryRouter initialEntries={[{ pathname: '/gamey', state: stateConfig }]}>
                 <Routes>
