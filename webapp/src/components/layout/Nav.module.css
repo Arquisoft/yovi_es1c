@@ -82,6 +82,19 @@
     white-space: nowrap;
 }
 
+.username {
+    font-weight: 600;
+    cursor: default;
+    opacity: 0.85;
+}
+
+.logoutButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
 @media (max-width: 768px) {
     .nav {
         padding: 0.75rem 1.5rem;
