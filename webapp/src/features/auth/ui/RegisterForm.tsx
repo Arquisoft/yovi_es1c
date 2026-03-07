@@ -27,10 +27,6 @@ const RegisterForm: React.FC = () => {
     try {
       const session = await registerUser(username, password);
 
-      // Mientras no gestionemos la sesión global ni guardemos el token,
-      // solo mostramos un mensaje amigable. Esto se ajusta a los primeros
-      // puntos del issue (UI + llamadas reales) y deja pendiente la gestión
-      // de JWT para un commit posterior.
       if (session?.user?.username) {
         setResponseMessage(
           `Hello ${session.user.username}! Welcome to the course!`,
