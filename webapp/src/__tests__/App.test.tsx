@@ -16,6 +16,10 @@ vi.mock('../components/layout/Nav', async () => {
     };
 });
 
+vi.mock('../features/auth/ui/LoginForm.tsx', () => ({
+    default: () => <div>LoginForm Mock</div>,
+}));
+
 vi.mock('../features/auth/ui/RegisterForm.tsx', () => ({
     default: () => <div>RegisterForm Mock</div>,
 }));
@@ -27,11 +31,11 @@ vi.mock('../features/game/ui/GameUI.tsx', () => ({
 import App from '../app/App';
 
 describe('App', () => {
-    it('renders home route content by default', () => {
+    it('redirects to /login when not authenticated', () => {
+        localStorage.clear();
         render(<App />);
 
-        expect(screen.getByText(/Welcome to the Software Arquitecture/i)).toBeInTheDocument();
-        expect(screen.getByText('RegisterForm Mock')).toBeInTheDocument();
+        expect(screen.getByText('LoginForm Mock')).toBeInTheDocument();
     });
 
     it('navigates to /gamey', async () => {

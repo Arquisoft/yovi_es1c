@@ -1,20 +1,34 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { act } from 'react';
 import Nav from '../components/layout/Nav';
+import { AuthProvider } from '../features/auth/context/AuthContext';
 import { describe, it, expect } from 'vitest';
+
+function renderNav() {
+    return render(
+        <MemoryRouter>
+            <AuthProvider>
+                <Nav />
+            </AuthProvider>
+        </MemoryRouter>
+    );
+}
 
 describe('Nav Component', () => {
     it('renders navigation links', () => {
-        render(
-            <BrowserRouter>
-                <Nav />
-            </BrowserRouter>
-        );
+        renderNav();
 
         expect(screen.getByText('Home')).toBeInTheDocument();
         expect(screen.getByText('Play')).toBeInTheDocument();
         expect(screen.getByText('Stats')).toBeInTheDocument();
+    });
+
+    it('shows login and register links when not authenticated', () => {
+        renderNav();
+
+        expect(screen.getByText('Login')).toBeInTheDocument();
+        expect(screen.getByText('Register')).toBeInTheDocument();
     });
 
     it('handles dark mode detection at mount', () => {
@@ -22,21 +36,13 @@ describe('Nav Component', () => {
             window.__setMatchMedia?.(true);
         });
 
-        render(
-            <BrowserRouter>
-                <Nav />
-            </BrowserRouter>
-        );
+        renderNav();
 
         expect(screen.getByAltText('Game Y Logo')).toBeInTheDocument();
     });
 
     it('handles media query change events', () => {
-        render(
-            <BrowserRouter>
-                <Nav />
-            </BrowserRouter>
-        );
+        renderNav();
 
         act(() => {
             window.__setMatchMedia?.(true);
@@ -45,11 +51,7 @@ describe('Nav Component', () => {
     });
 
     it('handles scroll events to show/hide nav', () => {
-        render(
-            <BrowserRouter>
-                <Nav />
-            </BrowserRouter>
-        );
+        renderNav();
 
         Object.defineProperty(window, 'scrollY', { writable: true, value: 100 });
         fireEvent.scroll(window);
