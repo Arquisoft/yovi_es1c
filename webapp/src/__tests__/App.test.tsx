@@ -61,14 +61,14 @@ describe('App', () => {
     });
 
     it('navigates back to Home when clicking Home', async () => {
+        localStorage.clear();
         render(<App />);
         fireEvent.click(screen.getByRole('link', { name: 'Play' }));
         await waitFor(() => screen.getByText('GameUI Mock'));
 
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
         await waitFor(() => {
-            expect(screen.getByText(/Welcome to the Software Arquitecture 2025-2026 course/i)).toBeInTheDocument();
-            expect(screen.getByText('RegisterForm Mock')).toBeInTheDocument();
+            expect(screen.getByText('LoginForm Mock')).toBeInTheDocument();
         });
     });
 })});

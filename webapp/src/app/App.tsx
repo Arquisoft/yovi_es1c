@@ -14,7 +14,7 @@ const darkTheme = createTheme({
 });
 import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
 import LoginForm from '../features/auth/ui/LoginForm.tsx';
-import GameUI from '../features/game/ui/GameUI.tsx';
+import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
 import { AuthProvider, useAuth } from '../features/auth/context/AuthContext';
 
