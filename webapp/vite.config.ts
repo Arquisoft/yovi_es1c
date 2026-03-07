@@ -30,6 +30,9 @@ export default defineConfig({
         */
         'src/features/auth/api/authApi.ts',
         'src/features/game/api/gameyClient.ts',
+        'src/features/botApi/ui/BotApiUI.tsx',
+        'src/features/stats/ui/StatsUI.tsx',
+        'src/shared/contracts/**',
       ],
     },
     css: {

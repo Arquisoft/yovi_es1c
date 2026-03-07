@@ -33,7 +33,7 @@ describe('Nav Component', () => {
 
     it('handles dark mode detection at mount', () => {
         act(() => {
-            window.__setMatchMedia?.(true);
+            (globalThis as unknown as { __setMatchMedia?: (v: boolean) => void }).__setMatchMedia?.(true);
         });
 
         renderNav();
@@ -50,7 +50,7 @@ describe('Nav Component', () => {
 
     it('applies dark mode class if prefers-color-scheme is dark', () => {
         // Simula dark mode
-        window.matchMedia = () => ({
+        (globalThis as unknown as { matchMedia: unknown }).matchMedia = () => ({
             matches: true,
             media: '(prefers-color-scheme: dark)',
             addEventListener: () => {},
@@ -66,22 +66,23 @@ describe('Nav Component', () => {
     it('handles media query change events', () => {
         renderNav();
 
+        const g = globalThis as unknown as { __setMatchMedia?: (v: boolean) => void };
         act(() => {
-            window.__setMatchMedia?.(true);
-            window.__setMatchMedia?.(false);
+            g.__setMatchMedia?.(true);
+            g.__setMatchMedia?.(false);
         });
     });
 
     it('handles scroll events to show/hide nav', () => {
         renderNav();
 
-        Object.defineProperty(window, 'scrollY', { writable: true, value: 100 });
-        fireEvent.scroll(window);
+        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 100 });
+        fireEvent.scroll(globalThis as unknown as Window);
 
-        Object.defineProperty(window, 'scrollY', { writable: true, value: 50 });
-        fireEvent.scroll(window);
+        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 50 });
+        fireEvent.scroll(globalThis as unknown as Window);
 
-        Object.defineProperty(window, 'scrollY', { writable: true, value: 0 });
-        fireEvent.scroll(window);
+        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 0 });
+        fireEvent.scroll(globalThis as unknown as Window);
     });
 });
