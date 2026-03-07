@@ -1,21 +1,31 @@
 import { Box, Typography, Paper, Card, CardContent, Stack } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
+import { useStatsController } from "../hooks/useStatsController";
 
 export default function StatsUI() {
 
-    // DATOS MOCK SOLO PARA UI
-    const stats = {
-        totalMatches: 12,
-        wins: 7,
-        losses: 5,
-        matches: [
-            { matchId: "1", createdAt: "2026-03-01", mode: "BOT", status: "win" },
-            { matchId: "2", createdAt: "2026-03-02", mode: "BOT", status: "lose" },
-            { matchId: "3", createdAt: "2026-03-03", mode: "LOCAL_2P", status: "win" },
-            { matchId: "4", createdAt: "2026-03-04", mode: "BOT", status: "lose" },
-            { matchId: "5", createdAt: "2026-03-05", mode: "LOCAL_2P", status: "win" }
-        ]
-    };
+    const userId = localStorage.getItem("userId") || "";
+
+    const { state } = useStatsController(userId);
+    const { stats, loading, error } = state;
+
+    if (loading) {
+        return (
+            <Typography color="white" textAlign="center" mt={10}>
+                Cargando estadísticas...
+            </Typography>
+        );
+    }
+
+    if (error) {
+        return (
+            <Typography color="red" textAlign="center" mt={10}>
+                {error}
+            </Typography>
+        );
+    }
+
+    if (!stats) return null;
 
     const winrate = stats.totalMatches
         ? ((stats.wins / stats.totalMatches) * 100).toFixed(1)
@@ -31,25 +41,32 @@ export default function StatsUI() {
         },
         { field: "mode", headerName: "Modo", flex: 1 },
         { field: "status", headerName: "Resultado", flex: 1 },
-        { field: "matchId", headerName: "Match ID", flex: 2 },
     ];
 
     return (
         <Box
             sx={{
-                minHeight: "100vh",
-                background: "linear-gradient(180deg,#020617,#020617,#0f172a)",
-                p: 4
+                position: "absolute",
+                top: 70,
+                left: 0,
+                right: 0,
+                minHeight: "calc(100vh - 70px)",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-start",
+                p: 2,
+                pt: 6,
+                overflow: "auto",
+                background: "linear-gradient(180deg,#100010,#050005,#000000)",
             }}
         >
-            <Box maxWidth={1100} mx="auto">
-
+            <Box maxWidth={1100} width="100%">
                 <Typography
                     variant="h3"
                     sx={{
                         textAlign: "center",
-                        color: "#fff",
-                        textShadow: "0 0 5px #00fff7, 0 0 10px #ff00d4",
+                        color: "#00bfff",
+                        textShadow: "0 0 5px #00bfff, 0 0 10px #004080",
                         mb: 4
                     }}
                 >
@@ -97,14 +114,24 @@ export default function StatsUI() {
                         sx={{
                             border: "none",
                             color: "#e5e7eb",
+                            backgroundColor: "rgba(2,6,23,0.9)",
 
-                            backgroundColor: "rgba(2,6,23,0.8)",
-
+                            /* HEADER CON FONDO OSCURO REAL */
                             "& .MuiDataGrid-columnHeaders": {
-                                backgroundColor: "#020617",
+                                backgroundColor: "#020617 !important",
+                                borderBottom: "2px solid #00fff7",
+                            },
+
+                            "& .MuiDataGrid-columnHeader": {
+                                backgroundColor: "#020617 !important",
                                 color: "#00fff7",
-                                borderBottom: "1px solid #00fff7",
-                                fontSize: "14px",
+                                fontWeight: "bold",
+                                letterSpacing: "1px",
+                                textTransform: "uppercase",
+                            },
+
+                            "& .MuiDataGrid-columnHeaderTitle": {
+                                fontWeight: 700,
                             },
 
                             "& .MuiDataGrid-cell": {
