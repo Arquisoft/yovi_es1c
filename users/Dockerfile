@@ -1,29 +1,41 @@
-# Dockerfile
-FROM node:18-alpine
+# Stage 1: Build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Instalar herramientas de build para sqlite3
-RUN apk add --no-cache python3 make g++
-
-# Crear carpeta de datos con permisos
-RUN mkdir -p /app/data && chmod 777 /app/data
+# Instalar dependencias de build y herramientas necesarias
+RUN apk add --no-cache g++ make python3
 
 # Copiar package.json y package-lock.json primero para cache
 COPY package*.json ./
 
-# Instalar dependencias (compila sqlite3 para Linux)
+# Instalar dependencias
 RUN npm install
 
-# No copiar node_modules local, solo el código fuente
+# Copiar código fuente
 COPY src ./src
 COPY tsconfig.json ./
 
 # Compilar TypeScript
 RUN npm run build
 
-# Copiar archivos SQL a dist (necesario para runtime)
+# Copiar SQL a dist
 COPY src/database/users.sql ./dist/database/
+
+# Stage 2: Runtime
+FROM node:18-alpine AS runtime
+
+WORKDIR /app
+
+# Crear carpeta de datos con permisos
+RUN mkdir -p /app/data && chmod 777 /app/data
+
+# Copiar build y package.json
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/package*.json ./
+
+# Instalar solo dependencias de producción
+RUN npm ci --only=production --silent
 
 EXPOSE 3000
 
