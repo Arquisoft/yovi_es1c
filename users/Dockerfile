@@ -33,6 +33,7 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 # Copiar build y package.json
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
+COPY src/database/users.sql ./dist/src/database/
 
 # Instalar solo dependencias de producción
 RUN npm ci --only=production --silent

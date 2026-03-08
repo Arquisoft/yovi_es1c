@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "rootDir": "./src",
+    "rootDir": ".",
     "outDir": "./dist",
     "module": "node18",
     "target": "ES2022",
@@ -8,5 +8,6 @@
     "moduleResolution": "node16",
     "strict": true,
     "types": ["node"]
-  }
+  },
+  "include": ["src/**/*", "__tests__/**/*.ts"]
 }
