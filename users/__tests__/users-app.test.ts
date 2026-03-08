@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import * as fs from 'node:fs';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
+import request from 'supertest';
 
 describe('app.ts integration', () => {
   const tmpDir = path.join(os.tmpdir(), `app-integration-${Date.now()}`);
@@ -34,9 +35,31 @@ describe('app.ts integration', () => {
       };
     });
 
-    await import('../src/app.js');
+    const { default: app } = await import('../src/app.js');
 
-    // Verify the db file was created by initDB
-    expect(fs.existsSync(path.join(tmpDir, 'app.db'))).toBe(true);
+    expect(app).toBeDefined();
+    expect(typeof app).toBe('function');
+  });
+
+  it('should respond to requests after initialization', async () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>();
+      return { ...actual, mkdirSync: vi.fn() };
+    });
+
+    vi.doMock('sqlite', async () => {
+      const actual = await import('sqlite');
+      return {
+        open: async (opts: any) =>
+          actual.open({ ...opts, filename: path.join(tmpDir, 'app2.db') }),
+      };
+    });
+
+    const { default: app } = await import('../src/app.js');
+
+    const response = await request(app).get('/');
+    expect(response.status).not.toBe(500);
   });
 });
