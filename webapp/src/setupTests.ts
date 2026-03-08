@@ -56,33 +56,37 @@ afterEach(() => {
     cleanup();
     window.__setMatchMedia?.(false);
 });
+
 const localStorageMock = (() => {
-    let store: Record<string, string> = {}
+    let store: Record<string, string> = {};
 
     return {
-        getItem: (key: string) => store[key] || null,
-        setItem: (key: string, value: string) => {
-            store[key] = value.toString()
+        getItem: (key: string): string | null => store[key] || null,
+        setItem: (key: string, value: string): void => {
+            if (value !== undefined && value !== null) {
+                store[key] = String(value);
+            }
         },
-        removeItem: (key: string) => {
-            delete store[key]
+        removeItem: (key: string): void => {
+            delete store[key];
         },
-        clear: () => {
-            store = {}
+        clear: (): void => {
+            store = {};
         },
-        get length() {
-            return Object.keys(store).length
+        get length(): number {
+            return Object.keys(store).length;
         },
-        key: (index: number) => {
-            const keys = Object.keys(store)
-            return keys[index] || null
+        key: (index: number): string | null => {
+            const keys = Object.keys(store);
+            return keys[index] || null;
         },
-    }
-})()
+    };
+})();
 
 Object.defineProperty(window, 'localStorage', {
     value: localStorageMock,
-})
+});
+
 
 Object.defineProperty(globalThis, 'localStorage', {
     value: localStorageMock,

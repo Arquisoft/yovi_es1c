@@ -1,9 +1,8 @@
-import { refreshTokens } from '../../features/auth/api/authApi'
+import { refreshTokens } from '../../features/auth'
 
 const TOKEN_KEY = 'auth_token'
 const REFRESH_TOKEN_KEY = 'auth_refresh_token'
 
-let isRefreshing = false
 let refreshPromise: Promise<string> | null = null
 
 async function getNewAccessToken(): Promise<string> {
@@ -33,11 +32,13 @@ export async function fetchWithAuth(
   }
 
   let response = await fetch(input, { ...init, headers })
-  if (response.status === 401 && !isRefreshing) {
+
+  if (response.status === 401) {
     try {
       if (!refreshPromise) {
-        isRefreshing = true
-        refreshPromise = getNewAccessToken()
+        refreshPromise = getNewAccessToken().finally(() => {
+          refreshPromise = null
+        })
       }
 
       const newToken = await refreshPromise
@@ -49,11 +50,9 @@ export async function fetchWithAuth(
       localStorage.removeItem(REFRESH_TOKEN_KEY)
       localStorage.removeItem('auth_user')
       window.location.href = '/login'
-      throw error
-    } finally {
-      isRefreshing = false
-      refreshPromise = null
+      throw new Error(error instanceof Error ? error.message : 'Refresh token expired')
     }
+
   }
 
   return response

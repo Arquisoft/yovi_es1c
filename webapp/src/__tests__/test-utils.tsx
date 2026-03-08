@@ -1,7 +1,7 @@
 import { type ReactElement } from 'react'
 import { render, type RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '../features/auth/context/AuthContext'
+import { AuthProvider } from '../features/auth'
 
 interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     withAuth?: boolean
