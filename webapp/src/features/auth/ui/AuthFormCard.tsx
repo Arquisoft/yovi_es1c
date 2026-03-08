@@ -11,11 +11,12 @@ interface AuthFormCardProps {
 const AuthFormCard: React.FC<AuthFormCardProps> = ({ icon, iconBgColor = 'primary.main', title, children }) => (
   <Box
     sx={{
-      minHeight: '80vh',
+      width: '100%',
+      minHeight: 'calc(100vh - 94px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      px: 2,
+      justifyItems: 'center',
     }}
   >
     <Paper
