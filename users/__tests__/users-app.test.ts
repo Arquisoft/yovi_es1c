@@ -8,7 +8,6 @@ describe('app.ts integration', () => {
 
   afterEach(async () => {
     vi.resetModules();
-    // Small delay to let SQLite release file handles on Windows before deleting
     await new Promise((resolve) => setTimeout(resolve, 100));
     if (fs.existsSync(tmpDir)) {
       try {
@@ -35,7 +34,9 @@ describe('app.ts integration', () => {
       };
     });
 
-    // Import real app.ts — executes its top-level code (initDB + express setup)
     await import('../src/app.js');
+
+    // Verify the db file was created by initDB
+    expect(fs.existsSync(path.join(tmpDir, 'app.db'))).toBe(true);
   });
 });
