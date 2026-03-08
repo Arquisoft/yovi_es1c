@@ -61,10 +61,6 @@ export function createGameController(matchService: MatchService, statsService: S
       if (match.status !== 'ONGOING') {
         throw new InvalidMoveError('Cannot add moves to a finished match');
       }
-      //verirfy user owns the match
-      if (match.user_id !== req.userId) {
-          throw new UnauthorizedMatchError();
-      }
 
       await matchService.addMove(matchId, validated.position_yen, validated.player, validated.moveNumber);
       res.status(201).json({ message: "Move added" });
