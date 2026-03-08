@@ -70,6 +70,7 @@ services:
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - GAME_DB_PATH=/app/data/game.db
+      - AUTH_SERVICE_URL=http://auth:3001
     volumes:
       - ./gameservice/data:/app/data
     expose:

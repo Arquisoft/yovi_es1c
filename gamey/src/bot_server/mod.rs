@@ -23,6 +23,9 @@ pub mod choose;
 pub mod error;
 pub mod state;
 pub mod version;
+pub mod bot_alias_resolver;
+
+use std::collections::HashMap;
 use axum::response::IntoResponse;
 use std::sync::Arc;
 pub use choose::MoveResponse;
@@ -31,6 +34,9 @@ pub use version::*;
 use tower_http::cors::{CorsLayer, Any};
 
 use crate::{GameYError, RandomBot, YBotRegistry, state::AppState};
+use crate::bot::set_based_heuristic::SetBasedHeuristic;
+use crate::bot_server::bot_alias_resolver::BotAliasResolver;
+use crate::minimax::MinimaxBot;
 
 /// Creates the Axum router with the given state.
 ///
@@ -55,8 +61,19 @@ pub fn create_router(state: AppState) -> axum::Router {
 ///
 /// The default state includes the `RandomBot` which selects moves randomly.
 pub fn create_default_state() -> AppState {
-    let bots = YBotRegistry::new().with_bot(Arc::new(RandomBot));
-    AppState::new(bots)
+    let bots = YBotRegistry::new()
+        .with_bot(Arc::new(RandomBot))
+        .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 2)))
+        .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 4)));
+
+    let mut aliases = HashMap::new();
+    aliases.insert("easy".to_string(), "random".to_string());
+    aliases.insert("medium".to_string(), "minimax_set_d2".to_string());
+    aliases.insert("hard".to_string(), "minimax_set_d4".to_string());
+
+    let resolver = BotAliasResolver::new(aliases);
+
+    AppState::new(bots, resolver)
 }
 
 /// Starts the bot server on the specified port.

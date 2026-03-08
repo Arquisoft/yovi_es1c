@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react';
 import styles from './Nav.module.css';
 import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
-import { useAuth } from '../../features/auth/context/AuthContext';
+import { useAuth } from '../../features/auth';
 
 export default function Nav() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [isDark, setIsDark] = useState(
-        window.matchMedia('(prefers-color-scheme: dark)').matches
+        globalThis.matchMedia('(prefers-color-scheme: dark)').matches
     );
 
     const [isVisible, setIsVisible] = useState(true);
@@ -21,7 +21,7 @@ export default function Nav() {
     };
 
     useEffect(() => {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const mediaQuery = globalThis.matchMedia('(prefers-color-scheme: dark)');
         const handleChange = (e: MediaQueryListEvent) => setIsDark(e.matches);
 
         mediaQuery.addEventListener('change', handleChange);
@@ -30,7 +30,7 @@ export default function Nav() {
 
     useEffect(() => {
         const handleScroll = () => {
-            const currentScrollY = window.scrollY;
+            const currentScrollY = globalThis.scrollY;
 
             if (currentScrollY < lastScrollY || currentScrollY < 50) {
                 setIsVisible(true);
@@ -41,8 +41,8 @@ export default function Nav() {
             setLastScrollY(currentScrollY);
         };
 
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
+        globalThis.addEventListener('scroll', handleScroll, { passive: true });
+        return () => globalThis.removeEventListener('scroll', handleScroll);
     }, [lastScrollY]);
 
     return (

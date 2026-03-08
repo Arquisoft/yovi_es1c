@@ -3,7 +3,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import { Box, Button, CircularProgress, Link, TextField, Typography, Alert } from '@mui/material'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import { loginUser } from '../api/authApi'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 import AuthFormCard from './AuthFormCard'
 
 const LoginForm: React.FC = () => {
@@ -30,7 +30,7 @@ const LoginForm: React.FC = () => {
     setLoading(true)
     try {
       const session = await loginUser(username, password)
-      login(session.accessToken, session.user)
+      login(session.accessToken, session.refreshToken, session.user)
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error')

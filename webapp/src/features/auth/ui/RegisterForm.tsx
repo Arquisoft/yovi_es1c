@@ -3,7 +3,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import { Box, Button, CircularProgress, Link, TextField, Typography, Alert } from '@mui/material'
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
 import { registerUser } from '../api/authApi'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 import AuthFormCard from './AuthFormCard'
 
 const RegisterForm: React.FC = () => {
@@ -33,7 +33,7 @@ const RegisterForm: React.FC = () => {
     setLoading(true)
     try {
       const session = await registerUser(username, password)
-      login(session.accessToken, session.user)
+      login(session.accessToken, session.refreshToken, session.user)
 
       if (session?.user?.username) {
         setResponseMessage(`Hello ${session.user.username}! Welcome to YOVI!`)

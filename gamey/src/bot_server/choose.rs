@@ -59,17 +59,19 @@ pub async fn choose(
             )));
         }
     };
-    let bot = match state.bots().find(&params.bot_id) {
+    let resolved_id = state.resolve_bot_id(&params.bot_id);
+
+    let bot = match state.bots().find(resolved_id) {
         Some(bot) => bot,
         None => {
             let available_bots = state.bots().names().join(", ");
             return Err(Json(ErrorResponse::error(
                 &format!(
                     "Bot not found: {}, available bots: [{}]",
-                    params.bot_id, available_bots
+                    resolved_id, available_bots
                 ),
-                Some(params.api_version),
-                Some(params.bot_id),
+                Some(params.api_version.clone()),
+                Some(params.bot_id.clone()),
             )));
         }
     };
