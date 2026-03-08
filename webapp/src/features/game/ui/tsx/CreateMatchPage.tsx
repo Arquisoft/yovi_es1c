@@ -11,7 +11,9 @@ import {
     Stack,
     Box,
 } from "@mui/material";
-import { useAuth } from "../../../auth/context/AuthContext";
+import { useAuth } from "../../../auth";
+import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
+
 const API_URL = "/api/game";
 
 export default function CreateMatchPage() {
@@ -31,11 +33,11 @@ export default function CreateMatchPage() {
         try {
             if (!token) throw new Error("No JWT token found");
 
-            const res = await fetch(`${API_URL}/matches`, {
+            // USAR fetchWithAuth en lugar de fetch
+            const res = await fetchWithAuth(`${API_URL}/matches`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({ boardSize, strategy, difficulty, mode }),
             });

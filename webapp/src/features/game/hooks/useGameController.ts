@@ -7,6 +7,7 @@ import {
     rowColFromCoords,
     updateLayout,
 } from "../domain/yen";
+import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 
 export type GameMode = "BOT" | "LOCAL_2P";
 
@@ -18,8 +19,7 @@ export const useGameController = (
     initialSize: number = DEFAULT_BOARD_SIZE,
     initialMode: GameMode = "BOT",
     initialYEN?: YenPositionDto,
-    initialMatchId?: string,
-    authToken?: string | null
+    initialMatchId?: string
 ) => {
     const [gameMode, setGameMode] = useState<GameMode>(initialMode);
     const [gameState, setGameState] = useState<YenPositionDto>(
@@ -69,11 +69,10 @@ export const useGameController = (
         if (!matchId) return;
 
         try {
-            await fetch(`${GAME_API}/matches/${matchId}/moves`, {
+            await fetchWithAuth(`${GAME_API}/matches/${matchId}/moves`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(authToken && { Authorization: `Bearer ${authToken}` }),
                 },
                 body: JSON.stringify({
                     position_yen: position.layout,
@@ -151,14 +150,11 @@ export const useGameController = (
         setMessage("Bot pensando...");
 
         try {
-            const headers: Record<string, string> = {
-                "Content-Type": "application/json",
-            };
-            if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-
-            const res = await fetch(`${GAMEY_API}/v1/ybot/choose/random_bot`, {
+            const res = await fetchWithAuth(`${GAMEY_API}/v1/ybot/choose/random_bot`, {
                 method: "POST",
-                headers,
+                headers: {
+                    "Content-Type": "application/json",
+                },
                 body: JSON.stringify(humanState),
             });
 

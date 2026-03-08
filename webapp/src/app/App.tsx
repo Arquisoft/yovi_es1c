@@ -12,11 +12,12 @@ const darkTheme = createTheme({
         },
     },
 });
+
 import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
 import LoginForm from '../features/auth/ui/LoginForm.tsx';
 import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
-import { AuthProvider, useAuth } from '../features/auth/context/AuthContext';
+import { AuthProvider, useAuth } from '../features/auth';
 import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
 
 function HomeRedirect() {
@@ -25,7 +26,11 @@ function HomeRedirect() {
         return (
             <Box
                 sx={{
-                    minHeight: '80vh',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -72,24 +77,43 @@ function App() {
         <BrowserRouter>
             <AuthProvider>
                 <ThemeProvider theme={darkTheme}>
-                <CssBaseline />
-                <div className={styles.App}>
-                    <Nav />
+                    <CssBaseline />
+                    <div className={styles.App}>
+                        <Nav />
 
-                    <Routes>
-                        <Route path="/" element={<HomeRedirect />} />
-                        <Route path="/login" element={<LoginForm />} />
-                        <Route path="/register" element={<RegisterForm />} />
-                        <Route path="/create-match" element={<CreateMatchPage />} />
-                        <Route path="/gamey" element={<GameUI />} />
-                        <Route path="/stats" element={
-                            <div className={styles['content-wrapper']}>
-                                <h2>Estadísticas</h2>
-                                <p>Aquí irán las estadísticas del juego</p>
-                            </div>
-                        } />
-                    </Routes>
-                </div>
+                        <Routes>
+                            <Route path="/" element={<HomeRedirect />} />
+                            <Route path="/login" element={<LoginForm />} />
+                            <Route path="/register" element={<RegisterForm />} />
+                            <Route path="/create-match" element={<CreateMatchPage />} />
+                            <Route path="/gamey" element={<GameUI />} />
+                            <Route path="/stats" element={
+                                <Box
+                                    sx={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 2,
+                                        px: 2,
+                                        textAlign: 'center',
+                                    }}
+                                >
+                                    <Typography variant="h4" fontWeight={700}>
+                                        Estadísticas
+                                    </Typography>
+                                    <Typography variant="body1" color="text.secondary">
+                                        Aquí irán las estadísticas del juego
+                                    </Typography>
+                                </Box>
+                            } />
+                        </Routes>
+                    </div>
                 </ThemeProvider>
             </AuthProvider>
         </BrowserRouter>
