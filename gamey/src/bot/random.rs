@@ -28,7 +28,7 @@ pub struct RandomBot;
 
 impl YBot for RandomBot {
     fn name(&self) -> &str {
-        "random_bot"
+        "random"
     }
 
     fn choose_move(&self, board: &GameY) -> Option<Coordinates> {
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn test_random_bot_name() {
         let bot = RandomBot;
-        assert_eq!(bot.name(), "random_bot");
+        assert_eq!(bot.name(), "random");
     }
 
     #[test]
