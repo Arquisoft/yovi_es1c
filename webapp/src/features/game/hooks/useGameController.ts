@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ChooseMoveResponseDto, YenPositionDto } from "../../../shared/contracts";
+import type { YenPositionDto } from "../../../shared/contracts";
 import {
     checkWinner,
     createEmptyYEN,
@@ -7,12 +7,13 @@ import {
     rowColFromCoords,
     updateLayout,
 } from "../domain/yen";
+import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 
 export type GameMode = "BOT" | "LOCAL_2P";
 
 const DEFAULT_BOARD_SIZE = 8;
-const GAMEY_URL = import.meta.env.VITE_GAMEY_API_URL ?? "http://localhost:4000";
-const GAME_API_URL = import.meta.env.VITE_GAME_API_URL ?? "http://localhost:3000";
+const GAMEY_API = import.meta.env.VITE_GAMEY_API_URL ?? "/api/gamey";
+const GAME_API = "/api/game";
 
 export const useGameController = (
     initialSize: number = DEFAULT_BOARD_SIZE,
@@ -61,12 +62,35 @@ export const useGameController = (
         setMessage("Click a cell to play");
     };
 
-    const handleCellClick = async (row: number, col: number, strategy?: string, difficulty?: string) => {
+    const persistMove = async (
+        position: YenPositionDto,
+        player: "USER" | "BOT"
+    ) => {
+        if (!matchId) return;
+
+        try {
+            await fetchWithAuth(`${GAME_API}/matches/${matchId}/moves`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    position_yen: position.layout,
+                    player: player,
+                    moveNumber: position.turn + 1,
+                }),
+            });
+
+        } catch (err) {
+            console.error("Persist error:", err);
+        }
+    };
+
+    const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
 
         if (gameMode === "LOCAL_2P") {
-            // Turnos alternos entre jugador 1 y jugador 2
             setGameState((prev) => {
                 const nextSymbol = prev.turn === 0 ? prev.players[0] : prev.players[1];
                 const newLayout = updateLayout(prev.layout, row, col, nextSymbol);
@@ -78,7 +102,7 @@ export const useGameController = (
                     turn: nextTurn,
                 };
 
-                persistMove(nextState, "ongoing");
+                persistMove(nextState, nextSymbol === prev.players[0] ? "USER" : "BOT");
 
                 if (checkWinner(newLayout, prev.size, nextSymbol)) {
                     announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
@@ -98,11 +122,11 @@ export const useGameController = (
             const humanLayout = updateLayout(prev.layout, row, col, prev.players[0]);
             const humanState: YenPositionDto = { ...prev, layout: humanLayout, turn: 1 };
 
-            persistMove(humanState, "ongoing");
+            persistMove(humanState, "USER");
 
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
                 announceWinner("Jugador 1");
-                persistMove(humanState, "win");
+                persistMove(humanState, "USER");
                 return humanState;
             }
 
@@ -112,13 +136,13 @@ export const useGameController = (
                 return humanState;
             }
 
-            callBot(humanState, strategy, difficulty);
+            callBot(humanState);
 
             return humanState;
         });
     };
 
-    const callBot = async (humanState: YenPositionDto, strategy?: string, difficulty?: string) => {
+    const callBot = async (humanState: YenPositionDto) => {
         if (gameMode !== "BOT") return;
 
         setLoading(true);
@@ -126,21 +150,12 @@ export const useGameController = (
         setMessage("Bot pensando...");
 
         try {
-            const token = localStorage.getItem("jwt");
-
-            const headers: Record<string, string> = {
-                "Content-Type": "application/json",
-            };
-            if (token) headers["Authorization"] = `Bearer ${token}`;
-
-            const res = await fetch(`${GAMEY_URL}/api/gamey/play`, {
+            const res = await fetchWithAuth(`${GAMEY_API}/v1/ybot/choose/random_bot`, {
                 method: "POST",
-                headers,
-                body: JSON.stringify({
-                    position: humanState.layout,
-                    strategy: strategy ?? "random",
-                    difficulty: difficulty ?? "normal",
-                }),
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(humanState),
             });
 
             if (!res.ok) {
@@ -154,8 +169,22 @@ export const useGameController = (
                 return;
             }
 
-            const data: ChooseMoveResponseDto = await res.json();
-            const mapped = rowColFromCoords(data.coords, humanState.size);
+            const data = await res.json();
+            const coords = data?.coords;
+            const hasValidCoords =
+                coords &&
+                typeof coords.x === "number" &&
+                typeof coords.y === "number" &&
+                typeof coords.z === "number";
+
+            if (!hasValidCoords) {
+                setError("Respuesta inválida del bot.");
+                setMessage("Error comunicando con el bot");
+                setGameState({ ...humanState, turn: 0 });
+                return;
+            }
+
+            const mapped = rowColFromCoords(coords, humanState.size);
 
             if (!mapped || getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
                 setMessage("Bot sugirió una celda inválida, vuelve a jugar");
@@ -167,15 +196,15 @@ export const useGameController = (
             const botState: YenPositionDto = { ...humanState, layout: botLayout, turn: 0 };
 
             setGameState(botState);
-            await persistMove(botState, "ongoing");
+            await persistMove(botState, "BOT");
 
             if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
                 announceWinner("Jugador 2 (Bot)");
-                await persistMove(botState, "lose");
+                await persistMove(botState, "BOT");
             } else if (!botLayout.includes(".")) {
                 setGameOver(true);
                 setMessage("Board full — game over");
-                await persistMove(botState, "draw");
+                await persistMove(botState, "BOT");
             } else {
                 setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno`);
             }
@@ -186,34 +215,6 @@ export const useGameController = (
             setGameState({ ...humanState, turn: 0 });
         } finally {
             setLoading(false);
-        }
-    };
-
-    const persistMove = async (
-        position: YenPositionDto,
-        status: "ongoing" | "win" | "lose" | "draw"
-    ) => {
-
-        if (!matchId) return;
-
-        try {
-
-            const token = localStorage.getItem("jwt");
-
-            await fetch(`${GAME_API_URL}/api/game/matches/${matchId}/moves`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    position,
-                    status,
-                }),
-            });
-
-        } catch (err) {
-            console.error("Persist error:", err);
         }
     };
 

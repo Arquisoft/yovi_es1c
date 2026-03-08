@@ -56,7 +56,7 @@ export function createGameController(matchService: MatchService, statsService: S
       if (match.user_id !== Number(req.userId)) {
         throw new UnauthorizedMatchError();
       }
-      
+
       // Verify match is still ongoing
       if (match.status !== 'ONGOING') {
         throw new InvalidMoveError('Cannot add moves to a finished match');

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../app/App';
 
@@ -16,6 +16,10 @@ vi.mock('../components/layout/Nav', async () => {
     };
 });
 
+vi.mock('../features/auth/ui/LoginForm.tsx', () => ({
+    default: () => <div>LoginForm Mock</div>,
+}));
+
 vi.mock('../features/auth/ui/RegisterForm.tsx', () => ({
     default: () => <div>RegisterForm Mock</div>,
 }));
@@ -27,12 +31,19 @@ vi.mock('../features/game/ui/tsx/GameUI.tsx', () => ({
 describe('App Routing', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
     });
 
-    it('renders home route content by default', () => {
+    afterEach(() => {
+        localStorage.clear();
+    });
+
+describe('App', () => {
+    it('redirects to /login when not authenticated', () => {
+        localStorage.clear();
         render(<App />);
-        expect(screen.getByText(/Welcome to the Software Arquitecture 2025-2026 course/i)).toBeInTheDocument();
-        expect(screen.getByText('RegisterForm Mock')).toBeInTheDocument();
+
+        expect(screen.getByText('LoginForm Mock')).toBeInTheDocument();
     });
 
     it('navigates to /gamey when clicking Play', async () => {
@@ -55,14 +66,15 @@ describe('App Routing', () => {
     });
 
     it('navigates back to Home when clicking Home', async () => {
+        localStorage.clear();
         render(<App />);
         fireEvent.click(screen.getByRole('link', { name: 'Play' }));
         await waitFor(() => screen.getByText('GameUI Mock'));
 
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
         await waitFor(() => {
-            expect(screen.getByText(/Welcome to the Software Arquitecture 2025-2026 course/i)).toBeInTheDocument();
-            expect(screen.getByText('RegisterForm Mock')).toBeInTheDocument();
+            expect(screen.getByText('LoginForm Mock')).toBeInTheDocument();
         });
     });
-});
+
+})});
