@@ -1,40 +1,43 @@
-import request from 'supertest';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import express from 'express';
-import cors from 'cors';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// Mock initDB before importing app
+vi.mock('../src/database/database', () => ({
+  initDB: vi.fn().mockResolvedValue({
+    exec: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 import { initDB } from '../src/database/database.js';
 
-let app: express.Express;
-let db: any;
+describe('app.ts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
 
-describe('Express app', () => {
-  beforeAll(async () => {
-    db = await initDB();
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-    app = express();
-    app.use(cors());
-    app.use(express.json());
+  describe('Database initialization', () => {
+    it('should call initDB on startup', async () => {
+      await import('../src/app.js');
 
-    // Middleware simulado para test
-    app.use((req, res, next) => {
-      (req as any).userId = '123';
-      (req as any).username = 'testuser';
-      next();
+      expect(initDB).toHaveBeenCalledTimes(1);
     });
 
-    // Endpoint de prueba
-    app.get('/test', (req, res) => {
-      res.json({ userId: (req as any).userId, username: (req as any).username });
+    it('should call initDB only once', async () => {
+      await import('../src/app.js');
+
+      expect(initDB).toHaveBeenCalledTimes(1);
     });
   });
 
-  afterAll(async () => {
-    if (db) await db.close();
-  });
+  describe('Error handling', () => {
+    it('should handle initDB failure gracefully', async () => {
+      vi.mocked(initDB).mockRejectedValueOnce(new Error('DB init failed'));
 
-  it('should respond with user info', async () => {
-    const res = await request(app).get('/test');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ userId: '123', username: 'testuser' });
+      await expect(import('../src/app.js')).rejects.toThrow('DB init failed');
+    });
   });
 });
