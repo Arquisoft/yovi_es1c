@@ -34,7 +34,7 @@ Feature: Nginx Reverse Proxy Integration
 
   Scenario: GameY bot API works through proxy
     Given the application is deployed
-    When I make a bot move request to "/api/gamey/v1/ybot/choose/random_bot"
+    When I make a bot move request to "/api/gamey/v1/ybot/choose/random"
     Then the bot should respond with valid coordinates
     And the response should be in JSON format
     And it should be proxied through Nginx
