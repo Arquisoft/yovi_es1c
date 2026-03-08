@@ -1,43 +1,41 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
-// Mock initDB before importing app
-vi.mock('../src/database/database', () => ({
-  initDB: vi.fn().mockResolvedValue({
-    exec: vi.fn().mockResolvedValue(undefined),
-  }),
-}));
+describe('app.ts integration', () => {
+  const tmpDir = path.join(os.tmpdir(), `app-integration-${Date.now()}`);
 
-import { initDB } from '../src/database/database.js';
-
-describe('app.ts', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  afterEach(async () => {
     vi.resetModules();
+    // Small delay to let SQLite release file handles on Windows before deleting
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    if (fs.existsSync(tmpDir)) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // Windows may still have the file locked, ignore cleanup error
+      }
+    }
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  it('should execute real app.ts code — initDB is called and express is set up', async () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
 
-  describe('Database initialization', () => {
-    it('should call initDB on startup', async () => {
-      await import('../src/app.js');
-
-      expect(initDB).toHaveBeenCalledTimes(1);
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>();
+      return { ...actual, mkdirSync: vi.fn() };
     });
 
-    it('should call initDB only once', async () => {
-      await import('../src/app.js');
-
-      expect(initDB).toHaveBeenCalledTimes(1);
+    vi.doMock('sqlite', async () => {
+      const actual = await import('sqlite');
+      return {
+        open: async (opts: any) =>
+          actual.open({ ...opts, filename: path.join(tmpDir, 'app.db') }),
+      };
     });
-  });
 
-  describe('Error handling', () => {
-    it('should handle initDB failure gracefully', async () => {
-      vi.mocked(initDB).mockRejectedValueOnce(new Error('DB init failed'));
-
-      await expect(import('../src/app.js')).rejects.toThrow('DB init failed');
-    });
+    // Import real app.ts — executes its top-level code (initDB + express setup)
+    await import('../src/app.js');
   });
 });

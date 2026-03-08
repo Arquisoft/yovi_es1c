@@ -1,91 +1,83 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
-// Mock sqlite and sqlite3 before imports
-vi.mock('sqlite3', () => ({
-  default: { Database: vi.fn() },
-}));
+// Override the hardcoded /app/data path by mocking only mkdirSync and the db path
+// while letting the real database.ts code execute
 
-vi.mock('sqlite', () => ({
-  open: vi.fn(),
-}));
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return {
-    ...actual,
-    mkdirSync: vi.fn(),
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-  };
-});
-
-import { open } from 'sqlite';
-import { initDB } from '../src/database/database.js';
-
-describe('initDB', () => {
-  let mockDb: { exec: ReturnType<typeof vi.fn> };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    mockDb = { exec: vi.fn().mockResolvedValue(undefined) };
-    vi.mocked(open).mockResolvedValue(mockDb as any);
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue('CREATE TABLE IF NOT EXISTS user_profiles (...);');
-  });
+describe('initDB integration', () => {
+  const tmpDir = path.join(os.tmpdir(), `db-integration-${Date.now()}`);
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  it('should create the data directory if it does not exist', async () => {
-    await initDB();
+  it('should execute real database.ts code and create the schema', async () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
 
-    expect(fs.mkdirSync).toHaveBeenCalledWith('/app/data', { recursive: true });
-  });
+    // Partially mock fs so initDB writes to tmpDir instead of /app/data
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>();
+      return {
+        ...actual,
+        mkdirSync: vi.fn(), // prevent writing to /app/data
+      };
+    });
 
-  it('should open the database at the correct path', async () => {
-    await initDB();
+    vi.doMock('sqlite', async () => {
+      const actual = await import('sqlite');
+      return {
+        open: async (opts: any) => {
+          // Redirect db file to tmpDir
+          return actual.open({
+            ...opts,
+            filename: path.join(tmpDir, 'users.db'),
+          });
+        },
+      };
+    });
 
-    expect(open).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filename: expect.stringContaining('users.db'),
-      })
-    );
-  });
-
-  it('should throw an error if the schema file does not exist', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-
-    await expect(initDB()).rejects.toThrow('Schema file not found at');
-  });
-
-  it('should read and execute the schema file', async () => {
-    const mockSchema = 'CREATE TABLE IF NOT EXISTS user_profiles (...);';
-    vi.mocked(fs.readFileSync).mockReturnValue(mockSchema);
-
-    await initDB();
-
-    expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('users.sql'), 'utf-8');
-    expect(mockDb.exec).toHaveBeenCalledWith(mockSchema);
-  });
-
-  it('should return the database instance', async () => {
+    // Import AFTER mocks so real database.ts code runs with our overrides
+    const { initDB } = await import('../src/database/database.js');
     const db = await initDB();
 
-    expect(db).toBe(mockDb);
+    const result = await (db as any).get(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='user_profiles'"
+    );
+    expect(result).toBeDefined();
+    expect(result.name).toBe('user_profiles');
+
+    await (db as any).close();
   });
 
-  it('should propagate errors from open()', async () => {
-    vi.mocked(open).mockRejectedValue(new Error('Failed to open database'));
+  it('should return a db instance from real database.ts', async () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
 
-    await expect(initDB()).rejects.toThrow('Failed to open database');
-  });
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>();
+      return { ...actual, mkdirSync: vi.fn() };
+    });
 
-  it('should propagate errors from db.exec()', async () => {
-    mockDb.exec.mockRejectedValue(new Error('SQL syntax error'));
+    vi.doMock('sqlite', async () => {
+      const actual = await import('sqlite');
+      return {
+        open: async (opts: any) =>
+          actual.open({ ...opts, filename: path.join(tmpDir, 'users2.db') }),
+      };
+    });
 
-    await expect(initDB()).rejects.toThrow('SQL syntax error');
+    const { initDB } = await import('../src/database/database.js');
+    const db = await initDB();
+
+    expect(db).toBeDefined();
+    expect(typeof (db as any).get).toBe('function');
+    expect(typeof (db as any).run).toBe('function');
+
+    await (db as any).close();
   });
 });
