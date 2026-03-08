@@ -171,6 +171,27 @@ describe("useGameController", () => {
         expect(result.current.state.gameState.turn).toBe(0);
         expect(result.current.state.message).toContain("Bot jugó en");
     });
+    it("handles BOT response without coords gracefully", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response(JSON.stringify({ message: "invalid" }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            })
+        );
+
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.error).toBe("Respuesta inválida del bot.");
+            expect(result.current.state.message).toBe("Error comunicando con el bot");
+            expect(result.current.state.loading).toBe(false);
+        });
+    });
+
 
     it("handles BOT invalid coords", async () => {
         fetchMock.mockResolvedValueOnce(
@@ -341,7 +362,7 @@ describe("useGameController", () => {
         });
     });
 
-    it("sets Authorization header when jwt exists", async () => {
+    it("sets Authorization header when auth token exists", async () => {
         localStorage.setItem("jwt", "test-token");
 
         fetchMock.mockResolvedValueOnce(
@@ -351,20 +372,19 @@ describe("useGameController", () => {
             })
         );
 
-        const { result } = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController(undefined, "BOT", undefined, undefined, "test-token"));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
         });
 
         await waitFor(() => {
+            expect(fetchMock.mock.calls[0][0]).toBe('/api/gamey/v1/ybot/choose/random');
             expect(fetchMock.mock.calls[0][1]?.headers)
                 .toMatchObject({
                     Authorization: "Bearer test-token",
                 });
         });
-
-        localStorage.clear();
     });
 
     it("detects board full draw in BOT mode", async () => {

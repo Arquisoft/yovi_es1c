@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { Board } from "./Board.tsx";
+import { useAuth } from "../../../auth/context/AuthContext";
 import { useGameController } from "../../hooks/useGameController.ts";
 import {
     Box,
@@ -18,6 +19,7 @@ import type {YenPositionDto} from "../../../../shared/contracts";
 export default function GameUI() {
     const location = useLocation();
     const navigate = useNavigate();
+    const { token } = useAuth();
     const config = location.state as {
         matchId: string;
         boardSize: number;
@@ -31,7 +33,8 @@ export default function GameUI() {
         config?.boardSize,
         config?.mode,
         config?.initialYEN,
-        config?.matchId
+        config?.matchId,
+        token
     );
     
     if (!config) {

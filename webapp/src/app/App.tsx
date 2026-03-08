@@ -17,6 +17,7 @@ import LoginForm from '../features/auth/ui/LoginForm.tsx';
 import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
 import { AuthProvider, useAuth } from '../features/auth/context/AuthContext';
+import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
 
 function HomeRedirect() {
     const { user } = useAuth();
@@ -43,7 +44,7 @@ function HomeRedirect() {
                 <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
                     <Button
                         component={RouterLink}
-                        to="/gamey"
+                        to="/create-match"
                         variant="contained"
                         size="large"
                         sx={{ borderRadius: 2, fontWeight: 600, px: 4 }}
@@ -79,6 +80,7 @@ function App() {
                         <Route path="/" element={<HomeRedirect />} />
                         <Route path="/login" element={<LoginForm />} />
                         <Route path="/register" element={<RegisterForm />} />
+                        <Route path="/create-match" element={<CreateMatchPage />} />
                         <Route path="/gamey" element={<GameUI />} />
                         <Route path="/stats" element={
                             <div className={styles['content-wrapper']}>
