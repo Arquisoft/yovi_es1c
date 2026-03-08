@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import styles from './Nav.module.css';
 import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
-import { useAuth } from '../../features/auth/context/AuthContext';
+import { useAuth } from '../../features/auth';
 
 export default function Nav() {
     const { user, logout } = useAuth();

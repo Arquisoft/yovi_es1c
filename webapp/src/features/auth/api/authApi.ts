@@ -35,7 +35,6 @@ async function postJson<TSuccess>(
     | Record<string, unknown>
 
   if (!res.ok) {
-    // Devolvemos un error estructurado para que el formulario pueda mostrarlo
     const errorData = data as AuthErrorResponse
     const message =
       errorData?.message ||
@@ -61,5 +60,11 @@ export function loginUser(
   password: string,
 ): Promise<AuthSessionResponse> {
   return postJson<AuthSessionResponse>('/login', { username, password })
+}
+
+export function refreshTokens(
+    refreshToken: string,
+): Promise<AuthSessionResponse> {
+  return postJson<AuthSessionResponse>('/refresh', { refreshToken })
 }
 

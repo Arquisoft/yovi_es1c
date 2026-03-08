@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react';
-import GameUI from '../features/game/ui/tsx/GameUI.tsx';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import * as useGameControllerModule from '../features/game/hooks/useGameController';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { renderWithProviders, setupAuthenticatedUser, clearAuth, screen } from "./test-utils";
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import GameUI from '../features/game/ui/tsx/GameUI.tsx';
+import * as useGameControllerModule from '../features/game/hooks/useGameController';
 
 vi.mock('../features/game/hooks/useGameController');
 
@@ -31,21 +31,34 @@ describe('GameUI Component', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        clearAuth();
+        setupAuthenticatedUser();
+
         vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
             state: mockState,
             actions: mockActions,
         });
     });
 
-    const defaultConfig = { boardSize: 8, mode: 'BOT' as const, strategy: 'random', difficulty: 'easy' };
-    
+    afterEach(() => {
+        clearAuth();
+    });
+
+    const defaultConfig = {
+        boardSize: 8,
+        mode: 'BOT' as const,
+        strategy: 'random',
+        difficulty: 'easy'
+    };
+
     const renderWithConfig = (stateConfig = defaultConfig) => {
-        render(
+        return renderWithProviders(
             <MemoryRouter initialEntries={[{ pathname: '/gamey', state: stateConfig }]}>
                 <Routes>
                     <Route path="/gamey" element={<GameUI />} />
                 </Routes>
-            </MemoryRouter>
+            </MemoryRouter>,
+            { withRouter: false }
         );
     };
 
@@ -55,13 +68,15 @@ describe('GameUI Component', () => {
     });
 
     it('shows "No se encontró la configuración de la partida" when no config is provided', () => {
-        render(
+        renderWithProviders(
             <MemoryRouter initialEntries={['/gamey']}>
                 <Routes>
                     <Route path="/gamey" element={<GameUI />} />
                 </Routes>
-            </MemoryRouter>
+            </MemoryRouter>,
+            { withRouter: false }
         );
+
         expect(screen.getByText(/No se encontró la configuración de la partida/i)).toBeInTheDocument();
         expect(screen.getByText(/Vuelve a la página de crear partida/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Crear partida/i })).toBeInTheDocument();

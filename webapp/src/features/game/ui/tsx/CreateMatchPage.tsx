@@ -11,15 +11,17 @@ import {
     Stack,
     Box,
 } from "@mui/material";
+import { useAuth } from "../../../auth";
+import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
 
-const API_URL = import.meta.env.VITE_GAMEY_API_URL ?? "http://localhost:4000";
+const API_URL = "/api/game";
 
 export default function CreateMatchPage() {
     const navigate = useNavigate();
-
+    const { token } = useAuth();
     const [boardSize, setBoardSize] = useState<number>(8);
-    const [strategy, setStrategy] = useState<string>("random");
-    const [difficulty, setDifficulty] = useState<string>("medium");
+    const [strategy, setStrategy] = useState<string>("CLASSIC");
+    const [difficulty, setDifficulty] = useState<string>("MEDIUM");
     const [mode, setMode] = useState<"BOT" | "LOCAL_2P">("BOT");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -29,14 +31,13 @@ export default function CreateMatchPage() {
         setError(null);
 
         try {
-            const token = localStorage.getItem("jwt");
             if (!token) throw new Error("No JWT token found");
 
-            const res = await fetch(`${API_URL}/api/game/matches`, {
+            // USAR fetchWithAuth en lugar de fetch
+            const res = await fetchWithAuth(`${API_URL}/matches`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({ boardSize, strategy, difficulty, mode }),
             });
@@ -122,8 +123,8 @@ export default function CreateMatchPage() {
                     <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
                         <InputLabel sx={{ color: "#fff" }}>Estrategia</InputLabel>
                         <Select value={strategy} onChange={(e) => setStrategy(e.target.value)} sx={{ color: "#fff", p: 1.2 }}>
-                            <MenuItem value="random">Random</MenuItem>
-                            <MenuItem value="heuristic">Heuristic</MenuItem>
+                            <MenuItem value="CLASSIC">Classic</MenuItem>
+                            <MenuItem value="VARIANT">Variant</MenuItem>
                         </Select>
                     </FormControl>
 
@@ -131,9 +132,9 @@ export default function CreateMatchPage() {
                     <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
                         <InputLabel sx={{ color: "#fff" }}>Dificultad</InputLabel>
                         <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} sx={{ color: "#fff", p: 1.2 }}>
-                            <MenuItem value="easy">Fácil</MenuItem>
-                            <MenuItem value="medium">Media</MenuItem>
-                            <MenuItem value="hard">Difícil</MenuItem>
+                            <MenuItem value="EASY">Fácil</MenuItem>
+                            <MenuItem value="MEDIUM">Media</MenuItem>
+                            <MenuItem value="HARD">Difícil</MenuItem>
                         </Select>
                     </FormControl>
 
