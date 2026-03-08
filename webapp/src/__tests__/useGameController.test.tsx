@@ -363,7 +363,7 @@ describe("useGameController", () => {
     });
 
     it("sets Authorization header when auth token exists", async () => {
-        localStorage.setItem("jwt", "test-token");
+        localStorage.setItem("auth_token", "test-token");
 
         fetchMock.mockResolvedValueOnce(
             new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
@@ -379,7 +379,7 @@ describe("useGameController", () => {
         });
 
         await waitFor(() => {
-            expect(fetchMock.mock.calls[0][0]).toBe('/api/gamey/v1/ybot/choose/random');
+            expect(fetchMock.mock.calls[0][0]).toBe('/api/gamey/v1/ybot/choose/random_bot');
             expect(fetchMock.mock.calls[0][1]?.headers)
                 .toMatchObject({
                     Authorization: "Bearer test-token",

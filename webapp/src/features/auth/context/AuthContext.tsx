@@ -16,11 +16,40 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
 
+function isValidAuthUser(obj: unknown): obj is AuthUser {
+  return (
+      typeof obj === 'object' &&
+      obj !== null &&
+      'id' in obj &&
+      'username' in obj &&
+      typeof (obj as AuthUser).id === 'number' &&
+      typeof (obj as AuthUser).username === 'string'
+  )
+}
+
 export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [state, setState] = useState<AuthState>(() => {
     const token = localStorage.getItem(TOKEN_KEY)
     const userRaw = localStorage.getItem(USER_KEY)
-    const user = userRaw ? (JSON.parse(userRaw) as AuthUser) : null
+
+    let user: AuthUser | null = null
+
+    if (userRaw) {
+      try {
+        const parsed = JSON.parse(userRaw)
+        if (isValidAuthUser(parsed)) {
+          user = parsed
+        } else {
+          localStorage.removeItem(USER_KEY)
+          localStorage.removeItem(TOKEN_KEY)
+        }
+      } catch (error) {
+        console.error('Error parsing user from localStorage:', error)
+        localStorage.removeItem(USER_KEY)
+        localStorage.removeItem(TOKEN_KEY)
+      }
+    }
+
     return { token, user }
   })
 
