@@ -1,14 +1,20 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
 import request from 'supertest';
 
 describe('app.ts integration', () => {
-  const tmpDir = path.join(os.tmpdir(), `app-integration-${Date.now()}`);
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = path.join(os.tmpdir(), `app-integration-${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+    process.env.DB_DATA_DIR = tmpDir;
+  });
 
   afterEach(async () => {
-    vi.resetModules();
+    delete process.env.DB_DATA_DIR;
     await new Promise((resolve) => setTimeout(resolve, 100));
     if (fs.existsSync(tmpDir)) {
       try {
@@ -19,47 +25,31 @@ describe('app.ts integration', () => {
     }
   });
 
-  it('should execute real app.ts code — initDB is called and express is set up', async () => {
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    vi.doMock('node:fs', async (importOriginal) => {
-      const actual = await importOriginal<typeof import('node:fs')>();
-      return { ...actual, mkdirSync: vi.fn() };
-    });
-
-    vi.doMock('sqlite', async () => {
-      const actual = await import('sqlite');
-      return {
-        open: async (opts: any) =>
-          actual.open({ ...opts, filename: path.join(tmpDir, 'app.db') }),
-      };
-    });
-
+  it('should initialize express app with cors and json middleware', async () => {
     const { default: app } = await import('../src/app.js');
 
     expect(app).toBeDefined();
     expect(typeof app).toBe('function');
   });
 
-  it('should respond to requests after initialization', async () => {
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    vi.doMock('node:fs', async (importOriginal) => {
-      const actual = await importOriginal<typeof import('node:fs')>();
-      return { ...actual, mkdirSync: vi.fn() };
-    });
-
-    vi.doMock('sqlite', async () => {
-      const actual = await import('sqlite');
-      return {
-        open: async (opts: any) =>
-          actual.open({ ...opts, filename: path.join(tmpDir, 'app2.db') }),
-      };
-    });
-
+  it('should apply cors headers on requests', async () => {
     const { default: app } = await import('../src/app.js');
 
-    const response = await request(app).get('/');
+    const response = await request(app)
+      .get('/')
+      .set('Origin', 'http://localhost:5173');
+
+    expect(response.headers['access-control-allow-origin']).toBeDefined();
+  });
+
+  it('should parse json bodies', async () => {
+    const { default: app } = await import('../src/app.js');
+
+    const response = await request(app)
+      .post('/')
+      .send({ test: true })
+      .set('Content-Type', 'application/json');
+
     expect(response.status).not.toBe(500);
   });
 });

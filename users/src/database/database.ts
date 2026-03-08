@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 export async function initDB(): Promise<Database> {
 
-  const dataDir = "/app/data";
+  const dataDir = process.env.DB_DATA_DIR || "/app/data";
   fs.mkdirSync(dataDir, { recursive: true });
 
   const dbPath = path.join(dataDir, "users.db");
