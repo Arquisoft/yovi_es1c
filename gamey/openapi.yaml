@@ -77,9 +77,10 @@ paths:
                   value:
                     api_version: "v1"
                     bot_id: "easy"
-                    x: 1
-                    y: 2
-                    z: 0
+                    coords:
+                      x: 1
+                      y: 2
+                      z: 0
                 bot_not_found:
                   summary: Bot not found error
                   value:
@@ -137,12 +138,10 @@ components:
             - `R` player R
           example: "./B./.RB"
 
-    MoveResponse:
+    Coordinates:
       type: object
       description: |
-        Response when a bot chooses a move.
-
-        The coordinates are **barycentric coordinates (x, y, z)** on the triangular board.
+        Barycentric coordinates (x, y, z) on the triangular board.
         They satisfy the invariant:
 
           x + y + z = size - 1
@@ -153,11 +152,30 @@ components:
         - y = distance from side B
         - z = distance from side C
       required:
-        - api_version
-        - bot_id
         - x
         - y
         - z
+      properties:
+        x:
+          type: integer
+          description: Barycentric coordinate (distance from side A)
+          example: 1
+        y:
+          type: integer
+          description: Barycentric coordinate (distance from side B)
+          example: 1
+        z:
+          type: integer
+          description: Barycentric coordinate (distance from side C)
+          example: 0
+
+    MoveResponse:
+      type: object
+      description: Response when a bot chooses a move.
+      required:
+        - api_version
+        - bot_id
+        - coords
       properties:
         api_version:
           type: string
@@ -168,20 +186,8 @@ components:
           enum: [ easy, medium, hard ]
           example: "easy"
 
-        x:
-          type: integer
-          description: Barycentric coordinate (distance from side A)
-          example: 1
-
-        y:
-          type: integer
-          description: Barycentric coordinate (distance from side B)
-          example: 1
-
-        z:
-          type: integer
-          description: Barycentric coordinate (distance from side C)
-          example: 0
+        coords:
+          $ref: '#/components/schemas/Coordinates'
 
     ErrorResponse:
       type: object

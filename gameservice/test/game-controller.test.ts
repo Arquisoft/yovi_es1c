@@ -5,7 +5,6 @@ import { createGameController } from '../src/controllers/GameController';
 import { MatchService } from '../src/services/MatchService';
 import { StatsService } from '../src/services/StatsService';
 import { errorHandler } from '../src/middleware/error-handler';
-import { MatchNotFoundError, InvalidMoveError } from '../src/errors/domain-errors';
 
 describe('GameController integration tests', () => {
   let app: Express;
@@ -44,63 +43,78 @@ describe('GameController integration tests', () => {
       vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(matchId);
 
       const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-          strategy: 'CLASSIC',
-          difficulty: 'MEDIUM',
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'medium',
+          });
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ matchId });
-      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'CLASSIC', 'MEDIUM');
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium');
     });
 
     it('should validate boardSize', async () => {
       const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: -1,
-          strategy: 'CLASSIC',
-          difficulty: 'MEDIUM',
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: -1,
+            difficulty: 'medium',
+          });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBeDefined();
     });
 
-    it('should validate strategy', async () => {
+    it('should validate difficulty', async () => {
       const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-          strategy: 'INVALID',
-          difficulty: 'MEDIUM',
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'impossible',
+          });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
     });
 
-    it('should validate difficulty', async () => {
-      const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-          strategy: 'CLASSIC',
-          difficulty: 'IMPOSSIBLE',
-        });
+    it('should accept all valid difficulty levels', async () => {
+      const difficulties = ['easy', 'medium', 'hard'];
 
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
+      for (const difficulty of difficulties) {
+        vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);
+
+        const response = await request(app)
+            .post('/api/game/matches')
+            .send({
+              boardSize: 8,
+              difficulty,
+            });
+
+        expect(response.status).toBe(201);
+      }
+    });
+
+    it('should normalize difficulty case', async () => {
+      vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);
+
+      const response = await request(app)
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'MEDIUM',
+          });
+
+      expect(response.status).toBe(201);
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium');
     });
 
     it('should reject request without required fields', async () => {
       const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+          });
 
       expect(response.status).toBe(400);
     });
@@ -112,12 +126,11 @@ describe('GameController integration tests', () => {
       app.use(errorHandler);
 
       const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-          strategy: 'CLASSIC',
-          difficulty: 'MEDIUM',
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'medium',
+          });
 
       expect(response.status).toBe(401);
     });
@@ -129,8 +142,7 @@ describe('GameController integration tests', () => {
         id: 1,
         user_id: 1,
         board_size: 8,
-        strategy: 'CLASSIC',
-        difficulty: 'MEDIUM',
+        difficulty: 'medium',
         status: 'ONGOING',
         winner: null,
         created_at: '2026-03-02T10:00:00Z',
@@ -173,8 +185,7 @@ describe('GameController integration tests', () => {
           id: 1,
           user_id: 1,
           board_size: 8,
-          strategy: 'CLASSIC',
-          difficulty: 'MEDIUM',
+          difficulty: 'medium',
           status: 'ONGOING',
           winner: null,
           created_at: '2026-03-02T10:00:00Z',
@@ -197,12 +208,12 @@ describe('GameController integration tests', () => {
 
     it('should add a move to an ongoing match', async () => {
       const response = await request(app)
-        .post('/api/game/matches/1/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'USER',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/1/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'USER',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ message: 'Move added' });
@@ -211,12 +222,12 @@ describe('GameController integration tests', () => {
 
     it('should reject move with invalid position_yen', async () => {
       const response = await request(app)
-        .post('/api/game/matches/1/moves')
-        .send({
-          position_yen: '',
-          player: 'USER',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/1/moves')
+          .send({
+            position_yen: '',
+            player: 'USER',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
@@ -224,12 +235,12 @@ describe('GameController integration tests', () => {
 
     it('should reject move with invalid player', async () => {
       const response = await request(app)
-        .post('/api/game/matches/1/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'INVALID',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/1/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'INVALID',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
@@ -237,12 +248,12 @@ describe('GameController integration tests', () => {
 
     it('should reject move with invalid moveNumber', async () => {
       const response = await request(app)
-        .post('/api/game/matches/1/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'USER',
-          moveNumber: -1,
-        });
+          .post('/api/game/matches/1/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'USER',
+            moveNumber: -1,
+          });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
@@ -252,12 +263,12 @@ describe('GameController integration tests', () => {
       (localMockMatchService.getMatch as any).mockResolvedValueOnce(undefined);
 
       const response = await request(app)
-        .post('/api/game/matches/999/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'USER',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/999/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'USER',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBe('match_not_found');
@@ -268,8 +279,7 @@ describe('GameController integration tests', () => {
         id: 1,
         user_id: 1,
         board_size: 8,
-        strategy: 'CLASSIC',
-        difficulty: 'MEDIUM',
+        difficulty: 'medium',
         status: 'FINISHED',
         winner: 'USER',
         created_at: '2026-03-02T10:00:00Z',
@@ -277,12 +287,12 @@ describe('GameController integration tests', () => {
       (localMockMatchService.getMatch as any).mockResolvedValueOnce(finishedMatch);
 
       const response = await request(app)
-        .post('/api/game/matches/1/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'USER',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/1/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'USER',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('invalid_move');
@@ -290,12 +300,12 @@ describe('GameController integration tests', () => {
 
     it('should accept BOT as player', async () => {
       const response = await request(app)
-        .post('/api/game/matches/1/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'BOT',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/1/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'BOT',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(201);
       expect(localMockMatchService.addMove).toHaveBeenCalledWith(1, 'a1', 'BOT', 1);

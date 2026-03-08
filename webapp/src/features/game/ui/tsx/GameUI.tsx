@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { Board } from "./Board.tsx";
-import { useGameController } from "../../hooks/useGameController.ts";
+import { useGameController, type BotDifficulty } from "../../hooks/useGameController.ts";
 import {
     Box,
     Typography,
@@ -21,8 +21,7 @@ export default function GameUI() {
     const config = location.state as {
         matchId: string;
         boardSize: number;
-        strategy: string;
-        difficulty: string;
+        difficulty: BotDifficulty;
         mode: "BOT" | "LOCAL_2P";
         initialYEN?: YenPositionDto;
     } | null;
@@ -31,9 +30,10 @@ export default function GameUI() {
         config?.boardSize,
         config?.mode,
         config?.initialYEN,
-        config?.matchId
+        config?.matchId,
+        config?.difficulty || "easy"
     );
-    
+
     if (!config) {
         return (
             <Paper sx={{ p:4, mt:10, textAlign:"center" }}>
@@ -95,10 +95,23 @@ export default function GameUI() {
                                     : "2 Jugadores"}</Typography>
                             </CardContent>
                         </Card>
+
+                        {config?.mode === "BOT" && (
+                            <Card className={styles.cardStatic} sx={{ boxShadow: "0 0 8px #ff00d4",
+                                border: "1px solid #ff00d4" }}>
+                                <CardContent className={styles.cardContent} sx={{ textAlign: "center" }}>
+                                    <Typography variant="subtitle2" color="#fff">Dificultad</Typography>
+                                    <Typography variant="body2" color="#fff">
+                                        {config.difficulty === "easy" ? "Fácil" :
+                                            config.difficulty === "medium" ? "Media" : "Difícil"}
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        )}
                     </Stack>
 
                     <Button onClick={actions.newGame} sx={{ bgcolor: "#00fff7", color: "#000", "&:hover": {
-                        bgcolor: "#00d9d9" }, boxShadow: "0 0 15px #00fff7" }} className={styles.restartButton}>
+                            bgcolor: "#00d9d9" }, boxShadow: "0 0 15px #00fff7" }} className={styles.restartButton}>
                         🎮 Reiniciar partida
                     </Button>
                 </Box>
@@ -111,13 +124,13 @@ export default function GameUI() {
                     </Typography>
 
                     {error && <Paper sx={{ bgcolor: "rgba(255,0,0,0.7)", p: 2, borderRadius: 4, my: 1, width: {
-                        xs: "100%", md: "80%" }, textAlign: "center", color: "#fff" }}>{error}</Paper>}
+                            xs: "100%", md: "80%" }, textAlign: "center", color: "#fff" }}>{error}</Paper>}
 
                     {loading && <Paper sx={{ bgcolor: "rgba(0,255,255,0.3)", p: 2, borderRadius: 4, my: 1, width: {
-                        xs: "100%", md: "80%" }, textAlign: "center", color: "#000" }}>Bot pensando...</Paper>}
+                            xs: "100%", md: "80%" }, textAlign: "center", color: "#000" }}>Bot pensando...</Paper>}
 
                     <Paper sx={{ mt: 3, padding: {
-                        xs: "8px", sm: "12px", md: "16px" }, borderRadius: 4, bgcolor: "rgba(0,0,0,0.7)",
+                            xs: "8px", sm: "12px", md: "16px" }, borderRadius: 4, bgcolor: "rgba(0,0,0,0.7)",
                         boxShadow: "0 0 10px #00fff7", display: "inline-flex", justifyContent: "center",
                         alignItems: "center", width: "fit-content", maxWidth: "100%", overflow: "visible" }}>
                         <Board layout={gameState.layout} size={gameState.size} onCellClick={actions.handleCellClick}

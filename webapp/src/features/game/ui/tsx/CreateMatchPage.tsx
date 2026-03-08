@@ -13,33 +13,38 @@ import {
 } from "@mui/material";
 import { useAuth } from "../../../auth";
 import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
-
-const API_URL = "/api/game";
+import { API_CONFIG } from "../../../../config/api.config";
+import type { BotDifficulty, GameMode } from "../../hooks/useGameController";
 
 export default function CreateMatchPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const [boardSize, setBoardSize] = useState<number>(8);
-    const [strategy, setStrategy] = useState<string>("CLASSIC");
-    const [difficulty, setDifficulty] = useState<string>("MEDIUM");
-    const [mode, setMode] = useState<"BOT" | "LOCAL_2P">("BOT");
+    const [difficulty, setDifficulty] = useState<BotDifficulty>("medium");
+    const [mode, setMode] = useState<GameMode>("BOT");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleCreateMatch = async () => {
+        if (!token) {
+            setError("Debes iniciar sesión para crear una partida");
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
         try {
-            if (!token) throw new Error("No JWT token found");
-
-            // USAR fetchWithAuth en lugar de fetch
-            const res = await fetchWithAuth(`${API_URL}/matches`, {
+            const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ boardSize, strategy, difficulty, mode }),
+                body: JSON.stringify({
+                    boardSize,
+                    difficulty,
+                    mode
+                }),
             });
 
             if (!res.ok) {
@@ -49,13 +54,34 @@ export default function CreateMatchPage() {
 
             const data = await res.json();
 
-            navigate("/gamey", { state: { matchId: data.matchId, initialYEN: data.initialYEN, boardSize, mode } });
+            navigate("/gamey", {
+                state: {
+                    matchId: data.matchId,
+                    initialYEN: data.initialYEN,
+                    boardSize,
+                    mode,
+                    difficulty
+                }
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error desconocido");
         } finally {
             setLoading(false);
         }
     };
+
+    if (!token) {
+        return (
+            <Box sx={{ textAlign: "center", mt: 4 }}>
+                <Typography variant="h5" color="error">
+                    Debes iniciar sesión para crear una partida
+                </Typography>
+                <Button onClick={() => navigate("/login")} sx={{ mt: 2 }}>
+                    Ir a Login
+                </Button>
+            </Box>
+        );
+    }
 
     return (
         <Box
@@ -105,7 +131,6 @@ export default function CreateMatchPage() {
                 )}
 
                 <Stack spacing={3}>
-                    {/* Tamaño del tablero */}
                     <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
                         <InputLabel sx={{ color: "#fff" }}>Tamaño del tablero</InputLabel>
                         <Select
@@ -119,37 +144,32 @@ export default function CreateMatchPage() {
                         </Select>
                     </FormControl>
 
-                    {/* Estrategia */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Estrategia</InputLabel>
-                        <Select value={strategy} onChange={(e) => setStrategy(e.target.value)} sx={{ color: "#fff", p: 1.2 }}>
-                            <MenuItem value="CLASSIC">Classic</MenuItem>
-                            <MenuItem value="VARIANT">Variant</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    {/* Dificultad */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Dificultad</InputLabel>
-                        <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} sx={{ color: "#fff", p: 1.2 }}>
-                            <MenuItem value="EASY">Fácil</MenuItem>
-                            <MenuItem value="MEDIUM">Media</MenuItem>
-                            <MenuItem value="HARD">Difícil</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    {/* Modo de juego */}
                     <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
                         <InputLabel sx={{ color: "#fff" }}>Modo de juego</InputLabel>
                         <Select
                             value={mode}
-                            onChange={(e) => setMode(e.target.value as "BOT" | "LOCAL_2P")}
+                            onChange={(e) => setMode(e.target.value as GameMode)}
                             sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value="BOT">VS Bot</MenuItem>
                             <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
                         </Select>
                     </FormControl>
+
+                    {mode === "BOT" && (
+                        <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
+                            <InputLabel sx={{ color: "#fff" }}>Dificultad</InputLabel>
+                            <Select
+                                value={difficulty}
+                                onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
+                                sx={{ color: "#fff", p: 1.2 }}
+                            >
+                                <MenuItem value="easy">Fácil</MenuItem>
+                                <MenuItem value="medium">Media</MenuItem>
+                                <MenuItem value="hard">Difícil</MenuItem>
+                            </Select>
+                        </FormControl>
+                    )}
 
                     <Button
                         onClick={handleCreateMatch}
