@@ -8,7 +8,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
     "start": "node dist/src/index.js",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage && node fix-lcov.mjs",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest --watch"
   },
   "keywords": [],
