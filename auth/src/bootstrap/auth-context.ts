@@ -2,7 +2,7 @@ import { AuthService } from '../services/auth.service.js';
 import { CredentialsRepository } from '../repositories/credentials.repository.js';
 import { initAuthDatabase } from '../db/init-auth-db.js';
 
-const DEFAULT_AUTH_DB_PATH = '/app/data/auth.db';
+const DEFAULT_AUTH_DB_PATH = '/app/auth/data/auth.db';
 
 let authService: AuthService | null = null;
 

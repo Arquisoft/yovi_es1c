@@ -14,7 +14,7 @@ describe('bootstrap/index/verify coverage', () => {
 
     it('getAuthDbPath default and getAuthService before init', async () => {
         const context = await import('../src/bootstrap/auth-context.js');
-        expect(context.getAuthDbPath()).toBe('/app/data/auth.db');
+        expect(context.getAuthDbPath()).toBe('/app/auth/data/auth.db');
         process.env.AUTH_DB_PATH = ' /tmp/auth-custom.db ';
         expect(context.getAuthDbPath()).toBe('/tmp/auth-custom.db');
         expect(() => context.getAuthService()).toThrow('Auth context is not initialized');

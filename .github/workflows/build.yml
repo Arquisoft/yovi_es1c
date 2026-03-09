@@ -31,6 +31,11 @@ jobs:
       - run: npm --prefix webapp run test:coverage
       - run: npm --prefix auth run test:coverage
 
+      - name: Fix lcov paths for SonarCloud
+        run: |
+          sed -i 's|SF:src/|SF:users/src/|g' users/coverage/lcov.info
+          sed -i 's|SF:src/|SF:auth/src/|g' auth/coverage/lcov.info
+
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
 
