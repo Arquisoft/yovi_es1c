@@ -25,32 +25,39 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-export function verifyJwtMiddleware(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided', valid: false });
-  }
-
-  const jwtSecret = process.env.JWT_SECRET;
-
-  if (!jwtSecret) {
-    return res.status(500).json({ error: 'JWT_SECRET not configured', valid: false });
-  }
-
+export async function verifyJwtMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as jwt.JwtPayload;
-    const userId = typeof decoded.sub === 'string' ? decoded.sub : undefined;
-    const tokenType = decoded.tokenType;
+    const token = extractToken(req);
 
-    if (!userId || tokenType !== 'access') {
-      return res.status(401).json({ error: 'Invalid token', valid: false });
+    if (!token) {
+      return res.status(401).json({ valid: false });
     }
 
-    // Adjuntar userId al request para usarlo en los controladores
-    req.userId = userId;
+    const response = await fetch(`${process.env.AUTH_SERVICE_URL}/api/auth/verify`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(401).json({ valid: false });
+    }
+
+    const data = await response.json();
+
+    if (!data.valid) {
+      return res.status(401).json({ valid: false });
+    }
+
+    req.userId = data.claims.sub;
+
     next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token', valid: false });
+  } catch {
+    return res.status(401).json({ valid: false });
   }
 }

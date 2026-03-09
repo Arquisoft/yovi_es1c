@@ -13,9 +13,9 @@ export function createGameController(matchService: MatchService, statsService: S
       if (!userId) {
         return res.status(401).json({ error: 'Invalid user ID in token' });
       }
-      
+
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.strategy, validated.difficulty);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);
@@ -26,15 +26,15 @@ export function createGameController(matchService: MatchService, statsService: S
     try {
       const matchId = validateMatchId(req.params.id);
       const match = await matchService.getMatch(matchId);
-      
+
       if (!match) {
         throw new MatchNotFoundError();
       }
 
       if (match.user_id !== Number(req.userId)) {
-          throw new UnauthorizedMatchError();
+        throw new UnauthorizedMatchError();
       }
-      
+
       res.json(match);
     } catch (error) {
       next(error);
@@ -45,7 +45,7 @@ export function createGameController(matchService: MatchService, statsService: S
     try {
       const matchId = validateMatchId(req.params.id);
       const validated = validateAddMove(req.body);
-      
+
       // Verify match exists
       const match = await matchService.getMatch(matchId);
       if (!match) {
@@ -56,14 +56,10 @@ export function createGameController(matchService: MatchService, statsService: S
       if (match.user_id !== Number(req.userId)) {
         throw new UnauthorizedMatchError();
       }
-      
+
       // Verify match is still ongoing
       if (match.status !== 'ONGOING') {
         throw new InvalidMoveError('Cannot add moves to a finished match');
-      }
-      //verirfy user owns the match
-      if (match.user_id !== req.userId) {
-          throw new UnauthorizedMatchError();
       }
 
       await matchService.addMove(matchId, validated.position_yen, validated.player, validated.moveNumber);

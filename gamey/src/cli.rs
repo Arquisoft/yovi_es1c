@@ -33,7 +33,7 @@ pub struct CliArgs {
     pub mode: Mode,
 
     /// The bot to use (only used with --mode=computer), default = random_bot
-    #[arg(short, long, default_value = "random_bot")]
+    #[arg(short, long, default_value = "random")]
     pub bot: String,
 
     /// Port to run the server on (only used with --mode=server)

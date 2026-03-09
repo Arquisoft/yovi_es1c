@@ -21,31 +21,42 @@ describe('MatchService', () => {
     it('should create a match with valid parameters', async () => {
       const userId = 1;
       const boardSize = 8;
-      const strategy = 'CLASSIC';
-      const difficulty = 'MEDIUM';
+      const difficulty = 'medium';
       const expectedId = 42;
 
       vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(expectedId);
 
-      const result = await matchService.createMatch(userId, boardSize, strategy, difficulty);
+      const result = await matchService.createMatch(userId, boardSize, difficulty);
 
       expect(result).toBe(expectedId);
       expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(
-        userId,
-        boardSize,
-        strategy,
-        difficulty
+          userId,
+          boardSize,
+          difficulty
       );
       expect(mockMatchRepository.createMatch).toHaveBeenCalledTimes(1);
     });
 
+    it('should accept all difficulty levels', async () => {
+      const difficulties = ['easy', 'medium', 'hard'];
+
+      for (const difficulty of difficulties) {
+        vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+
+        const result = await matchService.createMatch(1, 8, difficulty);
+
+        expect(result).toBe(1);
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty);
+      }
+    });
+
     it('should propagate errors from repository', async () => {
       vi.spyOn(mockMatchRepository, 'createMatch').mockRejectedValue(
-        new Error('Database error')
+          new Error('Database error')
       );
 
       await expect(
-        matchService.createMatch(1, 8, 'CLASSIC', 'MEDIUM')
+          matchService.createMatch(1, 8, 'medium')
       ).rejects.toThrow('Database error');
     });
   });
@@ -57,8 +68,7 @@ describe('MatchService', () => {
         id: matchId,
         user_id: 1,
         board_size: 8,
-        strategy: 'CLASSIC',
-        difficulty: 'MEDIUM',
+        difficulty: 'medium',
         status: 'ONGOING',
         winner: null,
         created_at: '2026-03-02T10:00:00Z',
@@ -95,21 +105,21 @@ describe('MatchService', () => {
       await matchService.addMove(matchId, position, player, moveNumber);
 
       expect(mockMatchRepository.addMove).toHaveBeenCalledWith(
-        matchId,
-        position,
-        player,
-        moveNumber
+          matchId,
+          position,
+          player,
+          moveNumber
       );
       expect(mockMatchRepository.addMove).toHaveBeenCalledTimes(1);
     });
 
     it('should propagate errors when adding move fails', async () => {
       vi.spyOn(mockMatchRepository, 'addMove').mockRejectedValue(
-        new Error('Move validation failed')
+          new Error('Move validation failed')
       );
 
       await expect(
-        matchService.addMove(1, 'a1', 'USER', 1)
+          matchService.addMove(1, 'a1', 'USER', 1)
       ).rejects.toThrow('Move validation failed');
     });
   });
@@ -130,6 +140,17 @@ describe('MatchService', () => {
     it('should handle BOT as winner', async () => {
       const matchId = 1;
       const winner = 'BOT';
+
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+
+      await matchService.finishMatch(matchId, winner);
+
+      expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(matchId, winner);
+    });
+
+    it('should handle draw scenario', async () => {
+      const matchId = 1;
+      const winner = 'DRAW';
 
       vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
 

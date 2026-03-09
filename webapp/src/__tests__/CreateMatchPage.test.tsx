@@ -1,9 +1,7 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { BrowserRouter } from "react-router-dom";
-import CreateMatchPage from "../features/game/ui/tsx/CreateMatchPage";
 import { describe, it, vi, beforeEach, afterEach, expect } from "vitest";
+import { renderWithProviders, setupAuthenticatedUser, clearAuth, screen, fireEvent, waitFor } from "./test-utils";
+import CreateMatchPage from "../features/game/ui/tsx/CreateMatchPage";
 
-// Mock de useNavigate antes de importar el componente
 const mockNavigate = vi.fn();
 
 vi.mock("react-router-dom", async () => {
@@ -18,83 +16,322 @@ describe("CreateMatchPage Component", () => {
     let fetchMock: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-        vi.restoreAllMocks();
-        fetchMock = vi.fn();
-        vi.stubGlobal("fetch", fetchMock);
-
-        vi.stubGlobal("localStorage", {
-            getItem: vi.fn(() => "fake-jwt-token"),
-            setItem: vi.fn(),
-            removeItem: vi.fn(),
-            clear: vi.fn(),
-        });
+        vi.clearAllMocks();
+        clearAuth();
+        fetchMock = vi.fn() as ReturnType<typeof vi.fn>;
+        globalThis.fetch = fetchMock as unknown as typeof fetch;
     });
 
     afterEach(() => {
-        vi.clearAllMocks();
+        clearAuth();
+        vi.restoreAllMocks();
     });
 
-    const renderComponent = () =>
-        render(
-            <BrowserRouter>
-                <CreateMatchPage />
-            </BrowserRouter>
-        );
-
-    it("renders all selects and button", () => {
-        renderComponent();
+    it("renders all selects and button when authenticated", () => {
+        setupAuthenticatedUser();
+        renderWithProviders(<CreateMatchPage />);
 
         expect(screen.getByText(/Tamaño del tablero/i)).toBeInTheDocument();
-        expect(screen.getByText(/Estrategia/i)).toBeInTheDocument();
-        expect(screen.getByText(/Dificultad/i)).toBeInTheDocument();
         expect(screen.getByText(/Modo de juego/i)).toBeInTheDocument();
+        expect(screen.getByText(/Dificultad/i)).toBeInTheDocument();
         expect(screen.getByRole("button", { name: /Crear partida/i })).toBeInTheDocument();
     });
 
+    it("shows login prompt when not authenticated", () => {
+        renderWithProviders(<CreateMatchPage />);
+
+        expect(screen.getByText(/Debes iniciar sesión para crear una partida/i)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /Ir a Login/i })).toBeInTheDocument();
+    });
+
+    it("navigates to login when clicking 'Ir a Login' button", () => {
+        renderWithProviders(<CreateMatchPage />);
+
+        const loginButton = screen.getByRole("button", { name: /Ir a Login/i });
+        fireEvent.click(loginButton);
+
+        expect(mockNavigate).toHaveBeenCalledWith("/login");
+    });
+
     it("navigates correctly on successful match creation", async () => {
+        setupAuthenticatedUser();
+
         const fakeData = { matchId: "123", initialYEN: {} };
+
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify(fakeData), { status: 200, headers: { "Content-Type": "application/json" } })
+            Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve(fakeData),
+                text: () => Promise.resolve(JSON.stringify(fakeData)),
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            } as Response)
         );
 
-        renderComponent();
+        renderWithProviders(<CreateMatchPage />);
 
         const createButton = screen.getByRole("button", { name: /Crear partida/i });
         fireEvent.click(createButton);
 
         await waitFor(() => {
             expect(mockNavigate).toHaveBeenCalledWith("/gamey", {
-                state: { matchId: fakeData.matchId, initialYEN: fakeData.initialYEN, boardSize: 8, mode: "BOT" },
+                state: {
+                    matchId: fakeData.matchId,
+                    initialYEN: fakeData.initialYEN,
+                    boardSize: 8,
+                    mode: "BOT",
+                    difficulty: "medium"
+                },
             });
         });
     });
 
-    it("shows error when JWT token is missing", async () => {
-        vi.stubGlobal("localStorage", {
-            getItem: vi.fn(() => null),
-            setItem: vi.fn(),
-            removeItem: vi.fn(),
-            clear: vi.fn(),
-        });
-
-        renderComponent();
-        const createButton = screen.getByRole("button", { name: /Crear partida/i });
-        fireEvent.click(createButton);
-
-        await waitFor(() => {
-            expect(screen.getByText(/No JWT token found/i)).toBeInTheDocument();
-        });
-    });
-
     it("shows error when API responds with error", async () => {
-        fetchMock.mockResolvedValueOnce(new Response("API error", { status: 500 }));
+        setupAuthenticatedUser();
 
-        renderComponent();
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: false,
+                status: 500,
+                text: () => Promise.resolve("API error"),
+                json: () => Promise.reject(new Error("Not JSON")),
+                headers: new Headers(),
+            } as Response)
+        );
+
+        renderWithProviders(<CreateMatchPage />);
+
         const createButton = screen.getByRole("button", { name: /Crear partida/i });
         fireEvent.click(createButton);
 
         await waitFor(() => {
             expect(screen.getByText(/API error/i)).toBeInTheDocument();
+        });
+    });
+
+    it("changes board size when user selects a different option", async () => {
+        setupAuthenticatedUser();
+        renderWithProviders(<CreateMatchPage />);
+        const boardSizeButton = screen.getByText("8 x 8").closest('[role="combobox"]');
+        fireEvent.mouseDown(boardSizeButton!);
+        const option16 = await screen.findByRole("option", { name: "16 x 16" });
+        fireEvent.click(option16);
+
+        await waitFor(() => {
+            expect(screen.getByText("16 x 16")).toBeInTheDocument();
+        });
+    });
+
+    it("changes difficulty when user selects a different option", async () => {
+        setupAuthenticatedUser();
+        renderWithProviders(<CreateMatchPage />);
+
+        const difficultyButton = screen.getByText(/Media/i).closest('[role="combobox"]');
+        fireEvent.mouseDown(difficultyButton!);
+        const hardOption = await screen.findByRole("option", { name: /Difícil/i });
+        fireEvent.click(hardOption);
+        await waitFor(() => {
+            expect(screen.getByText(/Difícil/i)).toBeInTheDocument();
+        });
+    });
+
+    it("changes mode to LOCAL_2P and hides difficulty selector", async () => {
+        setupAuthenticatedUser();
+        renderWithProviders(<CreateMatchPage />);
+
+        expect(screen.getByText(/Media/i)).toBeInTheDocument();
+        const modeButton = screen.getByText("VS Bot").closest('[role="combobox"]');
+        fireEvent.mouseDown(modeButton!);
+        const local2pOption = await screen.findByRole("option", { name: "2 Jugadores" });
+        fireEvent.click(local2pOption);
+
+        await waitFor(() => {
+            expect(screen.getByText("2 Jugadores")).toBeInTheDocument();
+            expect(screen.queryByText(/Media/i)).not.toBeInTheDocument();
+        });
+    });
+
+    it("shows difficulty selector again when switching back to BOT mode", async () => {
+        setupAuthenticatedUser();
+        renderWithProviders(<CreateMatchPage />);
+
+        let modeButton = screen.getByText("VS Bot").closest('[role="combobox"]');
+        fireEvent.mouseDown(modeButton!);
+        const local2pOption = await screen.findByRole("option", { name: "2 Jugadores" });
+        fireEvent.click(local2pOption);
+
+        await waitFor(() => {
+            expect(screen.queryByText(/Media/i)).not.toBeInTheDocument();
+        });
+
+        modeButton = screen.getByText("2 Jugadores").closest('[role="combobox"]');
+        fireEvent.mouseDown(modeButton!);
+        const botOption = await screen.findByRole("option", { name: "VS Bot" });
+        fireEvent.click(botOption);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Media/i)).toBeInTheDocument();
+        });
+    });
+
+    it("displays error message when API call fails", async () => {
+        setupAuthenticatedUser();
+
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: false,
+                status: 400,
+                text: () => Promise.resolve("Invalid board size"),
+                json: () => Promise.reject(new Error("Not JSON")),
+                headers: new Headers(),
+            } as Response)
+        );
+
+        renderWithProviders(<CreateMatchPage />);
+
+        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+        fireEvent.click(createButton);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Invalid board size/i)).toBeInTheDocument();
+        });
+    });
+
+    it("disables button while loading", async () => {
+        setupAuthenticatedUser();
+
+        let resolvePromise: (value: Response) => void = () => {};
+        const pendingPromise = new Promise<Response>((resolve) => {
+            resolvePromise = resolve;
+        });
+
+        fetchMock.mockReturnValueOnce(pendingPromise);
+
+        renderWithProviders(<CreateMatchPage />);
+
+        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+
+        fireEvent.click(createButton);
+
+        await waitFor(() => {
+            expect(createButton).toBeDisabled();
+            expect(screen.getByText(/Creando partida/i)).toBeInTheDocument();
+        });
+
+        resolvePromise(
+            new Response(JSON.stringify({ matchId: "123", initialYEN: {} }), {
+                status: 200,
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            })
+        );
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalled();
+        });
+    });
+
+
+    it("handles unknown error gracefully", async () => {
+        setupAuthenticatedUser();
+
+        fetchMock.mockRejectedValueOnce("Something weird happened");
+
+        renderWithProviders(<CreateMatchPage />);
+
+        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+        fireEvent.click(createButton);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Error desconocido/i)).toBeInTheDocument();
+        });
+    });
+
+    it("sends correct difficulty in LOCAL_2P mode", async () => {
+        setupAuthenticatedUser();
+
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ matchId: "123", initialYEN: {} }),
+                text: () => Promise.resolve(JSON.stringify({ matchId: "123", initialYEN: {} })),
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            } as Response)
+        );
+
+        renderWithProviders(<CreateMatchPage />);
+
+        const modeButton = screen.getByText("VS Bot").closest('[role="combobox"]');
+        fireEvent.mouseDown(modeButton!);
+        const local2pOption = await screen.findByRole("option", { name: "2 Jugadores" });
+        fireEvent.click(local2pOption);
+
+        await waitFor(() => {
+            expect(screen.getByText("2 Jugadores")).toBeInTheDocument();
+        });
+
+        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+        fireEvent.click(createButton);
+
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalled();
+            const callArgs = fetchMock.mock.calls[0];
+            const requestBody = JSON.parse(callArgs[1].body);
+
+            expect(requestBody).toEqual({
+                boardSize: 8,
+                difficulty: "medium",
+                mode: "LOCAL_2P"
+            });
+        });
+    });
+
+
+    it("changes all selects to non-default values before creating match", async () => {
+        setupAuthenticatedUser();
+
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ matchId: "456", initialYEN: {} }),
+                text: () => Promise.resolve(JSON.stringify({ matchId: "456", initialYEN: {} })),
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            } as Response)
+        );
+
+        renderWithProviders(<CreateMatchPage />);
+
+        let selectButton = screen.getByText("8 x 8").closest('[role="combobox"]');
+        fireEvent.mouseDown(selectButton!);
+        const size32 = await screen.findByRole("option", { name: "32 x 32" });
+        fireEvent.click(size32);
+
+        await waitFor(() => {
+            expect(screen.getByText("32 x 32")).toBeInTheDocument();
+        });
+
+        selectButton = screen.getByText(/Media/i).closest('[role="combobox"]');
+        fireEvent.mouseDown(selectButton!);
+        const easyOption = await screen.findByRole("option", { name: /Fácil/i });
+        fireEvent.click(easyOption);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Fácil/i)).toBeInTheDocument();
+        });
+        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+        fireEvent.click(createButton);
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalledWith("/gamey", {
+                state: {
+                    matchId: "456",
+                    initialYEN: {},
+                    boardSize: 32,
+                    mode: "BOT",
+                    difficulty: "easy"
+                },
+            });
         });
     });
 });

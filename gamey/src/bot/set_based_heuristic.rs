@@ -25,4 +25,8 @@ impl Heuristic for SetBasedHeuristic {
         let (sides, size) = best_set;
         sides * 10 + size as i32
     }
+
+    fn name(&self) -> &str {
+        "set"
+    }
 }
