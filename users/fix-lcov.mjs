@@ -7,4 +7,3 @@ const fixed = content
   .replace(/SF:src\\/g, 'SF:users/src/')  // prefijo
   .replace(/\\/g, '/');                    // todos los backslashes restantes
 writeFileSync(file, fixed);
-console.log('lcov.info rutas corregidas');
