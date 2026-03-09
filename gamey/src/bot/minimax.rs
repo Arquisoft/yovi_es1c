@@ -8,6 +8,9 @@ use crate::bot::heurisitic::Heuristic;
 /// because `YBot` requires thread safety.
 
 pub struct MinimaxBot<H: Heuristic> {
+    /// Stores the name of the bot
+    name: String,
+
     /// Heuristic used to evaluate non-terminal board states.
     heuristic: H,
 
@@ -21,7 +24,13 @@ where
 {
     /// Creates a new MinimaxBot with a given heuristic and depth limit.
     pub fn new(heuristic: H, max_depth: u32) -> Self {
-        Self { heuristic, max_depth }
+        let name = format!(
+            "minimax_{}_d{}",
+            heuristic.name(),
+            max_depth
+        );
+        Self
+        { name, heuristic, max_depth }
     }
 
     /// Generates all possible moves for the current board state.
@@ -151,7 +160,7 @@ where
     H: Heuristic + Send + Sync,
 {
     fn name(&self) -> &str {
-        "minimax_bot"
+        &self.name
     }
 
     /// Chooses the best move using minimax search.
@@ -202,12 +211,13 @@ mod tests {
         fn evaluate(&self, _board: &GameY, _player: PlayerId) -> i32 {
             self.0
         }
+        fn name(&self) -> &str {"fixed"}
     }
 
     #[test]
     fn test_minimax_bot_name() {
         let bot = MinimaxBot::new(FixedHeuristic(0), 1);
-        assert_eq!(bot.name(), "minimax_bot");
+        assert_eq!(bot.name(), "minimax_fixed_d1");
     }
 
     #[test]
@@ -344,6 +354,7 @@ mod tests {
             *count += 1;
             0
         }
+        fn name(&self) -> &str {"counting"}
     }
 
     #[test]

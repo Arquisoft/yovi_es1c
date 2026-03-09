@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -6,6 +7,7 @@ use gamey::{YBotRegistry, YEN, create_default_state, create_router, state::AppSt
 use http_body_util::BodyExt;
 use std::sync::Arc;
 use tower::ServiceExt;
+use gamey::bot_server::bot_alias_resolver::BotAliasResolver;
 
 /// Helper to create a test app with the default state
 fn test_app() -> axum::Router {
@@ -57,7 +59,7 @@ async fn test_choose_endpoint_with_valid_request() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/ybot/choose/random_bot")
+                .uri("/v1/ybot/choose/random")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&yen).unwrap()))
                 .unwrap(),
@@ -71,7 +73,7 @@ async fn test_choose_endpoint_with_valid_request() {
     let move_response: MoveResponse = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(move_response.api_version, "v1");
-    assert_eq!(move_response.bot_id, "random_bot");
+    assert_eq!(move_response.bot_id, "random");
     // Coordinates should be valid (we can't predict exactly which one the random bot picks)
 }
 
@@ -86,7 +88,7 @@ async fn test_choose_endpoint_with_partially_filled_board() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/ybot/choose/random_bot")
+                .uri("/v1/ybot/choose/random")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&yen).unwrap()))
                 .unwrap(),
@@ -100,7 +102,7 @@ async fn test_choose_endpoint_with_partially_filled_board() {
     let move_response: MoveResponse = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(move_response.api_version, "v1");
-    assert_eq!(move_response.bot_id, "random_bot");
+    assert_eq!(move_response.bot_id, "random");
 }
 
 // ============================================================================
@@ -117,7 +119,7 @@ async fn test_choose_endpoint_with_invalid_api_version() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v2/ybot/choose/random_bot") // v2 is not supported
+                .uri("/v2/ybot/choose/random") // v2 is not supported
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&yen).unwrap()))
                 .unwrap(),
@@ -170,7 +172,7 @@ async fn test_choose_endpoint_with_invalid_json() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/ybot/choose/random_bot")
+                .uri("/v1/ybot/choose/random")
                 .header("content-type", "application/json")
                 .body(Body::from("{ invalid json }"))
                 .unwrap(),
@@ -192,7 +194,7 @@ async fn test_choose_endpoint_with_missing_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/ybot/choose/random_bot")
+                .uri("/v1/ybot/choose/random")
                 // No content-type header
                 .body(Body::from(serde_json::to_string(&yen).unwrap()))
                 .unwrap(),
@@ -212,7 +214,11 @@ async fn test_choose_endpoint_with_missing_content_type() {
 async fn test_choose_with_custom_bot_registry() {
     // Create a custom registry with only the random bot
     let bots = YBotRegistry::new().with_bot(Arc::new(RandomBot));
-    let state = AppState::new(bots);
+
+    // Crear un resolver vacío (o con alias si quieres probarlos)
+    let resolver = BotAliasResolver::new(HashMap::new());
+
+    let state = AppState::new(bots, resolver);
     let app = test_app_with_state(state);
 
     let yen = YEN::new(3, 0, vec!['B', 'R'], "./../...".to_string());
@@ -221,7 +227,7 @@ async fn test_choose_with_custom_bot_registry() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/ybot/choose/random_bot")
+                .uri("/v1/ybot/choose/random")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&yen).unwrap()))
                 .unwrap(),
@@ -236,7 +242,8 @@ async fn test_choose_with_custom_bot_registry() {
 async fn test_choose_with_empty_bot_registry() {
     // Create an empty registry
     let bots = YBotRegistry::new();
-    let state = AppState::new(bots);
+    let resolver = BotAliasResolver::new(HashMap::new()); // Resolver vacío
+    let state = AppState::new(bots, resolver);
     let app = test_app_with_state(state);
 
     let yen = YEN::new(3, 0, vec!['B', 'R'], "./../...".to_string());

@@ -8,18 +8,19 @@ import {
     updateLayout,
 } from "../domain/yen";
 import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
+import { API_CONFIG } from "../../../config/api.config";
 
 export type GameMode = "BOT" | "LOCAL_2P";
+export type BotDifficulty = "easy" | "medium" | "hard";
 
 const DEFAULT_BOARD_SIZE = 8;
-const GAMEY_API = import.meta.env.VITE_GAMEY_API_URL ?? "/api/gamey";
-const GAME_API = "/api/game";
 
 export const useGameController = (
     initialSize: number = DEFAULT_BOARD_SIZE,
     initialMode: GameMode = "BOT",
     initialYEN?: YenPositionDto,
-    initialMatchId?: string
+    initialMatchId?: string,
+    botDifficulty: BotDifficulty = "easy"
 ) => {
     const [gameMode, setGameMode] = useState<GameMode>(initialMode);
     const [gameState, setGameState] = useState<YenPositionDto>(
@@ -69,7 +70,7 @@ export const useGameController = (
         if (!matchId) return;
 
         try {
-            await fetchWithAuth(`${GAME_API}/matches/${matchId}/moves`, {
+            await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/moves`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -150,7 +151,7 @@ export const useGameController = (
         setMessage("Bot pensando...");
 
         try {
-            const res = await fetchWithAuth(`${GAMEY_API}/v1/ybot/choose/random_bot`, {
+            const res = await fetchWithAuth(`${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${botDifficulty}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -170,7 +171,15 @@ export const useGameController = (
             }
 
             const data = await res.json();
-            const coords = data?.coords;
+
+            if (data.message) {
+                setError(`Error del bot: ${data.message}`);
+                setMessage("Error comunicando con el bot");
+                setGameState({ ...humanState, turn: 0 });
+                return;
+            }
+
+            const coords = data.coords;
             const hasValidCoords =
                 coords &&
                 typeof coords.x === "number" &&
@@ -218,8 +227,17 @@ export const useGameController = (
         }
     };
 
+
     return {
-        state: { gameMode, gameState, loading, error, message, gameOver, isBoardFull },
+        state: {
+            gameMode,
+            gameState,
+            loading,
+            error,
+            message,
+            gameOver,
+            isBoardFull
+        },
         actions: {
             selectMode: resetGame,
             newGame: () => resetGame(gameMode),
