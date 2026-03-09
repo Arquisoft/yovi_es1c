@@ -24,6 +24,10 @@ docs/build
 .env.*
 !.env.example
 
+# Sonar
+.scannerwork
+
+
 # SQLite local files
 *.db
 *.sqlite
