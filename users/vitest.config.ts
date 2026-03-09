@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 
 export default defineConfig({
   test: {
@@ -8,9 +9,11 @@ export default defineConfig({
     exclude: ['dist/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['lcov', 'text'],
+      reporter: ['text', 'html', 'json', 'clover', 'lcov'],
       include: ['src/**/*.ts'],
       exclude: ['dist/**', 'node_modules/**'],
+      reportsDirectory: 'coverage',
     },
   },
+  root: resolve(__dirname, '.'),
 });
