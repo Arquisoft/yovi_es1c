@@ -35,10 +35,12 @@ export const useStatsController = (userId: string) => {
   const [stats, setStats] = useState<StatsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMocked, setIsMocked] = useState(false);
 
   const fetchStats = async () => {
     setLoading(true);
     setError(null);
+    setIsMocked(false);
 
     try {
       const token = localStorage.getItem("jwt");
@@ -51,20 +53,22 @@ export const useStatsController = (userId: string) => {
         },
       });
 
-      if (!res.ok) {
-        throw new Error(`Error obteniendo estadísticas: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Error obteniendo estadísticas: ${res.status}`);
 
       const data = await res.json();
-      setStats(data);
+      if (!data || !data.matches) {
+        setStats(MOCK_STATS);
+        setIsMocked(true);
+      } else {
+        setStats(data);
+      }
     } catch (err) {
       console.warn(
         "No se pudo acceder a la API, usando datos mock:",
         err instanceof Error ? err.message : err
       );
-      // Si falla, usamos datos mock
       setStats(MOCK_STATS);
-      setError(null); // opcional: no marcar error si solo mostramos mock
+      setIsMocked(true);
     } finally {
       setLoading(false);
     }
@@ -75,7 +79,7 @@ export const useStatsController = (userId: string) => {
   }, [userId]);
 
   return {
-    state: { stats, loading, error },
+    state: { stats, loading, error, isMocked },
     actions: { refresh: fetchStats },
   };
 };
