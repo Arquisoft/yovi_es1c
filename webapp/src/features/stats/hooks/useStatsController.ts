@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { API_CONFIG } from "../../../config/api.config";
+import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 
-const GAME_API_URL =
-  import.meta.env.VITE_GAME_API_URL ?? "http://localhost:3000";
+const GAME_API_URL = API_CONFIG.GAME_SERVICE_API;
 
 export type MatchDto = {
   matchId: string;
@@ -34,15 +35,17 @@ export const useStatsController = (userId: string) => {
   const [stats, setStats] = useState<StatsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isMocked, setIsMocked] = useState(false);
 
   const fetchStats = async () => {
     setLoading(true);
     setError(null);
+    setIsMocked(false);
 
     try {
       const token = localStorage.getItem("jwt");
 
-      const res = await fetch(`${GAME_API_URL}/api/game/stats/${userId}`, {
+      const res = await fetchWithAuth(`${GAME_API_URL}/api/game/stats/${userId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -50,20 +53,19 @@ export const useStatsController = (userId: string) => {
         },
       });
 
-      if (!res.ok) {
-        throw new Error(`Error obteniendo estadísticas: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Error obteniendo estadísticas: ${res.status}`);
 
-      const data = await res.json();
-      setStats(data);
+      const apiData: StatsDto = await res.json();
+
+      setStats(apiData);
     } catch (err) {
       console.warn(
         "No se pudo acceder a la API, usando datos mock:",
         err instanceof Error ? err.message : err
       );
-      // Si falla, usamos datos mock
+
       setStats(MOCK_STATS);
-      setError(null); // opcional: no marcar error si solo mostramos mock
+      setIsMocked(true);
     } finally {
       setLoading(false);
     }
@@ -74,7 +76,7 @@ export const useStatsController = (userId: string) => {
   }, [userId]);
 
   return {
-    state: { stats, loading, error },
+    state: { stats, loading, error, isMocked },
     actions: { refresh: fetchStats },
   };
 };

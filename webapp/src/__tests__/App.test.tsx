@@ -60,8 +60,10 @@ describe('App', () => {
         fireEvent.click(screen.getByRole('link', { name: 'Stats' }));
 
         await waitFor(() => {
-            expect(screen.getByText('Estadísticas')).toBeInTheDocument();
-            expect(screen.getByText(/Aquí irán las estadísticas del juego/i)).toBeInTheDocument();
+            expect(screen.getByText(/estadísticas del jugador/i)).toBeInTheDocument();
+                expect(screen.getByText(/Partidas jugadas/i)).toBeInTheDocument();
+            expect(screen.getByText(/Victorias/i)).toBeInTheDocument();
+            expect(screen.getByText(/Derrotas/i)).toBeInTheDocument();
         });
     });
 
