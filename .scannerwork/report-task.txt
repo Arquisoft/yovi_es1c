@@ -1,0 +1,7 @@
+organization=arquisoft
+projectKey=Arquisoft_yovi_es1c
+serverUrl=https://sonarcloud.io
+serverVersion=8.0.0.82551
+dashboardUrl=https://sonarcloud.io/dashboard?id=Arquisoft_yovi_es1c
+ceTaskId=AZzSshyyaN_VejKD7SIM
+ceTaskUrl=https://sonarcloud.io/api/ce/task?id=AZzSshyyaN_VejKD7SIM
