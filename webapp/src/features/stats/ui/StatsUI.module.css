@@ -10,13 +10,13 @@
   padding: 16px;
   padding-top: 96px;
   overflow: auto;
-  background: linear-gradient(180deg, #100010, #050005, #000000);
+  background: radial-gradient(circle at center, #0088aa 0%, #010214 40%);
 }
 
 .header {
   text-align: center;
-  color: #00bfff;
-  text-shadow: 0 0 5px #00bfff, 0 0 10px #004080;
+  color: #00f0ff;
+  text-shadow: 0 0 5px #00f0ff, 0 0 15px #00bfff;
   margin-bottom: 16px;
 }
 

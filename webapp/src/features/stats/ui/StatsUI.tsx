@@ -8,7 +8,6 @@ export default function StatsUI() {
   const { state } = useStatsController(userId);
   const { stats, loading, error, isMocked } = state;
 
-  // Manejo de estados
   if (loading)
     return (
       <Typography color="white" textAlign="center" mt={10}>
@@ -127,7 +126,7 @@ function StatCard({ title, value, color }: any) {
     <Card
       sx={{
         minWidth: 200,
-        bgcolor: "rgba(0,0,0,0.7)",
+        bgcolor: "rgba(0,0,0,0.9)",
         border: `1px solid ${color}`,
         boxShadow: `0 0 12px ${color}`,
       }}
