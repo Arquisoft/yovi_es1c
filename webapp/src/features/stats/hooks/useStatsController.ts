@@ -55,18 +55,15 @@ export const useStatsController = (userId: string) => {
 
       if (!res.ok) throw new Error(`Error obteniendo estadísticas: ${res.status}`);
 
-      const data = await res.json();
-      if (!data || !data.matches) {
-        setStats(MOCK_STATS);
-        setIsMocked(true);
-      } else {
-        setStats(data);
-      }
+      const apiData: StatsDto = await res.json();
+
+      setStats(apiData);
     } catch (err) {
       console.warn(
         "No se pudo acceder a la API, usando datos mock:",
         err instanceof Error ? err.message : err
       );
+
       setStats(MOCK_STATS);
       setIsMocked(true);
     } finally {

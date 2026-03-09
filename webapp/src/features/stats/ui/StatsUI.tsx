@@ -31,19 +31,21 @@ export default function StatsUI() {
     ? ((stats.wins / stats.totalMatches) * 100).toFixed(1)
     : 0;
 
-  const columns = [
-    {
-      field: "createdAt",
-      headerName: "Fecha",
-      flex: 1,
-      valueGetter: (params: any) =>
-        params.row?.createdAt
-          ? new Date(params.row.createdAt).toLocaleDateString()
-          : "N/A",
+const columns = [
+  {
+    field: "createdAt",
+    headerName: "Fecha",
+    flex: 1,
+    valueFormatter: (params: any) => {
+      const val = params.value;
+      if (!val) return "N/A";
+      const date = new Date(val);
+      return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString();
     },
-    { field: "mode", headerName: "Modo", flex: 1 },
-    { field: "status", headerName: "Resultado", flex: 1 },
-  ];
+  },
+  { field: "mode", headerName: "Modo", flex: 1 },
+  { field: "status", headerName: "Resultado", flex: 1 },
+];
 
   return (
     <div className={styles.container}>
@@ -61,7 +63,7 @@ export default function StatsUI() {
         <Stack
           className={styles.statGrid}
           direction="row"
-          spacing={1}
+          spacing={2}
           justifyContent="center"
           flexWrap="wrap"
         >

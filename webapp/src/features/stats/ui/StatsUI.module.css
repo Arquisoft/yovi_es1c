@@ -29,10 +29,9 @@
 
 .statGrid {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 24px;
   justify-content: center;
-  flex-wrap: wrap;
   margin-bottom: 40px;
 }
 
