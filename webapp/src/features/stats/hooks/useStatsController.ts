@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { API_CONFIG } from "../../../config/api.config";
+import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 
-const GAME_API_URL =
-  import.meta.env.VITE_GAME_API_URL ?? "http://localhost:3000";
+const GAME_API_URL = API_CONFIG.GAME_SERVICE_API;
 
 export type MatchDto = {
   matchId: string;
@@ -42,7 +43,7 @@ export const useStatsController = (userId: string) => {
     try {
       const token = localStorage.getItem("jwt");
 
-      const res = await fetch(`${GAME_API_URL}/api/game/stats/${userId}`, {
+      const res = await fetchWithAuth(`${GAME_API_URL}/api/game/stats/${userId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

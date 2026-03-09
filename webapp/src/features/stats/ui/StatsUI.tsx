@@ -36,11 +36,27 @@ export default function StatsUI() {
             field: "createdAt",
             headerName: "Fecha",
             flex: 1,
-            valueGetter: (value: any, row: any) =>
-                new Date(row.createdAt).toLocaleDateString(),
+            valueGetter: (params: any) => {
+                if (!params?.row?.createdAt) return "N/A";
+                try {
+                    return new Date(params.row.createdAt).toLocaleDateString();
+                } catch {
+                    return "Fecha inválida";
+                }
+            },
         },
-        { field: "mode", headerName: "Modo", flex: 1 },
-        { field: "status", headerName: "Resultado", flex: 1 },
+        {
+            field: "mode",
+            headerName: "Modo",
+            flex: 1,
+            valueGetter: (params: any) => params?.row?.mode || "N/A"
+        },
+        {
+            field: "status",
+            headerName: "Resultado",
+            flex: 1,
+            valueGetter: (params: any) => params?.row?.status || "N/A"
+        },
     ];
 
     return (
@@ -100,66 +116,72 @@ export default function StatsUI() {
                         Historial de partidas
                     </Typography>
 
-                    <DataGrid
-                        rows={stats.matches}
-                        columns={columns}
-                        getRowId={(row) => row.matchId}
-                        autoHeight
-                        pageSizeOptions={[5,10,25]}
-                        initialState={{
-                            pagination: {
-                                paginationModel: { pageSize: 5, page: 0 }
-                            }
-                        }}
-                        sx={{
-                            border: "none",
-                            color: "#e5e7eb",
-                            backgroundColor: "rgba(2,6,23,0.9)",
+                    {!stats.matches || stats.matches.length === 0 ? (
+                        <Typography color="white" textAlign="center" py={4}>
+                            No hay partidas registradas todavía
+                        </Typography>
+                    ) : (
+                        <DataGrid
+                            rows={stats.matches}
+                            columns={columns}
+                            getRowId={(row: any) => row?.matchId || `row-${Math.random()}`}
+                            autoHeight
+                            pageSizeOptions={[5,10,25]}
+                            initialState={{
+                                pagination: {
+                                    paginationModel: { pageSize: 5, page: 0 }
+                                }
+                            }}
+                            sx={{
+                                border: "none",
+                                color: "#e5e7eb",
+                                backgroundColor: "rgba(2,6,23,0.9)",
 
-                            /* HEADER CON FONDO OSCURO REAL */
-                            "& .MuiDataGrid-columnHeaders": {
-                                backgroundColor: "#020617 !important",
-                                borderBottom: "2px solid #00fff7",
-                            },
+                                /* HEADER CON FONDO OSCURO REAL */
+                                "& .MuiDataGrid-columnHeaders": {
+                                    backgroundColor: "#020617 !important",
+                                    borderBottom: "2px solid #00fff7",
+                                },
 
-                            "& .MuiDataGrid-columnHeader": {
-                                backgroundColor: "#020617 !important",
-                                color: "#00fff7",
-                                fontWeight: "bold",
-                                letterSpacing: "1px",
-                                textTransform: "uppercase",
-                            },
+                                "& .MuiDataGrid-columnHeader": {
+                                    backgroundColor: "#020617 !important",
+                                    color: "#00fff7",
+                                    fontWeight: "bold",
+                                    letterSpacing: "1px",
+                                    textTransform: "uppercase",
+                                },
 
-                            "& .MuiDataGrid-columnHeaderTitle": {
-                                fontWeight: 700,
-                            },
+                                "& .MuiDataGrid-columnHeaderTitle": {
+                                    fontWeight: 700,
+                                },
 
-                            "& .MuiDataGrid-cell": {
-                                borderBottom: "1px solid rgba(255,255,255,0.05)",
-                            },
+                                "& .MuiDataGrid-cell": {
+                                    borderBottom: "1px solid rgba(255,255,255,0.05)",
+                                },
 
-                            "& .MuiDataGrid-row": {
-                                backgroundColor: "rgba(15,23,42,0.6)",
-                            },
+                                "& .MuiDataGrid-row": {
+                                    backgroundColor: "rgba(15,23,42,0.6)",
+                                },
 
-                            "& .MuiDataGrid-row:hover": {
-                                backgroundColor: "rgba(0,255,247,0.1)",
-                            },
+                                "& .MuiDataGrid-row:hover": {
+                                    backgroundColor: "rgba(0,255,247,0.1)",
+                                },
 
-                            "& .MuiDataGrid-footerContainer": {
-                                backgroundColor: "#020617",
-                                borderTop: "1px solid #00fff7",
-                            },
+                                "& .MuiDataGrid-footerContainer": {
+                                    backgroundColor: "#020617",
+                                    borderTop: "1px solid #00fff7",
+                                },
 
-                            "& .MuiTablePagination-root": {
-                                color: "#fff",
-                            },
+                                "& .MuiTablePagination-root": {
+                                    color: "#fff",
+                                },
 
-                            "& .MuiSvgIcon-root": {
-                                color: "#00fff7",
-                            },
-                        }}
-                    />
+                                "& .MuiSvgIcon-root": {
+                                    color: "#00fff7",
+                                },
+                            }}
+                        />
+                    )}
                 </Paper>
 
             </Box>
