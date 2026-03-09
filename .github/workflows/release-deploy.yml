@@ -215,18 +215,21 @@ jobs:
   deploy:
     name: Deploy over SSH
     runs-on: ubuntu-latest
-    needs: [docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey]
+    needs: [ docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey ]
     steps:
       - name: Deploy over SSH
-        uses: fifsky/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          user: ${{ secrets.DEPLOY_USER }}
+          username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          command: |
+          envs: JWT_SECRET
+          script: |
             mkdir -p nginx
             wget https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master/docker-compose.yml -O docker-compose.yml
             wget https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master/nginx/nginx.conf -O nginx/nginx.conf
             docker compose down
             docker compose pull
-            docker compose up -d
+            JWT_SECRET=$JWT_SECRET docker compose up -d
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
