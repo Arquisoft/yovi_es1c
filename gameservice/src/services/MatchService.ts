@@ -3,8 +3,8 @@ import { MatchRepository } from "../repositories/MatchRepository";
 export class MatchService {
   constructor(private matchRepo: MatchRepository) {}
 
-  async createMatch(userId: number, boardSize: number, strategy: string, difficulty: string) {
-    return this.matchRepo.createMatch(userId, boardSize, strategy, difficulty);
+  async createMatch(userId: number, boardSize: number, difficulty: string) {
+    return this.matchRepo.createMatch(userId, boardSize, difficulty);
   }
 
   async getMatch(id: number) {

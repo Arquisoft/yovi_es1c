@@ -44,12 +44,11 @@ describe('Game match flow integration tests', () => {
       (mockMatchService.createMatch as any).mockResolvedValue(matchId);
 
       const createResponse = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-          strategy: 'CLASSIC',
-          difficulty: 'MEDIUM',
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'medium',
+          });
 
       expect(createResponse.status).toBe(201);
       expect(createResponse.body.matchId).toBe(matchId);
@@ -59,8 +58,7 @@ describe('Game match flow integration tests', () => {
         id: matchId,
         user_id: userId,
         board_size: 8,
-        strategy: 'CLASSIC',
-        difficulty: 'MEDIUM',
+        difficulty: 'medium',
         status: 'ONGOING',
         winner: null,
         created_at: '2026-03-02T10:00:00Z',
@@ -84,15 +82,15 @@ describe('Game match flow integration tests', () => {
 
       for (const move of moves) {
         const moveResponse = await request(app)
-          .post(`/api/game/matches/${matchId}/moves`)
-          .send(move);
+            .post(`/api/game/matches/${matchId}/moves`)
+            .send(move);
 
         expect(moveResponse.status).toBe(201);
         expect(mockMatchService.addMove).toHaveBeenCalledWith(
-          matchId,
-          move.position_yen,
-          move.player,
-          move.moveNumber
+            matchId,
+            move.position_yen,
+            move.player,
+            move.moveNumber
         );
       }
 
@@ -123,12 +121,11 @@ describe('Game match flow integration tests', () => {
 
       for (let i = 0; i < 3; i++) {
         const response = await request(app)
-          .post('/api/game/matches')
-          .send({
-            boardSize: 8,
-            strategy: 'CLASSIC',
-            difficulty: 'MEDIUM',
-          });
+            .post('/api/game/matches')
+            .send({
+              boardSize: 8,
+              difficulty: 'medium',
+            });
 
         expect(response.status).toBe(201);
         expect(response.body.matchId).toBe(matchIds[i]);
@@ -137,13 +134,30 @@ describe('Game match flow integration tests', () => {
       expect(mockMatchService.createMatch).toHaveBeenCalledTimes(3);
     });
 
+    it('should handle matches with different difficulties', async () => {
+      const difficulties = ['easy', 'medium', 'hard'];
+
+      for (const difficulty of difficulties) {
+        vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);
+
+        const response = await request(app)
+            .post('/api/game/matches')
+            .send({
+              boardSize: 8,
+              difficulty,
+            });
+
+        expect(response.status).toBe(201);
+        expect(mockMatchService.createMatch).toHaveBeenCalledWith(userId, 8, difficulty);
+      }
+    });
+
     it('should handle match with many moves', async () => {
       const mockMatch = {
         id: matchId,
         user_id: userId,
         board_size: 8,
-        strategy: 'CLASSIC',
-        difficulty: 'MEDIUM',
+        difficulty: 'medium',
         status: 'ONGOING',
         winner: null,
         created_at: '2026-03-02T10:00:00Z',
@@ -158,12 +172,12 @@ describe('Game match flow integration tests', () => {
         const position = String.fromCharCode(97 + (i % 8)) + String((i % 8) + 1);
 
         const response = await request(app)
-          .post(`/api/game/matches/${matchId}/moves`)
-          .send({
-            position_yen: position,
-            player,
-            moveNumber: i,
-          });
+            .post(`/api/game/matches/${matchId}/moves`)
+            .send({
+              position_yen: position,
+              player,
+              moveNumber: i,
+            });
 
         expect(response.status).toBe(201);
       }
@@ -192,24 +206,23 @@ describe('Game match flow integration tests', () => {
 
   describe('Error handling in match workflow', () => {
     it('should handle service errors gracefully', async () => {
-        // Spy on console.error to suppress error logs during test
+      // Spy on console.error to suppress error logs during test
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      
+
       vi.spyOn(mockMatchService, 'createMatch').mockRejectedValue(
-        new Error('Database error')
+          new Error('Database error')
       );
 
       const response = await request(app)
-        .post('/api/game/matches')
-        .send({
-          boardSize: 8,
-          strategy: 'CLASSIC',
-          difficulty: 'MEDIUM',
-        });
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'medium',
+          });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBeDefined();
-      
+
       consoleErrorSpy.mockRestore();
     });
 
@@ -217,12 +230,12 @@ describe('Game match flow integration tests', () => {
       vi.spyOn(mockMatchService, 'getMatch').mockResolvedValue(undefined);
 
       const response = await request(app)
-        .post('/api/game/matches/9999/moves')
-        .send({
-          position_yen: 'a1',
-          player: 'USER',
-          moveNumber: 1,
-        });
+          .post('/api/game/matches/9999/moves')
+          .send({
+            position_yen: 'a1',
+            player: 'USER',
+            moveNumber: 1,
+          });
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBe('match_not_found');
@@ -231,26 +244,23 @@ describe('Game match flow integration tests', () => {
     it('should validate all parameters before processing', async () => {
       const responses = await Promise.all([
         request(app)
-          .post('/api/game/matches')
-          .send({
-            boardSize: 'invalid',
-            strategy: 'CLASSIC',
-            difficulty: 'MEDIUM',
-          }),
+            .post('/api/game/matches')
+            .send({
+              boardSize: 'invalid',
+              difficulty: 'medium',
+            }),
         request(app)
-          .post('/api/game/matches')
-          .send({
-            boardSize: 8,
-            strategy: 'UNKNOWN',
-            difficulty: 'MEDIUM',
-          }),
+            .post('/api/game/matches')
+            .send({
+              boardSize: 8,
+              difficulty: 'unknown',
+            }),
         request(app)
-          .post('/api/game/matches')
-          .send({
-            boardSize: 8,
-            strategy: 'CLASSIC',
-            difficulty: 'EXTREME',
-          }),
+            .post('/api/game/matches')
+            .send({
+              boardSize: 8,
+              difficulty: 'extreme',
+            }),
       ]);
 
       responses.forEach((response: any) => {
@@ -259,6 +269,18 @@ describe('Game match flow integration tests', () => {
 
       // Ensure service was never called
       expect(mockMatchService.createMatch).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid difficulty values', async () => {
+      const response = await request(app)
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'impossible',
+          });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBeDefined();
     });
   });
 
@@ -272,13 +294,12 @@ describe('Game match flow integration tests', () => {
       });
 
       const requests = Array.from({ length: 5 }, (_, i) =>
-        request(app)
-          .post('/api/game/matches')
-          .send({
-            boardSize: 8,
-            strategy: 'CLASSIC',
-            difficulty: 'MEDIUM',
-          })
+          request(app)
+              .post('/api/game/matches')
+              .send({
+                boardSize: 8,
+                difficulty: 'medium',
+              })
       );
 
       const responses = await Promise.all(requests);
@@ -303,7 +324,7 @@ describe('Game match flow integration tests', () => {
       vi.spyOn(mockStatsService, 'getStats').mockResolvedValue(mockStats);
 
       const requests = Array.from({ length: 5 }, () =>
-        request(app).get(`/api/game/stats/${userId}`)
+          request(app).get(`/api/game/stats/${userId}`)
       );
 
       const responses = await Promise.all(requests);
@@ -314,6 +335,41 @@ describe('Game match flow integration tests', () => {
       });
 
       expect(mockStatsService.getStats).toHaveBeenCalledTimes(5);
+    });
+
+    it('should handle concurrent move additions', async () => {
+      const mockMatch = {
+        id: matchId,
+        user_id: userId,
+        board_size: 8,
+        difficulty: 'medium',
+        status: 'ONGOING',
+        winner: null,
+        created_at: '2026-03-02T10:00:00Z',
+      };
+
+      vi.spyOn(mockMatchService, 'getMatch').mockResolvedValue(mockMatch);
+      vi.spyOn(mockMatchService, 'addMove').mockResolvedValue(undefined);
+
+      const moves = [
+        { position_yen: 'a1', player: 'USER', moveNumber: 1 },
+        { position_yen: 'b2', player: 'BOT', moveNumber: 2 },
+        { position_yen: 'c3', player: 'USER', moveNumber: 3 },
+      ];
+
+      const requests = moves.map(move =>
+          request(app)
+              .post(`/api/game/matches/${matchId}/moves`)
+              .send(move)
+      );
+
+      const responses = await Promise.all(requests);
+
+      responses.forEach((response: any) => {
+        expect(response.status).toBe(201);
+      });
+
+      expect(mockMatchService.addMove).toHaveBeenCalledTimes(3);
     });
   });
 });
