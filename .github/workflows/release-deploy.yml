@@ -88,7 +88,14 @@ jobs:
           sleep 15
           echo "Checking Nginx health..."
           curl --retry 15 --retry-delay 2 --retry-connrefused http://localhost/health || (docker compose logs && exit 1)
+          echo "Waiting for auth service to be ready..."
+          curl --retry 20 --retry-delay 3 --retry-connrefused -X POST http://localhost/api/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"username":"healthcheck_probe","password":"probe12345"}' \
+            -o /dev/null -s || true
+          sleep 3
           echo "Services are ready!"
+      
 
       - name: Show running containers
         run: |
