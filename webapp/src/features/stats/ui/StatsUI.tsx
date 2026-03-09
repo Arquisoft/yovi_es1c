@@ -1,12 +1,14 @@
-import { Box, Typography, Paper, Card, CardContent, Stack } from "@mui/material";
+import { Typography, Paper, Card, CardContent, Stack } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { useStatsController } from "../hooks/useStatsController";
+import styles from "./StatsUI.module.css";
 
 export default function StatsUI() {
   const userId = localStorage.getItem("userId") || "";
   const { state } = useStatsController(userId);
   const { stats, loading, error, isMocked } = state;
 
+  // Manejo de estados
   if (loading)
     return (
       <Typography color="white" textAlign="center" mt={10}>
@@ -23,6 +25,8 @@ export default function StatsUI() {
 
   if (!stats) return null;
 
+  const matches = stats.matches ?? [];
+
   const winrate = stats.totalMatches
     ? ((stats.wins / stats.totalMatches) * 100).toFixed(1)
     : 0;
@@ -32,7 +36,7 @@ export default function StatsUI() {
       field: "createdAt",
       headerName: "Fecha",
       flex: 1,
-      renderCell: (params: any) =>
+      valueGetter: (params: any) =>
         params.row?.createdAt
           ? new Date(params.row.createdAt).toLocaleDateString()
           : "N/A",
@@ -42,50 +46,24 @@ export default function StatsUI() {
   ];
 
   return (
-    <Box
-      sx={{
-        position: "absolute",
-        top: 70,
-        left: 0,
-        right: 0,
-        minHeight: "calc(100vh - 70px)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "flex-start",
-        p: 2,
-        pt: 6,
-        overflow: "auto",
-        background: "linear-gradient(180deg,#100010,#050005,#000000)",
-      }}
-    >
-      <Box maxWidth={1100} width="100%">
-        <Typography
-          variant="h3"
-          sx={{
-            textAlign: "center",
-            color: "#00bfff",
-            textShadow: "0 0 5px #00bfff, 0 0 10px #004080",
-            mb: 2,
-          }}
-        >
+    <div className={styles.container}>
+      <div style={{ maxWidth: 1100, width: "100%" }}>
+        <Typography variant="h3" className={styles.header}>
           📊 Estadísticas del jugador
         </Typography>
 
         {isMocked && (
-          <Typography
-            color="orange"
-            textAlign="center"
-            sx={{ fontWeight: "bold", mb: 3 }}
-          >
+          <Typography className={styles.mockWarning}>
             ⚠️ Los datos mostrados son mockeados (simulados)
           </Typography>
         )}
 
         <Stack
-          direction={{ xs: "column", md: "row" }}
-          spacing={3}
+          className={styles.statGrid}
+          direction="row"
+          spacing={1}
           justifyContent="center"
-          mb={5}
+          flexWrap="wrap"
         >
           <StatCard title="Partidas jugadas" value={stats.totalMatches} color="#00fff7" />
           <StatCard title="Victorias" value={stats.wins} color="#00ff88" />
@@ -93,33 +71,24 @@ export default function StatsUI() {
           <StatCard title="Winrate" value={`${winrate}%`} color="#ff00d4" />
         </Stack>
 
-        <Paper
-          sx={{
-            p: 2,
-            bgcolor: "rgba(0,0,0,0.7)",
-            border: "1px solid #00fff7",
-            boxShadow: "0 0 15px #00fff7",
-          }}
-        >
+        <Paper className={styles.paper}>
           <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
             Historial de partidas
           </Typography>
 
-          {!stats.matches || stats.matches.length === 0 ? (
+          {matches.length === 0 ? (
             <Typography color="white" textAlign="center" py={4}>
               No hay partidas registradas todavía
             </Typography>
           ) : (
             <DataGrid
-              rows={stats.matches}
+              rows={matches}
               columns={columns}
               getRowId={(row: any) => row.matchId}
               autoHeight
               pageSizeOptions={[5, 10, 25]}
               initialState={{
-                pagination: {
-                  paginationModel: { pageSize: 5, page: 0 },
-                },
+                pagination: { paginationModel: { pageSize: 5, page: 0 } },
               }}
               sx={{
                 border: "none",
@@ -136,31 +105,18 @@ export default function StatsUI() {
                   letterSpacing: "1px",
                   textTransform: "uppercase",
                 },
-                "& .MuiDataGrid-cell": {
-                  borderBottom: "1px solid rgba(255,255,255,0.05)",
-                },
-                "& .MuiDataGrid-row": {
-                  backgroundColor: "rgba(15,23,42,0.6)",
-                },
-                "& .MuiDataGrid-row:hover": {
-                  backgroundColor: "rgba(0,255,247,0.1)",
-                },
-                "& .MuiDataGrid-footerContainer": {
-                  backgroundColor: "#020617",
-                  borderTop: "1px solid #00fff7",
-                },
-                "& .MuiTablePagination-root": {
-                  color: "#fff",
-                },
-                "& .MuiSvgIcon-root": {
-                  color: "#00fff7",
-                },
+                "& .MuiDataGrid-cell": { borderBottom: "1px solid rgba(255,255,255,0.05)" },
+                "& .MuiDataGrid-row": { backgroundColor: "rgba(15,23,42,0.6)" },
+                "& .MuiDataGrid-row:hover": { backgroundColor: "rgba(0,255,247,0.1)" },
+                "& .MuiDataGrid-footerContainer": { backgroundColor: "#020617", borderTop: "1px solid #00fff7" },
+                "& .MuiTablePagination-root": { color: "#fff" },
+                "& .MuiSvgIcon-root": { color: "#00fff7" },
               }}
             />
           )}
         </Paper>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }
 
@@ -175,16 +131,10 @@ function StatCard({ title, value, color }: any) {
       }}
     >
       <CardContent sx={{ textAlign: "center" }}>
-        <Typography variant="subtitle2" color="#aaa">
-          {title}
-        </Typography>
+        <Typography variant="subtitle2" color="#aaa">{title}</Typography>
         <Typography
           variant="h4"
-          sx={{
-            color,
-            textShadow: `0 0 10px ${color}`,
-            fontWeight: "bold",
-          }}
+          sx={{ color, textShadow: `0 0 10px ${color}`, fontWeight: "bold" }}
         >
           {value}
         </Typography>
