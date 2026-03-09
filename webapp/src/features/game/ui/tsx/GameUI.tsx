@@ -34,6 +34,12 @@ export default function GameUI() {
         config?.difficulty || "easy"
     );
 
+    const difficultyLabels: Record<BotDifficulty, string> = {
+        easy: "Fácil",
+        medium: "Media",
+        hard: "Difícil"
+    };
+
     if (!config) {
         return (
             <Paper sx={{ p:4, mt:10, textAlign:"center" }}>
@@ -102,8 +108,7 @@ export default function GameUI() {
                                 <CardContent className={styles.cardContent} sx={{ textAlign: "center" }}>
                                     <Typography variant="subtitle2" color="#fff">Dificultad</Typography>
                                     <Typography variant="body2" color="#fff">
-                                        {config.difficulty === "easy" ? "Fácil" :
-                                            config.difficulty === "medium" ? "Media" : "Difícil"}
+                                        {difficultyLabels[config.difficulty]}
                                     </Typography>
                                 </CardContent>
                             </Card>
