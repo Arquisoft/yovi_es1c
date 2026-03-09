@@ -1,0 +1,49 @@
+.container {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  right: 0;
+  min-height: calc(100vh - 70px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+  padding-top: 96px;
+  overflow: auto;
+  background: radial-gradient(circle at center, #0088aa 0%, #010214 40%);
+}
+
+.header {
+  text-align: center;
+  color: #00f0ff;
+  text-shadow: 0 0 5px #00f0ff, 0 0 15px #00bfff;
+  margin-bottom: 16px;
+}
+
+.mockWarning {
+  color: orange;
+  font-weight: bold;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.statGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  justify-content: center;
+  margin-bottom: 40px;
+}
+
+@media (min-width: 960px) {
+  .statGrid {
+    flex-direction: row;
+  }
+}
+
+.paper {
+  padding: 16px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid #00fff7;
+  box-shadow: 0 0 15px #00fff7;
+}

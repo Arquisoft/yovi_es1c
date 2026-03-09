@@ -32,7 +32,7 @@ Excepción: `POST /api/auth/verify` devuelve `401` con `{ "valid": false }`.
 ## Variables de entorno
 
 - `JWT_SECRET` (obligatoria): clave para firmar/verificar JWT. El servicio debe fallar en arranque si falta.
-- `AUTH_DB_PATH` (opcional): ruta al SQLite de auth. Por defecto en compose: `/app/data/auth.db`.
+- `AUTH_DB_PATH` (opcional): ruta al SQLite de auth. Por defecto en compose: `/app/auth/data/auth.db`.
 
 ## Ejecución local
 

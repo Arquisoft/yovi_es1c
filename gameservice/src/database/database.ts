@@ -6,7 +6,7 @@ import * as path from "path";
 export async function initDB(): Promise<Database> { //async function to initialize the database, create tables if they don't exist, and return the database instance
   const dbPath = process.env.GAME_DB_PATH || path.resolve("/app/data/game.db");
   
-  // Crear directorio si no existe
+  // Create the directory for the database if it doesn't exist
   const dataDir = path.dirname(dbPath);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -17,7 +17,7 @@ export async function initDB(): Promise<Database> { //async function to initiali
     driver: sqlite3.Database
   });
 
-  const schemaPath = "/app/dist/database/schema.sql";
+  const schemaPath = "/app/dist/database/game.sql";
   
   // Check if the schema file exists
   if (!fs.existsSync(schemaPath)) {
@@ -34,6 +34,6 @@ export async function initDB(): Promise<Database> { //async function to initiali
   const schema = fs.readFileSync(schemaPath, "utf-8"); //read the SQL schema as text
   await db.exec(schema); //execute the instructions in the schema
 
-  console.log(`✓ Database initialized at ${dbPath}`);
+  console.log(`Database initialized at ${dbPath}`);
   return db;
 }

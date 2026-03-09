@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
-    "target": "es2022",
-    "module": "commonjs",
+    "rootDir": ".",
     "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
+    "module": "node18",
+    "target": "ES2022",
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "moduleResolution": "node16",
+    "strict": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["__tests__/**", "dist/**", "node_modules/**"]
 }

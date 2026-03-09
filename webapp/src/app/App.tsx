@@ -19,6 +19,7 @@ import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
 import { AuthProvider, useAuth } from '../features/auth';
 import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
+import StatsUI from '../features/stats/ui/StatsUI.tsx';
 
 function HomeRedirect() {
     const { user } = useAuth();
@@ -87,31 +88,7 @@ function App() {
                             <Route path="/register" element={<RegisterForm />} />
                             <Route path="/create-match" element={<CreateMatchPage />} />
                             <Route path="/gamey" element={<GameUI />} />
-                            <Route path="/stats" element={
-                                <Box
-                                    sx={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: 2,
-                                        px: 2,
-                                        textAlign: 'center',
-                                    }}
-                                >
-                                    <Typography variant="h4" fontWeight={700}>
-                                        Estadísticas
-                                    </Typography>
-                                    <Typography variant="body1" color="text.secondary">
-                                        Aquí irán las estadísticas del juego
-                                    </Typography>
-                                </Box>
-                            } />
+                            <Route path="/stats" element={<StatsUI />} />
                         </Routes>
                     </div>
                 </ThemeProvider>

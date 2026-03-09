@@ -23,7 +23,7 @@ COPY tsconfig.json ./
 RUN npm run build
 
 # Copiar archivos SQL a dist (necesario para runtime)
-COPY src/database/schema.sql ./dist/database/
+COPY src/database/game.sql ./dist/database/
 
 EXPOSE 3002
 
