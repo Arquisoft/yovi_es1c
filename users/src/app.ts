@@ -1,13 +1,10 @@
 import express from "express";
 import cors from "cors";
-import { initDB } from "./database/database.js";
 
 const app = express();
 
-// Disable X-Powered-By header to avoid disclosing framework version
 app.disable("x-powered-by");
 
-// Restrict CORS to known origins
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -16,10 +13,4 @@ app.use(cors({
 
 app.use(express.json());
 
-await initDB();
-
 export default app;
-
-app.listen(3000, () => {
-  console.log("Users running on port 3000");
-});
