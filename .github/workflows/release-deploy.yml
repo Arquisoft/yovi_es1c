@@ -79,6 +79,8 @@ jobs:
           npm run test:e2e:install-browsers
 
       - name: Build and start all services with Docker Compose
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           docker compose up -d --build
 
