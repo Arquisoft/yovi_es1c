@@ -212,10 +212,31 @@ jobs:
           workdir: gamey
           tags: "latest,${{ env.IMAGE_TAG }}"
 
+  docker-push-gameservice:
+    name: Publish gameservice image
+    runs-on: ubuntu-latest
+    needs: e2e
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish to Registry (gameservice)
+        uses: elgohr/Publish-Docker-Github-Action@v5
+        with:
+          name: ${{ github.repository_owner }}/${{ github.event.repository.name }}-gameservice
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          workdir: gameservice
+          tags: "latest,${{ env.IMAGE_TAG }}"
+
   deploy:
     name: Deploy over SSH
     runs-on: ubuntu-latest
-    needs: [ docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey ]
+    needs: [ docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey, docker-push-gameservice ]
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.0
@@ -228,8 +249,11 @@ jobs:
             mkdir -p nginx
             wget https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master/docker-compose.yml -O docker-compose.yml
             wget https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master/nginx/nginx.conf -O nginx/nginx.conf
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            export JWT_SECRET="$JWT_SECRET"
             docker compose down
             docker compose pull
-            JWT_SECRET=$JWT_SECRET docker compose up -d
+            docker compose up -d
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
