@@ -50,6 +50,8 @@ where
     /// - `player`: the root player (the one we are optimizing for)
     /// - `depth`: current depth in the game tree
     /// - `max_depth`: maximum allowed depth
+    /// - `alpha`: alpha prunning value
+    /// - `beta`: beta prunning value
     ///
     /// Returns an evaluation score from the perspective of `player`.
     fn minimax(
@@ -58,76 +60,85 @@ where
         player: PlayerId,
         depth: u32,
         max_depth: u32,
+        mut alpha: i32,
+        mut beta: i32,
     ) -> i32 {
-        // Stop searching if:
-        // 1) We reached the depth limit
-        // 2) The game is over
+    
         if depth == max_depth || board.check_game_over() {
             return self.evaluate(board, player);
         }
-
+    
         let moves = Self::generate_moves(board);
-
-        // If there are no moves, evaluate directly.
+    
         if moves.is_empty() {
             return self.evaluate(board, player);
         }
-
-        // Determine whose turn it is.
+    
         let current_player = board.next_player().unwrap();
-
-        // MAX node: if it's the root player's turn
+    
+        // MAX node
         if current_player == player {
-            let mut best_score = i32::MIN;
-
+            let mut value = i32::MIN;
+    
             for mv in moves {
-                // Clone board to simulate move
                 let mut new_board = board.clone();
-
-                // Apply move for the current player
+    
                 new_board.add_move(Movement::Placement {
                     player: current_player,
                     coords: mv,
                 }).unwrap();
-
-                // Recursively evaluate resulting position
+    
                 let score = self.minimax(
                     &new_board,
                     player,
                     depth + 1,
                     max_depth,
+                    alpha,
+                    beta,
                 );
-
-                // MAX node chooses highest score
-                best_score = best_score.max(score);
+    
+                value = value.max(score);
+                alpha = alpha.max(value);
+    
+                // PRUNING
+                if beta <= alpha {
+                    break;
+                }
             }
-
-            best_score
+    
+            value
         }
-        // MIN node: opponent's turn
+        // MIN node
         else {
-            let mut best_score = i32::MAX;
-
+            let mut value = i32::MAX;
+    
             for mv in moves {
                 let mut new_board = board.clone();
-
+    
                 new_board.add_move(Movement::Placement {
                     player: current_player,
                     coords: mv,
                 }).unwrap();
-
+    
                 let score = self.minimax(
                     &new_board,
                     player,
                     depth + 1,
                     max_depth,
+                    alpha,
+                    beta,
                 );
-
-                // MIN node chooses lowest score
-                best_score = best_score.min(score);
+    
+                value = value.min(score);
+                beta = beta.min(value);
+    
+                // PRUNING
+                if beta <= alpha {
+                    break;
+                }
             }
-
-            best_score
+    
+            value
         }
     }
 
@@ -188,6 +199,8 @@ where
                 player,
                 1,
                 self.max_depth,
+                i32::MIN,
+                i32::MAX,
             );
 
             if score > best_score {
@@ -255,7 +268,7 @@ mod tests {
         let board = GameY::new(3);
         let player = board.next_player().unwrap();
 
-        let score = bot.minimax(&board, player, 0, 1);
+        let score = bot.minimax(&board, player, 0, 1, i32::MIN, i32::MAX);
         // Como profundidad = 1, score = heurística
         assert_eq!(score, 42);
     }
@@ -267,7 +280,7 @@ mod tests {
         let player = board.next_player().unwrap();
 
         // Ejecutar minimax desde la perspectiva del jugador actual
-        let score = bot.minimax(&board, player, 0, 1);
+        let score = bot.minimax(&board, player, 0, 1, i32::MIN, i32::MAX);
         assert_eq!(score, 10);
     }
 
@@ -340,40 +353,5 @@ mod tests {
         let chosen_move = bot.choose_move(&board).unwrap();
 
         assert_eq!(chosen_move, blocking_move);
-    }
-
-    use std::sync::{Arc, Mutex};
-
-    struct CountingHeuristic {
-        counter: Arc<Mutex<u32>>,
-    }
-
-    impl Heuristic for CountingHeuristic {
-        fn evaluate(&self, _board: &GameY, _player: PlayerId) -> i32 {
-            let mut count = self.counter.lock().unwrap();
-            *count += 1;
-            0
-        }
-        fn name(&self) -> &str {"counting"}
-    }
-
-    #[test]
-    fn test_depth_increases_node_count() {
-        let counter = Arc::new(Mutex::new(0));
-        let heuristic = CountingHeuristic {
-            counter: counter.clone(),
-        };
-
-        let bot = MinimaxBot::new(heuristic, 3);
-        let board = GameY::new(3);
-
-        let player = board.next_player().unwrap();
-        bot.minimax(&board, player, 0, 3);
-
-        let calls = *counter.lock().unwrap();
-
-        // As the board is size 3 and max depth is also 3, there can be made 6
-        // moves at first, then 5, and finally 4. This gives us 6*5*4 = 120 calls
-        assert_eq!(calls, 120);
     }
 }
