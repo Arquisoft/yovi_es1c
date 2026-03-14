@@ -13,6 +13,7 @@ pub mod ybot;
 pub mod ybot_registry;
 mod heurisitic;
 pub(crate) mod set_based_heuristic;
+pub mod both_players_set_distances_heuristic;
 
 pub use random::*;
 pub use ybot::*;
