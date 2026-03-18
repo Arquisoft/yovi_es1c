@@ -76,10 +76,14 @@ impl NeuralNet {
         let mut input = vec![0.0f32; 3 * max_n + 1];
 
         for idx in 0..n as u32 {
+            let i = idx as usize;
+            if i >= max_n {
+                break;
+            }
             let coords = Coordinates::from_index(idx, board.board_size());
             let cell   = board.cell_at(&coords);
 
-            let i = idx as usize;
+
             match cell {
                 Some(p) if p == current  => input[i]           = 1.0,
                 Some(p) if p == opponent => input[max_n + i]   = 1.0,
@@ -90,3 +94,56 @@ impl NeuralNet {
         input
     }
 }
+
+// ─────────────────────────────────────────────
+//  Tests
+// ─────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_board_length() {
+        let board = GameY::new(5);
+        let max_n: usize = 91;
+        let expected_len = 3 * max_n + 1;
+
+        // Creamos una red vacía solo para probar encode_board.
+        let net = NeuralNet::load("models/yovi_model.onnx").expect("Modelo no encontrado");
+        let encoded = net.encode_board(&board);
+        assert_eq!(encoded.len(), expected_len);
+    }
+
+    #[test]
+    fn test_evaluate_policy_length_matches_board() {
+        let net = NeuralNet::load("models/yovi_model.onnx")
+            .expect("Modelo no encontrado");
+        let board = GameY::new(5);
+        let (policy, value) = net.evaluate(&board).expect("evaluate falló");
+
+        assert_eq!(policy.len(), board.total_cells() as usize);
+        assert!((-1.0..=1.0).contains(&value), "value fuera de rango: {}", value);
+    }
+
+    #[test]
+    fn test_evaluate_policy_sums_to_one() {
+        let net = NeuralNet::load("models/yovi_model.onnx")
+            .expect("Modelo no encontrado");
+        let board = GameY::new(5);
+        let (policy, _) = net.evaluate(&board).expect("evaluate falló");
+
+        let sum: f32 = policy.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-4, "La policy no suma 1.0: {}", sum);
+    }
+
+    #[test]
+    fn test_evaluate_does_not_panic_on_large_board() {
+        let net = NeuralNet::load("models/yovi_model.onnx")
+            .expect("Modelo no encontrado");
+        let board = GameY::new(14);
+        let result = net.evaluate(&board);
+        assert!(result.is_ok(), "evaluate no debe fallar en tablero grande");
+    }
+}
+

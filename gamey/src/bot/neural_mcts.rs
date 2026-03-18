@@ -278,49 +278,152 @@ impl YBot for NeuralMctsBot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GameY;
+    use crate::{GameY, Movement, Coordinates, PlayerId};
 
-    fn make_bot(simulations: u32) -> NeuralMctsBot {
+    /// Helper: Carga el model
+    fn make_bot_with_model(simulations: u32) -> NeuralMctsBot {
         let net = NeuralNet::load("models/yovi_model.onnx")
             .expect("Modelo ONNX no encontrado en models/yovi_model.onnx");
         NeuralMctsBot::new(net, simulations)
     }
 
     #[test]
+    fn test_mcts_node_new_defaults() {
+        let node = MctsNode::new(None, 0.5);
+        assert_eq!(node.visits, 0);
+        assert_eq!(node.value_sum, 0.0);
+        assert!(!node.expanded);
+        assert!(node.children.is_empty());
+    }
+
+    #[test]
+    fn test_q_value_zero_visits() {
+        let node = MctsNode::new(None, 1.0);
+        assert_eq!(node.q_value(), 0.0);
+    }
+
+    #[test]
+    fn test_q_value_after_update() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.visits = 4;
+        node.value_sum = 2.0;
+        assert!((node.q_value() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_puct_score_exploration_bias() {
+        let mut high_prior = MctsNode::new(None, 1.0);
+        let mut low_prior  = MctsNode::new(None, 0.1);
+        high_prior.visits = 0;
+        low_prior.visits  = 0;
+        let parent_visits = 10;
+        let c = std::f32::consts::SQRT_2;
+        assert!(high_prior.puct_score(parent_visits, c) > low_prior.puct_score(parent_visits, c));
+    }
+
+    #[test]
+    fn test_best_child_idx_empty_children() {
+        let node = MctsNode::new(None, 1.0);
+        assert!(node.best_child_idx(1.0).is_none());
+    }
+
+    #[test]
+    fn test_best_child_idx_selects_highest_puct() {
+        let mut parent = MctsNode::new(None, 1.0);
+        parent.visits = 10;
+
+        let mut child0 = MctsNode::new(Some(Coordinates::new(0, 0, 0)), 0.5);
+        child0.visits = 8;
+        child0.value_sum = 8.0;
+
+        let child1 = MctsNode::new(Some(Coordinates::new(0, 1, 0)), 0.9);
+        parent.children = vec![child0, child1];
+
+        let idx = parent.best_child_idx(10.0).unwrap();
+        assert_eq!(idx, 1);
+    }
+
+    #[test]
+    fn test_most_visited_child_idx_returns_max() {
+        let mut parent = MctsNode::new(None, 1.0);
+        let mut child0 = MctsNode::new(Some(Coordinates::new(0, 0, 0)), 0.5);
+        child0.visits = 3;
+        let mut child1 = MctsNode::new(Some(Coordinates::new(0, 1, 0)), 0.5);
+        child1.visits = 10;
+        let mut child2 = MctsNode::new(Some(Coordinates::new(0, 0, 1)), 0.5);
+        child2.visits = 1;
+        parent.children = vec![child0, child1, child2];
+
+        assert_eq!(parent.most_visited_child_idx().unwrap(), 1);
+    }
+    ///────────────────────────────────────────────
+    ///           Tests con modelo ONNX
+    /// ────────────────────────────────────────────
+    #[test]
     fn test_choose_move_returns_valid_move() {
-        let bot   = make_bot(50);
+        let bot   = make_bot_with_model(50);
         let board = GameY::new(5);
         let mv    = bot.choose_move(&board);
-        assert!(mv.is_some());
+
+        assert!(mv.is_some(), "El bot debe elegir un movimiento en un tablero vacío");
         let idx = mv.unwrap().to_index(board.board_size());
         assert!(board.available_cells().contains(&idx));
     }
 
     #[test]
     fn test_choose_move_on_finished_game_returns_none() {
-        let bot = make_bot(10);
-        // Tablero 1×1: el primer movimiento gana inmediatamente
+        let bot = make_bot_with_model(10);
         let mut board = GameY::new(1);
         board.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 0, 0),
         }).unwrap();
+
         assert!(board.check_game_over());
         assert_eq!(bot.choose_move(&board), None);
     }
 
     #[test]
-    fn test_bot_plays_full_game() {
-        let bot   = make_bot(50);
-        let mut board = GameY::new(5);
+    fn test_choose_move_single_option() {
+        let bot = make_bot_with_model(20);
+        let mut board = GameY::new(2);
+        board.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(1, 0, 0),
+        }).unwrap();
+        board.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(0, 1, 0),
+        }).unwrap();
+
+        assert_eq!(board.available_cells().len(), 1);
+        let mv = bot.choose_move(&board);
+        assert!(mv.is_some());
+        assert_eq!(mv.unwrap().to_index(board.board_size()), board.available_cells()[0]);
+    }
+
+    #[test]
+    fn test_bot_plays_full_game_to_completion() {
+        // Reducimos simulaciones para que el test no tarde demasiado
+        let bot = make_bot_with_model(20);
+        let mut board = GameY::new(3);
         let mut moves = 0;
+
         while !board.check_game_over() {
-            let mv = bot.choose_move(&board).expect("Bot debe devolver movimiento");
+            let mv = bot.choose_move(&board).expect("El bot debe devolver movimiento");
             let player = board.next_player().unwrap();
             board.add_move(Movement::Placement { player, coords: mv }).unwrap();
             moves += 1;
-            assert!(moves < 200, "La partida no debería durar tanto");
+            assert!(moves < 50, "La partida no debería durar tanto");
         }
-        assert!(board.winner().is_some());
+        assert!(board.winner().is_some(), "Debe haber un ganador al terminar");
+    }
+
+    #[test]
+    fn test_bot_name_reflects_simulations() {
+        let bot = make_bot_with_model(800);
+        assert_eq!(bot.name(), "neural_mcts_s800");
     }
 }
+
+

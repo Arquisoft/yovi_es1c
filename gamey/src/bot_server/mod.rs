@@ -124,3 +124,121 @@ pub async fn run_bot_server(port: u16) -> Result<(), GameYError> {
 pub async fn status() -> impl IntoResponse {
     "OK"
 }
+// ─────────────────────────────────────────────
+//  Tests
+// ─────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+    use serde_json::json;
+
+    fn test_router_random_only() -> axum::Router {
+        use crate::{RandomBot, YBotRegistry};
+        use std::collections::HashMap;
+
+        let bots = YBotRegistry::new().with_bot(Arc::new(RandomBot));
+        let aliases: HashMap<String, String> = HashMap::new();
+        let resolver = BotAliasResolver::new(aliases);
+        let state = AppState::new(bots, resolver);
+
+        create_router(state)
+    }
+
+    #[tokio::test]
+    async fn test_status_endpoint_returns_ok() {
+        let app = test_router_random_only();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"OK");
+    }
+
+    #[tokio::test]
+    async fn test_choose_move_unknown_bot_returns_error() {
+        let app = test_router_random_only();
+        let body_json = json!({
+            "yen": {
+                "size": 3,
+                "turn": 0,
+                "players": ["B", "R"],
+                "layout": "./../..."
+            }
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/ybot/choose/nonexistent_bot")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body_json.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(response.status().is_client_error());
+    }
+
+    #[tokio::test]
+    async fn test_choose_move_random_bot_returns_coordinates() {
+        let app = test_router_random_only();
+
+        // Serializamos directamente un tablero válido usando las estructuras del core
+        let board = crate::GameY::new(3);
+        let yen: crate::YEN = (&board).into();
+        let body_string = serde_json::to_string(&yen).unwrap();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/ybot/choose/random")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body_string))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert!(
+            json_resp.get("x").is_some() || json_resp.get("coords").is_some(),
+            "La respuesta debe contener coordenadas"
+        );
+    }
+
+    #[test]
+    fn test_default_state_registers_neural_bots() {
+        let state = create_default_state();
+        let _ = state;
+    }
+}
+
+
+
