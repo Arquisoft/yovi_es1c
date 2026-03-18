@@ -1,123 +1,213 @@
-body {
-  margin: 0;
-  padding: 0;
-}
-
-
-#root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-}
-
 .App {
-  margin: 0;
-  padding: 0;
-  padding-top: 94px;
-  width: 100%;
   min-height: 100vh;
+  position: relative;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(36, 116, 29, 0.22), transparent 24%),
+    radial-gradient(circle at 50% 40%, rgba(15, 45, 14, 0.72), transparent 50%),
+    #031103;
+  color: var(--phosphor-text);
+  overflow-x: hidden;
+}
+
+.crtOverlay,
+.vignette,
+.screenNoise {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.crtOverlay {
+  z-index: 1200;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.12) 3px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  opacity: 0.72;
+  mix-blend-mode: multiply;
+}
+
+.vignette {
+  z-index: 1199;
+  background: radial-gradient(circle at center, transparent 58%, rgba(0, 0, 0, 0.58) 100%);
+}
+
+.screenNoise {
+  z-index: 1198;
+  background: linear-gradient(180deg, rgba(60, 255, 50, 0.02), transparent 14%, rgba(255, 255, 255, 0.01) 62%, transparent 100%);
+  animation: screenPulse 9s linear infinite;
+}
+
+.homeScreen {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-items: center;
+  justify-content: center;
+  padding: 7rem 1.5rem 2rem;
 }
 
-/* Contenedor para el contenido (centrado) */
-.content-wrapper {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+.homeBackdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 35%, rgba(53, 137, 42, 0.18), transparent 28%), transparent;
+}
+
+.homeFrame {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1040px);
+  padding: 2.5rem clamp(1.2rem, 4vw, 3rem);
+  border: 1px solid rgba(57, 255, 20, 0.26);
+  background: linear-gradient(180deg, rgba(7, 24, 7, 0.95) 0%, rgba(3, 15, 3, 0.92) 100%);
+  box-shadow: 0 0 26px rgba(57, 255, 20, 0.14), inset 0 0 28px rgba(0, 0, 0, 0.42);
   text-align: center;
-  width: 100%;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+.homeAscii {
+  margin: 0 0 1.2rem;
+  color: rgba(157, 255, 149, 0.24);
+  font-size: clamp(0.32rem, 0.9vw, 0.62rem);
+  line-height: 1.12;
+  letter-spacing: 0.16em;
+  white-space: pre;
+  user-select: none;
 }
 
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
+.statusLine {
+  color: rgba(157, 255, 149, 0.54);
+  letter-spacing: 0.52em;
+  margin-bottom: 0.45rem;
+  text-transform: uppercase;
 }
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.heroTitle {
+  margin: 0 0 0.35rem;
+  font-size: clamp(2.4rem, 8vw, 5rem);
+  line-height: 0.95;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--phosphor-primary);
+  text-shadow: 0 0 16px rgba(57, 255, 20, 0.55), 0 0 34px rgba(57, 255, 20, 0.18);
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.heroUser {
+  margin: 0 0 2.3rem;
+  font-size: clamp(1.3rem, 3vw, 2rem);
+  letter-spacing: 0.3em;
+  color: var(--phosphor-text);
+  text-transform: uppercase;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
-}
-
-/* Register Form Styles */
-.register-form {
+.actionRow {
   display: flex;
-  flex-direction: column;
-  gap: 15px;
-  max-width: 300px;
-  margin: 50px auto;
-  padding: 20px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  background-color: #fff;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 210px;
+  padding: 0.9rem 1.9rem;
+  clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
-.form-group label {
-  margin-bottom: 5px;
-  font-weight: bold;
-  color: #333;
+.primaryAction {
+  background: linear-gradient(180deg, #61ff42 0%, #39ff14 100%);
+  color: #041304;
+  box-shadow: 0 0 18px rgba(57, 255, 20, 0.28);
 }
 
-.form-input {
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
+.secondaryAction {
+  background: rgba(8, 23, 8, 0.9);
+  border: 1px solid rgba(57, 255, 20, 0.44);
+  color: var(--phosphor-text);
 }
 
-.form-input:focus {
-  border-color: #007bff;
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+.primaryAction:hover,
+.secondaryAction:hover {
+  transform: translateY(-2px);
 }
 
-.submit-button {
-  padding: 10px 15px;
-  border: none;
-  border-radius: 4px;
-  background-color: #03080e;
-  color: white;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
+.primaryAction:hover {
+  box-shadow: 0 0 24px rgba(57, 255, 20, 0.38);
 }
 
-.submit-button:hover {
-  background-color: #0056b3;
+.secondaryAction:hover {
+  background: rgba(12, 36, 12, 0.98);
+  box-shadow: 0 0 16px rgba(57, 255, 20, 0.2);
+}
+
+.promptLine {
+  margin-top: 2.4rem;
+  color: rgba(157, 255, 149, 0.48);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+
+.cornerDeco {
+  position: fixed;
+  width: 16px;
+  height: 16px;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.cornerTopLeft {
+  top: 66px;
+  left: 12px;
+  border-top: 1px solid rgba(57, 255, 20, 0.35);
+  border-left: 1px solid rgba(57, 255, 20, 0.35);
+}
+
+.cornerTopRight {
+  top: 66px;
+  right: 12px;
+  border-top: 1px solid rgba(57, 255, 20, 0.35);
+  border-right: 1px solid rgba(57, 255, 20, 0.35);
+}
+
+.cornerBottomLeft {
+  bottom: 12px;
+  left: 12px;
+  border-bottom: 1px solid rgba(57, 255, 20, 0.35);
+  border-left: 1px solid rgba(57, 255, 20, 0.35);
+}
+
+.cornerBottomRight {
+  bottom: 12px;
+  right: 12px;
+  border-bottom: 1px solid rgba(57, 255, 20, 0.35);
+  border-right: 1px solid rgba(57, 255, 20, 0.35);
+}
+
+@keyframes screenPulse {
+  0%, 100% { opacity: 0.62; }
+  50% { opacity: 0.9; }
+}
+
+@media (max-width: 768px) {
+  .homeScreen {
+    padding-top: 5.6rem;
+  }
+
+  .homeFrame {
+    padding: 1.8rem 1rem;
+  }
+
+  .primaryAction,
+  .secondaryAction {
+    width: 100%;
+  }
 }
