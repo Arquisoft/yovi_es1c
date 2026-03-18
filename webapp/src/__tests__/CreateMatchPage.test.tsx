@@ -31,10 +31,15 @@ describe("CreateMatchPage Component", () => {
         setupAuthenticatedUser();
         renderWithProviders(<CreateMatchPage />);
 
-        expect(screen.getByText(/Tamaño del tablero/i)).toBeInTheDocument();
-        expect(screen.getByText(/Modo de juego/i)).toBeInTheDocument();
-        expect(screen.getByText(/Dificultad/i)).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: /Crear partida/i })).toBeInTheDocument();
+        const boardSizeSelect = screen.getByLabelText(/Tamaño del tablero/i);
+        const gameModeSelect = screen.getByLabelText(/Modo de juego/i);
+        const difficultySelect = screen.getByLabelText(/Dificultad/i);
+        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+
+        expect(boardSizeSelect).toBeInTheDocument();
+        expect(gameModeSelect).toBeInTheDocument();
+        expect(difficultySelect).toBeInTheDocument();
+        expect(createButton).toBeInTheDocument();
     });
 
     it("shows login prompt when not authenticated", () => {

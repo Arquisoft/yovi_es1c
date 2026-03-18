@@ -11,7 +11,7 @@ import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 import { API_CONFIG } from "../../../config/api.config";
 
 export type GameMode = "BOT" | "LOCAL_2P";
-export type BotDifficulty = "easy" | "medium" | "hard";
+export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
 
 const DEFAULT_BOARD_SIZE = 8;
 
