@@ -1,66 +1,166 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --phosphor-bg: #031103;
+  --phosphor-bg-soft: rgba(4, 18, 4, 0.92);
+  --phosphor-surface: rgba(7, 26, 7, 0.9);
+  --phosphor-surface-strong: rgba(0, 10, 0, 0.94);
+  --phosphor-line: rgba(57, 255, 20, 0.28);
+  --phosphor-line-strong: rgba(57, 255, 20, 0.55);
+  --phosphor-text: #9dff95;
+  --phosphor-text-dim: rgba(157, 255, 149, 0.7);
+  --phosphor-text-faint: rgba(157, 255, 149, 0.42);
+  --phosphor-primary: #39ff14;
+  --phosphor-danger: #ff6666;
+  --phosphor-shadow: 0 0 18px rgba(57, 255, 20, 0.15);
+  --phosphor-shadow-strong: 0 0 32px rgba(57, 255, 20, 0.22);
+  font-family: 'VT323', 'Courier New', monospace;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  color: var(--phosphor-text);
+  background-color: var(--phosphor-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(58, 133, 40, 0.22), transparent 30%),
+    radial-gradient(circle at 50% 35%, rgba(13, 51, 13, 0.6), transparent 46%),
+    var(--phosphor-bg);
+  color: var(--phosphor-text);
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
+  overflow-x: hidden;
+}
+
+#root {
   min-height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+* {
+  box-sizing: border-box;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+*::selection {
+  background: rgba(57, 255, 20, 0.25);
+  color: var(--phosphor-text);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: rgba(4, 18, 4, 0.9);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(57, 255, 20, 0.4);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(57, 255, 20, 0.65);
+}
+
+a {
+  color: var(--phosphor-text);
+  text-decoration: none;
+}
+
+a:hover {
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.45);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+input,
+textarea {
+  caret-color: var(--phosphor-primary);
+}
+
+.crt-panel {
+  position: relative;
+  background: linear-gradient(180deg, rgba(9, 28, 9, 0.96) 0%, rgba(2, 14, 2, 0.92) 100%);
+  border: 1px solid var(--phosphor-line);
+  box-shadow: var(--phosphor-shadow), inset 0 0 22px rgba(0, 0, 0, 0.45);
+}
+
+.crt-panel::before,
+.crt-panel::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+.crt-panel::before {
+  top: 0;
+  left: 0;
+  border-top: 1px solid var(--phosphor-line-strong);
+  border-left: 1px solid var(--phosphor-line-strong);
+}
+
+.crt-panel::after {
+  right: 0;
+  bottom: 0;
+  border-right: 1px solid var(--phosphor-line-strong);
+  border-bottom: 1px solid var(--phosphor-line-strong);
+}
+
+.crt-screen-label {
+  color: var(--phosphor-text-faint);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+}
+
+.crt-heading {
+  color: var(--phosphor-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 12px rgba(57, 255, 20, 0.4);
+}
+
+.crt-muted {
+  color: var(--phosphor-text-faint);
+}
+
+.crt-blink {
+  animation: crtBlink 1.25s steps(1, end) infinite;
+}
+
+.crt-flicker {
+  animation: crtFlicker 7s linear infinite;
+}
+
+@keyframes crtBlink {
+  0%, 48%, 100% { opacity: 1; }
+  49%, 72% { opacity: 0.2; }
+  73%, 92% { opacity: 0.65; }
+}
+
+@keyframes crtFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes crtFlicker {
+  0%, 17%, 22%, 53%, 100% { opacity: 1; }
+  18%, 20% { opacity: 0.92; }
+  54% { opacity: 0.96; }
+  55% { opacity: 0.88; }
 }
