@@ -457,6 +457,11 @@ impl GameY {
             self.sets[i].parent
         }
     }
+    /// Devuelve el PlayerId que ocupa una celda, o None si está vacía.
+    pub fn cell_at(&self, coords: &Coordinates) -> Option<PlayerId> {
+        self.board_map.get(coords).map(|(_, player)| *player)
+    }
+
 
     /// Disjoint Set Union 'Union' operation
     fn union(&mut self, i: SetIdx, j: SetIdx) -> bool {

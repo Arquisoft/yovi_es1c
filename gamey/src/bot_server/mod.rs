@@ -37,6 +37,8 @@ use crate::{GameYError, RandomBot, YBotRegistry, state::AppState};
 use crate::bot::set_based_heuristic::SetBasedHeuristic;
 use crate::bot_server::bot_alias_resolver::BotAliasResolver;
 use crate::minimax::MinimaxBot;
+use crate::bot::neural_net::NeuralNet;
+use crate::bot::neural_mcts::NeuralMctsBot;
 
 /// Creates the Axum router with the given state.
 ///
@@ -61,20 +63,28 @@ pub fn create_router(state: AppState) -> axum::Router {
 ///
 /// The default state includes the `RandomBot` which selects moves randomly.
 pub fn create_default_state() -> AppState {
+    // Carga el modelo ONNX una sola vez y lo comparte entre los tres niveles
+    let net = NeuralNet::load("models/yovi_model.onnx")
+        .expect("No se encontró models/yovi_model.onnx — ejecuta training/train.py primero");
+
     let bots = YBotRegistry::new()
         .with_bot(Arc::new(RandomBot))
         .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 2)))
-        .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 4)));
+        .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 4)))
+        .with_bot(Arc::new(NeuralMctsBot::new(net.clone(), 200)))
+        .with_bot(Arc::new(NeuralMctsBot::new(net.clone(), 800)))
+        .with_bot(Arc::new(NeuralMctsBot::new(net.clone(), 2000)));
 
     let mut aliases = HashMap::new();
-    aliases.insert("easy".to_string(), "random".to_string());
+    aliases.insert("easy".to_string(),   "random".to_string());
     aliases.insert("medium".to_string(), "minimax_set_d2".to_string());
-    aliases.insert("hard".to_string(), "minimax_set_d4".to_string());
+    aliases.insert("hard".to_string(),   "minimax_set_d4".to_string());
+    aliases.insert("expert".to_string(), "neural_mcts_s800".to_string());
 
     let resolver = BotAliasResolver::new(aliases);
-
     AppState::new(bots, resolver)
 }
+
 
 /// Starts the bot server on the specified port.
 ///

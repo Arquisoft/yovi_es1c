@@ -13,7 +13,10 @@ pub mod ybot;
 pub mod ybot_registry;
 mod heurisitic;
 pub(crate) mod set_based_heuristic;
+pub mod neural_net;
+pub mod neural_mcts;
 
+pub use neural_mcts::*;
 pub use random::*;
 pub use ybot::*;
 pub use ybot_registry::*;
