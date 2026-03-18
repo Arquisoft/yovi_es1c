@@ -457,6 +457,11 @@ impl GameY {
             self.sets[i].parent
         }
     }
+    /// Devuelve el PlayerId que ocupa una celda, o None si está vacía.
+    pub fn cell_at(&self, coords: &Coordinates) -> Option<PlayerId> {
+        self.board_map.get(coords).map(|(_, player)| *player)
+    }
+
 
     /// Disjoint Set Union 'Union' operation
     fn union(&mut self, i: SetIdx, j: SetIdx) -> bool {
@@ -817,5 +822,37 @@ mod tests {
             }
             _ => panic!("Game should be ongoing"),
         }
+    }
+
+    /// Tests para cell_at, función necesaria para el Bot neuronal:
+    #[test]
+    fn test_cell_at_returns_correct_player() {
+        let mut game = GameY::new(5);
+        let coords = Coordinates::new(2, 1, 1);
+        // Antes de colocar, la celda debe estar vacía
+        assert_eq!(game.cell_at(&coords), None);
+
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords,
+        }).unwrap();
+
+        // Después de colocar, debe devolver el jugador correcto
+        assert_eq!(game.cell_at(&coords), Some(PlayerId::new(0)));
+    }
+
+    #[test]
+    fn test_cell_at_opponent_cell() {
+        let mut game = GameY::new(5);
+        let c0 = Coordinates::new(2, 1, 1);
+        let c1 = Coordinates::new(2, 2, 0);
+
+        game.add_move(Movement::Placement { player: PlayerId::new(0), coords: c0 }).unwrap();
+        game.add_move(Movement::Placement { player: PlayerId::new(1), coords: c1 }).unwrap();
+
+        assert_eq!(game.cell_at(&c0), Some(PlayerId::new(0)));
+        assert_eq!(game.cell_at(&c1), Some(PlayerId::new(1)));
+        // Celda sin ocupar
+        assert_eq!(game.cell_at(&Coordinates::new(0, 0, 0)), None);
     }
 }
