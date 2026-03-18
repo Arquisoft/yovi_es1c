@@ -1,197 +1,204 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-    Paper,
-    Typography,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
-    Button,
-    Stack,
-    Box,
-} from "@mui/material";
-import { useAuth } from "../../../auth";
-import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
-import { API_CONFIG } from "../../../../config/api.config";
-import type { BotDifficulty, GameMode } from "../../hooks/useGameController";
+  Alert,
+  Box,
+  Button,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { useAuth } from '../../../auth';
+import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
+import { API_CONFIG } from '../../../../config/api.config';
+import type { BotDifficulty, GameMode } from '../../hooks/useGameController';
+
+const panelSx = {
+  width: '100%',
+  maxWidth: 520,
+  px: { xs: 2.5, sm: 4.5 },
+  py: { xs: 3, sm: 4.5 },
+  position: 'relative',
+};
+
+const formControlSx = {
+  '& .MuiInputLabel-root': {
+    letterSpacing: '0.12em',
+  },
+};
 
 export default function CreateMatchPage() {
-    const navigate = useNavigate();
-    const { token } = useAuth();
-    const [boardSize, setBoardSize] = useState<number>(8);
-    const [difficulty, setDifficulty] = useState<BotDifficulty>("medium");
-    const [mode, setMode] = useState<GameMode>("BOT");
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { token } = useAuth();
+  const [boardSize, setBoardSize] = useState<number>(8);
+  const [difficulty, setDifficulty] = useState<BotDifficulty>('medium');
+  const [mode, setMode] = useState<GameMode>('BOT');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    const handleCreateMatch = async () => {
-        if (!token) {
-            setError("Debes iniciar sesión para crear una partida");
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-
-        try {
-            const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    boardSize,
-                    difficulty,
-                    mode
-                }),
-            });
-
-            if (!res.ok) {
-                const text = await res.text();
-                throw new Error(text || "Error creating match");
-            }
-
-            const data = await res.json();
-
-            navigate("/gamey", {
-                state: {
-                    matchId: data.matchId,
-                    initialYEN: data.initialYEN,
-                    boardSize,
-                    mode,
-                    difficulty
-                }
-            });
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Error desconocido");
-        } finally {
-            setLoading(false);
-        }
-    };
-
+  const handleCreateMatch = async () => {
     if (!token) {
-        return (
-            <Box sx={{ textAlign: "center", mt: 4 }}>
-                <Typography variant="h5" color="error">
-                    Debes iniciar sesión para crear una partida
-                </Typography>
-                <Button onClick={() => navigate("/login")} sx={{ mt: 2 }}>
-                    Ir a Login
-                </Button>
-            </Box>
-        );
+      setError('Debes iniciar sesión para crear una partida');
+      return;
     }
 
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          boardSize,
+          difficulty,
+          mode,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Error creating match');
+      }
+
+      const data = await res.json();
+
+      navigate('/gamey', {
+        state: {
+          matchId: data.matchId,
+          initialYEN: data.initialYEN,
+          boardSize,
+          mode,
+          difficulty,
+        },
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!token) {
     return (
-        <Box
-            sx={{
-                position: "absolute",
-                top: 70,
-                left: 0,
-                right: 0,
-                minHeight: "calc(100vh - 70px)",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                p: 2,
-                overflow: "auto",
-                background: "radial-gradient(circle at top, #000 0%, #001133 70%)",
-            }}
-        >
-            <Paper
-                elevation={12}
-                sx={{
-                    width: "100%",
-                    maxWidth: 500,
-                    padding: 4,
-                    borderRadius: 2,
-                    backgroundColor: "#111",
-                    boxShadow: "0 0 10px #ff00d4, 0 0 20px #ff00d4",
-                    border: "1px solid #ff00d4",
-                    margin: "0 auto",
-                }}
-            >
-                <Box textAlign="center" mb={4}>
-                    <Typography
-                        variant="h4"
-                        sx={{ fontWeight: "bold", color: "#fff", textShadow: "0 0 5px #ff00d4", mb: 1 }}
-                    >
-                        Crear nueva partida
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ color: "#ccc" }}>
-                        Configura tu partida y empieza a jugar
-                    </Typography>
-                </Box>
-
-                {error && (
-                    <Typography color="error" sx={{ mb: 2, textAlign: "center" }}>
-                        {error}
-                    </Typography>
-                )}
-
-                <Stack spacing={3}>
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Tamaño del tablero</InputLabel>
-                        <Select
-                            value={boardSize}
-                            onChange={(e) => setBoardSize(Number(e.target.value))}
-                            sx={{ color: "#fff", p: 1.2 }}
-                        >
-                            <MenuItem value={8}>8 x 8</MenuItem>
-                            <MenuItem value={16}>16 x 16</MenuItem>
-                            <MenuItem value={32}>32 x 32</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Modo de juego</InputLabel>
-                        <Select
-                            value={mode}
-                            onChange={(e) => setMode(e.target.value as GameMode)}
-                            sx={{ color: "#fff", p: 1.2 }}
-                        >
-                            <MenuItem value="BOT">VS Bot</MenuItem>
-                            <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    {mode === "BOT" && (
-                        <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                            <InputLabel sx={{ color: "#fff" }}>Dificultad</InputLabel>
-                            <Select
-                                value={difficulty}
-                                onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
-                                sx={{ color: "#fff", p: 1.2 }}
-                            >
-                                <MenuItem value="easy">Fácil</MenuItem>
-                                <MenuItem value="medium">Media</MenuItem>
-                                <MenuItem value="hard">Difícil</MenuItem>
-                            </Select>
-                        </FormControl>
-                    )}
-
-                    <Button
-                        onClick={handleCreateMatch}
-                        disabled={loading}
-                        sx={{
-                            px: 4,
-                            py: 1,
-                            borderRadius: 3,
-                            fontWeight: "bold",
-                            fontSize: "1.1rem",
-                            backgroundColor: "#ff00d4",
-                            color: "#000",
-                            textTransform: "uppercase",
-                            letterSpacing: 1,
-                            boxShadow: "0 0 8px #ff00d4, 0 0 20px #ff00d4",
-                            "&:hover": { backgroundColor: "#e600c9", transform: "scale(1.05)" },
-                        }}
-                    >
-                        {loading ? "Creando partida..." : "Crear partida"}
-                    </Button>
-                </Stack>
-            </Paper>
-        </Box>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          pt: '58px',
+          px: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background:
+            'radial-gradient(circle at 50% 26%, rgba(53,137,42,0.2), transparent 24%), linear-gradient(180deg, rgba(4,18,4,0.96) 0%, rgba(1,10,1,0.96) 100%)',
+        }}
+      >
+        <Paper className="crt-panel" sx={{ ...panelSx, textAlign: 'center' }}>
+          <Typography className="crt-screen-label crt-blink" sx={{ mb: 1, fontSize: '0.8rem' }}>
+            Access required
+          </Typography>
+          <Typography variant="h4" className="crt-heading" sx={{ mb: 2 }}>
+            Debes iniciar sesión para crear una partida
+          </Typography>
+          <Typography className="crt-muted" sx={{ mb: 3, letterSpacing: '0.08em' }}>
+            Inserta tus credenciales para acceder al terminal de juego.
+          </Typography>
+          <Button onClick={() => navigate('/login')} variant="contained">
+            Ir a Login
+          </Button>
+        </Paper>
+      </Box>
     );
+  }
+
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        pt: '58px',
+        px: 2,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background:
+          'radial-gradient(circle at 50% 22%, rgba(53,137,42,0.22), transparent 24%), linear-gradient(180deg, rgba(4,18,4,0.96) 0%, rgba(1,10,1,0.96) 100%)',
+      }}
+    >
+      <Paper className="crt-panel" sx={panelSx}>
+        <Typography className="crt-screen-label crt-blink" sx={{ mb: 1.25, fontSize: '0.8rem', textAlign: 'center' }}>
+          Configuración del sistema
+        </Typography>
+        <Box textAlign="center" mb={3.5}>
+          <Typography variant="h4" className="crt-heading" sx={{ mb: 1.2 }}>
+            Crear nueva partida
+          </Typography>
+          <Typography className="crt-muted" sx={{ letterSpacing: '0.08em' }}>
+            Ajusta el tablero y prepara la sesión de juego.
+          </Typography>
+        </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2.5 }}>
+            {error}
+          </Alert>
+        )}
+
+        <Stack spacing={3}>
+          <FormControl fullWidth sx={formControlSx}>
+            <InputLabel id="board-size-label">Tamaño del tablero</InputLabel>
+            <Select
+              labelId="board-size-label"
+              value={boardSize}
+              label="Tamaño del tablero"
+              onChange={(event) => setBoardSize(Number(event.target.value))}
+            >
+              <MenuItem value={8}>8 x 8</MenuItem>
+              <MenuItem value={16}>16 x 16</MenuItem>
+              <MenuItem value={32}>32 x 32</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={formControlSx}>
+            <InputLabel id="game-mode-label">Modo de juego</InputLabel>
+            <Select
+              labelId="game-mode-label"
+              value={mode}
+              label="Modo de juego"
+              onChange={(event) => setMode(event.target.value as GameMode)}
+            >
+              <MenuItem value="BOT">VS Bot</MenuItem>
+              <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
+            </Select>
+          </FormControl>
+
+          {mode === 'BOT' && (
+            <FormControl fullWidth sx={formControlSx}>
+              <InputLabel id="difficulty-label">Dificultad</InputLabel>
+              <Select
+                labelId="difficulty-label"
+                value={difficulty}
+                label="Dificultad"
+                onChange={(event) => setDifficulty(event.target.value as BotDifficulty)}
+              >
+                <MenuItem value="easy">Fácil</MenuItem>
+                <MenuItem value="medium">Media</MenuItem>
+                <MenuItem value="hard">Difícil</MenuItem>
+                <MenuItem value="expert">Imposible</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
+          <Button onClick={handleCreateMatch} disabled={loading} variant="contained" sx={{ py: 1.2 }}>
+            {loading ? 'Creando partida...' : 'Crear partida'}
+          </Button>
+        </Stack>
+      </Paper>
+    </Box>
+  );
 }
