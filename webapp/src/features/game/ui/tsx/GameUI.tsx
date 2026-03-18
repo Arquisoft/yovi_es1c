@@ -37,7 +37,8 @@ export default function GameUI() {
     const difficultyLabels: Record<BotDifficulty, string> = {
         easy: "Fácil",
         medium: "Media",
-        hard: "Difícil"
+        hard: "Difícil",
+        expert: "Imposible",
     };
 
     if (!config) {
