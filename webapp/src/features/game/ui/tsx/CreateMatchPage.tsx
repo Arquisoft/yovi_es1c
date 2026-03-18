@@ -167,6 +167,8 @@ export default function CreateMatchPage() {
                                 <MenuItem value="easy">Fácil</MenuItem>
                                 <MenuItem value="medium">Media</MenuItem>
                                 <MenuItem value="hard">Difícil</MenuItem>
+                                <MenuItem value="expert">Imposible</MenuItem>
+
                             </Select>
                         </FormControl>
                     )}
