@@ -121,8 +121,10 @@ export default function CreateMatchPage() {
 
                 <Stack spacing={3}>
                     <FormControl fullWidth>
-                        <InputLabel>Tamaño del tablero</InputLabel>
+                        <InputLabel id="board-size-label">Tamaño del tablero</InputLabel>
                         <Select
+                            labelId="board-size-label"
+                            id="board-size"
                             value={boardSize}
                             label="Tamaño del tablero"
                             onChange={(e) => setBoardSize(Number(e.target.value))}
@@ -134,8 +136,10 @@ export default function CreateMatchPage() {
                     </FormControl>
 
                     <FormControl fullWidth>
-                        <InputLabel>Modo de juego</InputLabel>
+                        <InputLabel id="game-mode-label">Modo de juego</InputLabel>
                         <Select
+                            labelId="game-mode-label"
+                            id="game-mode"
                             value={mode}
                             label="Modo de juego"
                             onChange={(e) => setMode(e.target.value as GameMode)}
@@ -147,8 +151,10 @@ export default function CreateMatchPage() {
 
                     {mode === "BOT" && (
                         <FormControl fullWidth>
-                            <InputLabel>Dificultad</InputLabel>
+                            <InputLabel id="difficulty-label">Dificultad</InputLabel>
                             <Select
+                                labelId="difficulty-label"
+                                id="difficulty"
                                 value={difficulty}
                                 label="Dificultad"
                                 onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
