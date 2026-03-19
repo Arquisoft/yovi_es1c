@@ -37,14 +37,8 @@ export default function CreateMatchPage() {
         try {
             const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    boardSize,
-                    difficulty,
-                    mode
-                }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ boardSize, difficulty, mode }),
             });
 
             if (!res.ok) {
@@ -76,7 +70,7 @@ export default function CreateMatchPage() {
                 <Typography variant="h5" color="error">
                     Debes iniciar sesión para crear una partida
                 </Typography>
-                <Button onClick={() => navigate("/login")} sx={{ mt: 2 }}>
+                <Button variant="contained" onClick={() => navigate("/login")} sx={{ mt: 2 }}>
                     Ir a Login
                 </Button>
             </Box>
@@ -96,30 +90,25 @@ export default function CreateMatchPage() {
                 alignItems: "center",
                 p: 2,
                 overflow: "auto",
-                background: "radial-gradient(circle at top, #000 0%, #001133 70%)",
             }}
         >
             <Paper
-                elevation={12}
                 sx={{
                     width: "100%",
                     maxWidth: 500,
                     padding: 4,
-                    borderRadius: 2,
-                    backgroundColor: "#111",
-                    boxShadow: "0 0 10px #ff00d4, 0 0 20px #ff00d4",
-                    border: "1px solid #ff00d4",
                     margin: "0 auto",
                 }}
             >
                 <Box textAlign="center" mb={4}>
                     <Typography
                         variant="h4"
-                        sx={{ fontWeight: "bold", color: "#fff", textShadow: "0 0 5px #ff00d4", mb: 1 }}
+                        color="primary"
+                        sx={{ mb: 1, textShadow: "0 0 8px rgba(57, 255, 20, 0.45)" }}
                     >
                         Crear nueva partida
                     </Typography>
-                    <Typography variant="subtitle1" sx={{ color: "#ccc" }}>
+                    <Typography variant="subtitle1" color="text.secondary">
                         Configura tu partida y empieza a jugar
                     </Typography>
                 </Box>
@@ -131,12 +120,12 @@ export default function CreateMatchPage() {
                 )}
 
                 <Stack spacing={3}>
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Tamaño del tablero</InputLabel>
+                    <FormControl fullWidth>
+                        <InputLabel>Tamaño del tablero</InputLabel>
                         <Select
                             value={boardSize}
+                            label="Tamaño del tablero"
                             onChange={(e) => setBoardSize(Number(e.target.value))}
-                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value={8}>8 x 8</MenuItem>
                             <MenuItem value={16}>16 x 16</MenuItem>
@@ -144,12 +133,12 @@ export default function CreateMatchPage() {
                         </Select>
                     </FormControl>
 
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Modo de juego</InputLabel>
+                    <FormControl fullWidth>
+                        <InputLabel>Modo de juego</InputLabel>
                         <Select
                             value={mode}
+                            label="Modo de juego"
                             onChange={(e) => setMode(e.target.value as GameMode)}
-                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value="BOT">VS Bot</MenuItem>
                             <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
@@ -157,38 +146,26 @@ export default function CreateMatchPage() {
                     </FormControl>
 
                     {mode === "BOT" && (
-                        <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                            <InputLabel sx={{ color: "#fff" }}>Dificultad</InputLabel>
+                        <FormControl fullWidth>
+                            <InputLabel>Dificultad</InputLabel>
                             <Select
                                 value={difficulty}
+                                label="Dificultad"
                                 onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
-                                sx={{ color: "#fff", p: 1.2 }}
                             >
                                 <MenuItem value="easy">Fácil</MenuItem>
                                 <MenuItem value="medium">Media</MenuItem>
                                 <MenuItem value="hard">Difícil</MenuItem>
                                 <MenuItem value="expert">Imposible</MenuItem>
-
                             </Select>
                         </FormControl>
                     )}
 
                     <Button
+                        variant="contained"
                         onClick={handleCreateMatch}
                         disabled={loading}
-                        sx={{
-                            px: 4,
-                            py: 1,
-                            borderRadius: 3,
-                            fontWeight: "bold",
-                            fontSize: "1.1rem",
-                            backgroundColor: "#ff00d4",
-                            color: "#000",
-                            textTransform: "uppercase",
-                            letterSpacing: 1,
-                            boxShadow: "0 0 8px #ff00d4, 0 0 20px #ff00d4",
-                            "&:hover": { backgroundColor: "#e600c9", transform: "scale(1.05)" },
-                        }}
+                        sx={{ mt: 2 }}
                     >
                         {loading ? "Creando partida..." : "Crear partida"}
                     </Button>
