@@ -1,5 +1,6 @@
 import math
 import random
+import numpy as np
 from dataclasses import dataclass, field
 from model import PolicyValueNet, encode_board, total_cells, pad_encoded_input
 
@@ -91,7 +92,48 @@ def touches_sides(idx: int, size: int) -> tuple[bool, bool, bool]:
     z = row - col
     return x == 0, y == 0, z == 0
 
+def get_symmetries(cells: list[int], policy: list[float], size: int) -> list[tuple[list[int], list[float]]]:
+    """
+    Multiplica un estado por 6 aprovechando las simetrías del triángulo.
+    Utiliza permutaciones de las coordenadas baricéntricas (x, y, z).
+    """
+    symmetries = []
+    # Las 6 permutaciones posibles de (x, y, z) corresponden a las 6 simetrías del triángulo
+    permutations = [
+        (0, 1, 2), (1, 2, 0), (2, 0, 1),
+        (0, 2, 1), (2, 1, 0), (1, 0, 2)
+    ]
 
+    n = total_cells(size)
+
+    for p in permutations:
+        new_cells = [0] * n
+        new_policy = [0.0] * n
+
+        for idx in range(n):
+            # 1. Obtener coordenadas (x, y, z) de la celda actual
+            row, col = index_to_row_col(idx, size)
+            x = size - 1 - row
+            y = col
+            z = row - col
+            orig_coords = (x, y, z)
+
+            # 2. Permutar las coordenadas según la simetría actual
+            nx, ny, nz = orig_coords[p[0]], orig_coords[p[1]], orig_coords[p[2]]
+
+            # 3. Volver a calcular la fila y columna (despejando de tus fórmulas originales)
+            new_row = size - 1 - nx
+            new_col = ny
+            new_idx = row_col_to_index(new_row, new_col, size)
+
+            # 4. Mapear el estado del tablero y la política al nuevo índice
+            new_cells[new_idx] = cells[idx]
+            if idx < len(policy):
+                new_policy[new_idx] = policy[idx]
+
+        symmetries.append((new_cells, new_policy))
+
+    return symmetries
 def check_winner(state: BoardState, last_idx: int, player: int) -> int:
     """BFS/Union-Find simplificado: comprueba si `player` ganó tras colocar en last_idx."""
     target = player + 1
@@ -236,10 +278,10 @@ class GameExample:
 
 
 def play_game(
-    model: PolicyValueNet | None,
-    board_size: int,
-    simulations: int = 100,
-    temperature: float = 1.0,
+        model: PolicyValueNet | None,
+        board_size: int,
+        simulations: int = 100,
+        temperature_drop_move: int = 10, # Bajar la temperatura después de X movimientos
 ) -> list[GameExample]:
     """
     Juega una partida completa de self-play.
@@ -247,38 +289,66 @@ def play_game(
     """
     state = BoardState.new(board_size)
     examples_raw = []  # (encoded_state, mcts_policy, player_at_move)
+    move_count = 0
 
     while not state.done:
         root = MctsNode(state)
+
+        # Inyectamos ruido directamente a la raíz
+        if model is not None:
+            policy, _ = model.predict(state.cells, state.size, state.current_player)
+            root.expand(policy)
+
+            # Parámetros estándar de AlphaZero
+            dirichlet_alpha = 0.3
+            exploration_fraction = 0.25
+
+            # Generamos ruido y lo mezclamos con los priors de la red
+            noise = np.random.dirichlet([dirichlet_alpha] * len(root.children))
+            for i, child in enumerate(root.children.values()):
+                child.prior = child.prior * (1 - exploration_fraction) + noise[i] * exploration_fraction
+
+        # Ejecutamos las simulaciones (mcts_search usará los priors con ruido en la raíz)
         mcts_search(root, model, simulations)
 
         mcts_policy = root.visit_counts()
 
         # Guardamos el estado y la política MCTS
         examples_raw.append((
-            state.encode(),
+            state.cells,
             mcts_policy,
             state.current_player,
         ))
 
-        # Elegimos movimiento (con temperatura para exploración)
-        if temperature > 0:
+        # Reducción de la temperatura conforme va avanzando la partida
+        current_temp = 1.0 if move_count < temperature_drop_move else 0.05
+
+        if current_temp > 0.1: # Temperatura alta: elección proporcional a visitas
             moves  = list(root.children.keys())
-            counts = [root.children[m].visits ** (1.0 / temperature) for m in moves]
+            counts = [root.children[m].visits ** (1.0 / current_temp) for m in moves]
             total  = sum(counts)
             probs  = [c / total for c in counts]
             move   = random.choices(moves, weights=probs)[0]
-        else:
+        else: # Temperatura casi cero: elegimos el movimiento más visitado de forma determinista
             move = root.most_visited_move()
 
         state = state.apply_move(move)
+        move_count += 1
 
     # Asignar outcomes ahora que sabemos quién ganó
     winner = state.winner
     examples = []
-    for encoded, policy, player in examples_raw:
+    for cells, policy, player in examples_raw:
         outcome = 1.0 if player == winner else -1.0
-        examples.append(GameExample(encoded, policy, outcome))
+        # Generamos las 6 posiciones equivalentes
+        syms = get_symmetries(cells, policy, board_size)
+
+        for sym_cells, sym_policy in syms:
+            # Codificamos y padeamos cada versión simétrica ANTES de enviarla a la red
+            encoded = encode_board(sym_cells, board_size, player)
+            padded = pad_encoded_input(encoded, board_size).tolist()
+
+            examples.append(GameExample(padded, sym_policy, outcome))
 
     return examples
 
