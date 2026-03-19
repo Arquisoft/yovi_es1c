@@ -11,7 +11,6 @@ import {
     Stack,
     Paper,
 } from "@mui/material";
-import fondo from "../../images/fondo.jpg";
 import styles from "../css/GameUI.module.css";
 import type {YenPositionDto} from "../../../../shared/contracts";
 
@@ -66,8 +65,7 @@ export default function GameUI() {
                 justifyContent: "center",
                 alignItems: "center",
                 p: 2,
-                overflow: "auto",
-                backgroundImage: `url(${fondo})`,
+                overflow: "auto"
             }}
         >
             <Box
