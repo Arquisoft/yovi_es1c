@@ -1,8 +1,7 @@
-import { ValidationError } from "../errors/domain-errors";
+import { ValidationError } from "../errors/domain-errors.js";
 
 export interface CreateMatchRequest {
   boardSize: number;
-  strategy: string;
   difficulty: string;
 }
 
@@ -23,21 +22,19 @@ export function validateCreateMatch(data: unknown): CreateMatchRequest {
   }
 
   const body = data as Record<string, unknown>;
-  const { boardSize, strategy, difficulty } = body;
+  const { boardSize, difficulty } = body;
 
   if (typeof boardSize !== 'number' || boardSize <= 0) {
     throw new ValidationError('boardSize must be a positive number');
   }
 
-  if (!['CLASSIC', 'VARIANT'].includes(String(strategy))) {
-    throw new ValidationError('strategy must be CLASSIC or VARIANT');
+  const normalizedDifficulty = String(difficulty).toLowerCase();
+
+  if (!['easy', 'medium', 'hard','expert'].includes(normalizedDifficulty)) {
+    throw new ValidationError('difficulty must be easy, medium, hard or expert');
   }
 
-  if (!['EASY', 'MEDIUM', 'HARD'].includes(String(difficulty))) {
-    throw new ValidationError('difficulty must be EASY, MEDIUM, or HARD');
-  }
-
-  return { boardSize, strategy: String(strategy), difficulty: String(difficulty) };
+  return { boardSize, difficulty: normalizedDifficulty };
 }
 
 export function validateAddMove(data: unknown): AddMoveRequest {

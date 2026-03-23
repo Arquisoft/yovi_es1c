@@ -7,6 +7,9 @@
 
 This project is a template with some basic functionality for the ASW labs.
 
+# El proyecto está desplegado en: [aqui](http://4.251.107.62)
+
+
 # Contributors
 - UO302313 - David Fernando Bolaños Lopez
 - UO294946 - Raúl Velasco Vizán
@@ -70,7 +73,7 @@ Auth endpoints:
 
 Important env vars:
 - `JWT_SECRET` (required)
-- `AUTH_DB_PATH` (defaults to `/app/data/auth.db` in compose)
+- `AUTH_DB_PATH` (defaults to `/app/auth/data/auth.db` in compose)
 
 Internal verification URL for service-to-service calls:
 - `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify` (recommended timeout: 500ms–1s)

@@ -13,33 +13,32 @@ import {
 } from "@mui/material";
 import { useAuth } from "../../../auth";
 import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
-
-const API_URL = "/api/game";
+import { API_CONFIG } from "../../../../config/api.config";
+import type { BotDifficulty, GameMode } from "../../hooks/useGameController";
 
 export default function CreateMatchPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const [boardSize, setBoardSize] = useState<number>(8);
-    const [strategy, setStrategy] = useState<string>("CLASSIC");
-    const [difficulty, setDifficulty] = useState<string>("MEDIUM");
-    const [mode, setMode] = useState<"BOT" | "LOCAL_2P">("BOT");
+    const [difficulty, setDifficulty] = useState<BotDifficulty>("medium");
+    const [mode, setMode] = useState<GameMode>("BOT");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleCreateMatch = async () => {
+        if (!token) {
+            setError("Debes iniciar sesión para crear una partida");
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
         try {
-            if (!token) throw new Error("No JWT token found");
-
-            // USAR fetchWithAuth en lugar de fetch
-            const res = await fetchWithAuth(`${API_URL}/matches`, {
+            const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ boardSize, strategy, difficulty, mode }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ boardSize, difficulty, mode }),
             });
 
             if (!res.ok) {
@@ -49,13 +48,34 @@ export default function CreateMatchPage() {
 
             const data = await res.json();
 
-            navigate("/gamey", { state: { matchId: data.matchId, initialYEN: data.initialYEN, boardSize, mode } });
+            navigate("/gamey", {
+                state: {
+                    matchId: data.matchId,
+                    initialYEN: data.initialYEN,
+                    boardSize,
+                    mode,
+                    difficulty
+                }
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error desconocido");
         } finally {
             setLoading(false);
         }
     };
+
+    if (!token) {
+        return (
+            <Box sx={{ textAlign: "center", mt: 4 }}>
+                <Typography variant="h5" color="error">
+                    Debes iniciar sesión para crear una partida
+                </Typography>
+                <Button variant="contained" onClick={() => navigate("/login")} sx={{ mt: 2 }}>
+                    Ir a Login
+                </Button>
+            </Box>
+        );
+    }
 
     return (
         <Box
@@ -70,30 +90,25 @@ export default function CreateMatchPage() {
                 alignItems: "center",
                 p: 2,
                 overflow: "auto",
-                background: "radial-gradient(circle at top, #000 0%, #001133 70%)",
             }}
         >
             <Paper
-                elevation={12}
                 sx={{
                     width: "100%",
                     maxWidth: 500,
                     padding: 4,
-                    borderRadius: 2,
-                    backgroundColor: "#111",
-                    boxShadow: "0 0 10px #ff00d4, 0 0 20px #ff00d4",
-                    border: "1px solid #ff00d4",
                     margin: "0 auto",
                 }}
             >
                 <Box textAlign="center" mb={4}>
                     <Typography
                         variant="h4"
-                        sx={{ fontWeight: "bold", color: "#fff", textShadow: "0 0 5px #ff00d4", mb: 1 }}
+                        color="primary"
+                        sx={{ mb: 1, textShadow: "0 0 8px rgba(57, 255, 20, 0.45)" }}
                     >
                         Crear nueva partida
                     </Typography>
-                    <Typography variant="subtitle1" sx={{ color: "#ccc" }}>
+                    <Typography variant="subtitle1" color="text.secondary">
                         Configura tu partida y empieza a jugar
                     </Typography>
                 </Box>
@@ -105,13 +120,14 @@ export default function CreateMatchPage() {
                 )}
 
                 <Stack spacing={3}>
-                    {/* Tamaño del tablero */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Tamaño del tablero</InputLabel>
+                    <FormControl fullWidth>
+                        <InputLabel id="board-size-label">Tamaño del tablero</InputLabel>
                         <Select
+                            labelId="board-size-label"
+                            id="board-size"
                             value={boardSize}
+                            label="Tamaño del tablero"
                             onChange={(e) => setBoardSize(Number(e.target.value))}
-                            sx={{ color: "#fff", p: 1.2 }}
                         >
                             <MenuItem value={8}>8 x 8</MenuItem>
                             <MenuItem value={16}>16 x 16</MenuItem>
@@ -119,54 +135,43 @@ export default function CreateMatchPage() {
                         </Select>
                     </FormControl>
 
-                    {/* Estrategia */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Estrategia</InputLabel>
-                        <Select value={strategy} onChange={(e) => setStrategy(e.target.value)} sx={{ color: "#fff", p: 1.2 }}>
-                            <MenuItem value="CLASSIC">Classic</MenuItem>
-                            <MenuItem value="VARIANT">Variant</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    {/* Dificultad */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Dificultad</InputLabel>
-                        <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} sx={{ color: "#fff", p: 1.2 }}>
-                            <MenuItem value="EASY">Fácil</MenuItem>
-                            <MenuItem value="MEDIUM">Media</MenuItem>
-                            <MenuItem value="HARD">Difícil</MenuItem>
-                        </Select>
-                    </FormControl>
-
-                    {/* Modo de juego */}
-                    <FormControl fullWidth sx={{ backgroundColor: "#222", borderRadius: 2, border: "1px solid #ff00d4" }}>
-                        <InputLabel sx={{ color: "#fff" }}>Modo de juego</InputLabel>
+                    <FormControl fullWidth>
+                        <InputLabel id="game-mode-label">Modo de juego</InputLabel>
                         <Select
+                            labelId="game-mode-label"
+                            id="game-mode"
                             value={mode}
-                            onChange={(e) => setMode(e.target.value as "BOT" | "LOCAL_2P")}
-                            sx={{ color: "#fff", p: 1.2 }}
+                            label="Modo de juego"
+                            onChange={(e) => setMode(e.target.value as GameMode)}
                         >
                             <MenuItem value="BOT">VS Bot</MenuItem>
                             <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
                         </Select>
                     </FormControl>
 
+                    {mode === "BOT" && (
+                        <FormControl fullWidth>
+                            <InputLabel id="difficulty-label">Dificultad</InputLabel>
+                            <Select
+                                labelId="difficulty-label"
+                                id="difficulty"
+                                value={difficulty}
+                                label="Dificultad"
+                                onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
+                            >
+                                <MenuItem value="easy">Fácil</MenuItem>
+                                <MenuItem value="medium">Media</MenuItem>
+                                <MenuItem value="hard">Difícil</MenuItem>
+                                <MenuItem value="expert">Imposible</MenuItem>
+                            </Select>
+                        </FormControl>
+                    )}
+
                     <Button
+                        variant="contained"
                         onClick={handleCreateMatch}
                         disabled={loading}
-                        sx={{
-                            px: 4,
-                            py: 1,
-                            borderRadius: 3,
-                            fontWeight: "bold",
-                            fontSize: "1.1rem",
-                            backgroundColor: "#ff00d4",
-                            color: "#000",
-                            textTransform: "uppercase",
-                            letterSpacing: 1,
-                            boxShadow: "0 0 8px #ff00d4, 0 0 20px #ff00d4",
-                            "&:hover": { backgroundColor: "#e600c9", transform: "scale(1.05)" },
-                        }}
+                        sx={{ mt: 2 }}
                     >
                         {loading ? "Creando partida..." : "Crear partida"}
                     </Button>

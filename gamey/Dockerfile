@@ -7,7 +7,7 @@ WORKDIR /app/gamey
 COPY benches ./benches
 COPY Cargo.toml Cargo.lock ./
 COPY src/ ./src/
-
+COPY models/ ./models/
 # Build the application
 RUN cargo build --release
 
@@ -18,7 +18,8 @@ WORKDIR /app/gamey
 
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/gamey/target/release/gamey .
-
+# Copy trained models for neural_mtcs
+COPY models/ ./models/
 # Expose the port gamey will listen on
 EXPOSE 4000
 

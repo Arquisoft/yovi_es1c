@@ -13,9 +13,9 @@ export function createGameController(matchService: MatchService, statsService: S
       if (!userId) {
         return res.status(401).json({ error: 'Invalid user ID in token' });
       }
-      
+
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.strategy, validated.difficulty);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);
@@ -26,15 +26,15 @@ export function createGameController(matchService: MatchService, statsService: S
     try {
       const matchId = validateMatchId(req.params.id);
       const match = await matchService.getMatch(matchId);
-      
+
       if (!match) {
         throw new MatchNotFoundError();
       }
 
       if (match.user_id !== Number(req.userId)) {
-          throw new UnauthorizedMatchError();
+        throw new UnauthorizedMatchError();
       }
-      
+
       res.json(match);
     } catch (error) {
       next(error);
@@ -45,7 +45,7 @@ export function createGameController(matchService: MatchService, statsService: S
     try {
       const matchId = validateMatchId(req.params.id);
       const validated = validateAddMove(req.body);
-      
+
       // Verify match exists
       const match = await matchService.getMatch(matchId);
       if (!match) {

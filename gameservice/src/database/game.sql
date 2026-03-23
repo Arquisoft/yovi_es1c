@@ -2,8 +2,7 @@ CREATE TABLE IF NOT EXISTS matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     board_size INTEGER NOT NULL,
-    strategy TEXT,
-    difficulty TEXT,
+    difficulty TEXT NOT NULL,
     status TEXT DEFAULT 'ONGOING',
     winner TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
