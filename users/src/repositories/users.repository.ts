@@ -14,10 +14,26 @@ export class UserRepository {
     this.db = db;
   }
 
+  async createProfile(username: string, avatar?: string): Promise<UserProfile> {
+    const result = await this.db.run(
+      "INSERT INTO user_profiles (username, avatar) VALUES (?, ?)",
+      [username, avatar ?? null]
+    );
+    return (await this.getById(result.lastID!))!;
+  }
+
   async getById(id: number): Promise<UserProfile | null> {
     const row = await this.db.get<UserProfile>(
       "SELECT id, username, avatar, created_at FROM user_profiles WHERE id = ?",
       [id]
+    );
+    return row ?? null;
+  }
+
+  async getByUsername(username: string): Promise<UserProfile | null> {
+    const row = await this.db.get<UserProfile>(
+      "SELECT id, username, avatar, created_at FROM user_profiles WHERE username = ?",
+      [username]
     );
     return row ?? null;
   }
