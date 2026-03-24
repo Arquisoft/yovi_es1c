@@ -5,6 +5,7 @@ import { createGameController } from '../src/controllers/GameController';
 import { MatchService } from '../src/services/MatchService';
 import { StatsService } from '../src/services/StatsService';
 import { errorHandler } from '../src/middleware/error-handler';
+import { OnlineSessionService } from '../src/services/OnlineSessionService';
 
 describe('GameController integration tests', () => {
   let app: Express;
@@ -359,5 +360,66 @@ describe('GameController integration tests', () => {
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
     });
+  });
+});
+
+describe('GET /api/game/online/sessions/active', () => {
+  it('returns active session for authenticated user', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '7';
+      next();
+    });
+
+    const mockOnlineSessionService = {
+      getActiveSessionForUser: vi.fn().mockResolvedValue({ matchId: 'm-100', boardSize: 16 }),
+    } as unknown as OnlineSessionService;
+
+    const matchService = {} as MatchService;
+    const statsService = {} as StatsService;
+    app.use('/api/game', createGameController(matchService, statsService, undefined, mockOnlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ matchId: 'm-100', boardSize: 16 });
+    expect(mockOnlineSessionService.getActiveSessionForUser).toHaveBeenCalledWith(7);
+  });
+
+  it('returns 204 when no active session exists', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '7';
+      next();
+    });
+
+    const mockOnlineSessionService = {
+      getActiveSessionForUser: vi.fn().mockResolvedValue(null),
+    } as unknown as OnlineSessionService;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, mockOnlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+    expect(response.status).toBe(204);
+    expect(response.text).toBe('');
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const app = express();
+    app.use(express.json());
+
+    const mockOnlineSessionService = {
+      getActiveSessionForUser: vi.fn(),
+    } as unknown as OnlineSessionService;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, mockOnlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+    expect(response.status).toBe(401);
+    expect(mockOnlineSessionService.getActiveSessionForUser).not.toHaveBeenCalled();
   });
 });
