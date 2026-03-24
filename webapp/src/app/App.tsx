@@ -1,5 +1,14 @@
-import { BrowserRouter, Routes, Route, Navigate, Link as RouterLink } from 'react-router-dom';
-import { CssBaseline } from '@mui/material';
+import { useEffect, useMemo, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Button,
+  CssBaseline,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Typography,
+} from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import styles from './styles/App.module.css';
 import { phosphorTheme } from './theme/phosphorTheme';
@@ -10,7 +19,9 @@ import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
 import { AuthProvider, useAuth } from '../features/auth';
 import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
+import OnlineMatchmakingPage from '../features/game/ui/tsx/OnlineMatchmakingPage.tsx';
 import StatsUI from '../features/stats/ui/StatsUI.tsx';
+import { useActiveSession } from '../features/game/hooks/useActiveSession';
 
 function HomeScreen() {
   const { user } = useAuth();
@@ -46,30 +57,112 @@ function HomeScreen() {
   );
 }
 
+function AppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { matchId, boardSize } = useActiveSession();
+  const [dismissedMatchId, setDismissedMatchId] = useState<string | null>(null);
+
+  const storageKey = useMemo(() => (matchId ? `abandoned:${matchId}` : null), [matchId]);
+  const isDismissed = useMemo(
+    () => (storageKey ? localStorage.getItem(storageKey) === 'true' : false),
+    [storageKey],
+  );
+
+  const shouldPrompt = Boolean(
+    user &&
+      matchId &&
+      boardSize &&
+      !isDismissed &&
+      dismissedMatchId !== matchId &&
+      location.pathname !== '/gamey',
+  );
+
+  useEffect(() => {
+    if (!matchId) {
+      setDismissedMatchId(null);
+    }
+  }, [matchId]);
+
+  const handleReconnect = () => {
+    if (!matchId || !boardSize) return;
+    navigate('/gamey', {
+      state: {
+        matchId,
+        boardSize,
+        mode: 'ONLINE',
+        difficulty: 'medium',
+      },
+    });
+  };
+
+  const handleAbandon = () => {
+    if (!matchId) return;
+    localStorage.setItem(`abandoned:${matchId}`, 'true');
+    setDismissedMatchId(matchId);
+  };
+
+  return (
+    <>
+      <div className={styles.App}>
+        <div className={styles.screenNoise} />
+        <div className={styles.vignette} />
+        <div className={styles.crtOverlay} />
+        <span className={`${styles.cornerDeco} ${styles.cornerTopLeft}`} />
+        <span className={`${styles.cornerDeco} ${styles.cornerTopRight}`} />
+        <span className={`${styles.cornerDeco} ${styles.cornerBottomLeft}`} />
+        <span className={`${styles.cornerDeco} ${styles.cornerBottomRight}`} />
+        <Nav />
+        <Routes>
+          <Route path="/" element={<HomeScreen />} />
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/register" element={<RegisterForm />} />
+          <Route path="/create-match" element={<CreateMatchPage />} />
+          <Route path="/online/matchmaking" element={<OnlineMatchmakingPage />} />
+          <Route path="/gamey" element={<GameUI />} />
+          <Route path="/stats" element={<StatsUI />} />
+        </Routes>
+      </div>
+
+      <Dialog
+        open={shouldPrompt}
+        PaperProps={{
+          sx: {
+            minWidth: { xs: 'auto', sm: 460 },
+            border: '1px solid rgba(57, 255, 20, 0.34)',
+            background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+          Partida activa detectada
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Tienes una partida en curso. ¿Quieres reconectarte?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="outlined" onClick={handleAbandon}>
+            Abandonar partida
+          </Button>
+          <Button variant="contained" onClick={handleReconnect}>
+            Reconectarme
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider theme={phosphorTheme}>
           <CssBaseline />
-          <div className={styles.App}>
-            <div className={styles.screenNoise} />
-            <div className={styles.vignette} />
-            <div className={styles.crtOverlay} />
-            <span className={`${styles.cornerDeco} ${styles.cornerTopLeft}`} />
-            <span className={`${styles.cornerDeco} ${styles.cornerTopRight}`} />
-            <span className={`${styles.cornerDeco} ${styles.cornerBottomLeft}`} />
-            <span className={`${styles.cornerDeco} ${styles.cornerBottomRight}`} />
-            <Nav />
-            <Routes>
-              <Route path="/" element={<HomeScreen />} />
-              <Route path="/login" element={<LoginForm />} />
-              <Route path="/register" element={<RegisterForm />} />
-              <Route path="/create-match" element={<CreateMatchPage />} />
-              <Route path="/gamey" element={<GameUI />} />
-              <Route path="/stats" element={<StatsUI />} />
-            </Routes>
-          </div>
+          <AppContent />
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
