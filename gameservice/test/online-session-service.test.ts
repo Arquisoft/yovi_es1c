@@ -119,4 +119,44 @@ describe('OnlineSessionService', () => {
 
     nowSpy.mockRestore();
   });
+
+  it('getActiveSessionForUser scans redis sessions and ignores finished ones', async () => {
+    const redis = {
+      get: vi
+          .fn()
+          .mockResolvedValueOnce(JSON.stringify({ matchId: 'm-finished', size: 8, winner: 'B', players: [{ userId: 10 }] }))
+          .mockResolvedValueOnce(JSON.stringify({ matchId: 'm-active', size: 9, winner: null, players: [{ userId: 99 }, { userId: 10 }] })),
+      set: vi.fn(),
+      scan: vi.fn().mockResolvedValue({ cursor: 0, keys: ['session:m-finished', 'session:m-active'] }),
+    };
+
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { redis });
+    const active = await service.getActiveSessionForUser(10);
+
+    expect(active).toEqual({ matchId: 'm-active', boardSize: 9 });
+  });
+
+  it('handleTurnTimeout performs a random valid move when it is current player turn', async () => {
+    const { service } = await setup();
+    const moveSpy = vi.spyOn(service, 'handleMove');
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    await service.handleTurnTimeout('m1', 1, 0);
+
+    expect(moveSpy).toHaveBeenCalledWith('m1', 1, { row: 0, col: 0 }, 0);
+  });
+
+  it('handleTurnTimeout skips when version does not match', async () => {
+    const { service } = await setup();
+    const moveSpy = vi.spyOn(service, 'handleMove');
+
+    await service.handleTurnTimeout('m1', 1, 99);
+    expect(moveSpy).not.toHaveBeenCalled();
+  });
+
+  it('getSnapshot returns null for missing session', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService());
+    const snapshot = await service.getSnapshot('unknown');
+    expect(snapshot).toBeNull();
+  });
 });

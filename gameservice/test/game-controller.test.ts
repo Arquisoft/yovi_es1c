@@ -423,3 +423,91 @@ describe('GET /api/game/online/sessions/active', () => {
     expect(mockOnlineSessionService.getActiveSessionForUser).not.toHaveBeenCalled();
   });
 });
+
+describe('GameController online routes', () => {
+  it('POST /online/queue returns 503 when matchmaking unavailable', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/queue').send({ boardSize: 8 });
+    expect(response.status).toBe(503);
+  });
+
+  it('POST /online/queue enqueues authenticated user', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '5';
+      (req as any).username = 'alice';
+      next();
+    });
+
+    const matchmakingService = {
+      joinQueue: vi.fn().mockResolvedValue({ joinedAt: 123 }),
+    } as any;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, matchmakingService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/queue').send({ boardSize: 8 });
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ queued: true, joinedAt: 123 });
+  });
+
+  it('GET /online/queue/match creates session when missing snapshot', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '1';
+      (req as any).username = 'alice';
+      next();
+    });
+
+    const matchmakingService = {
+      tryMatch: vi.fn().mockResolvedValue({
+        matchId: 'online-1',
+        playerA: { userId: 1, username: 'alice', boardSize: 8 },
+        playerB: { userId: 2, username: 'bob', boardSize: 8 },
+        revealAfterGame: false,
+      }),
+    } as any;
+
+    const onlineSessionService = {
+      getSnapshot: vi.fn().mockResolvedValue(null),
+      createSession: vi.fn().mockResolvedValue({
+        matchId: 'online-1',
+        players: [
+          { userId: 1, username: 'alice', symbol: 'B' },
+          { userId: 2, username: 'bob', symbol: 'R' },
+        ],
+      }),
+    } as any;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, matchmakingService, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/queue/match');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ matched: true, matchId: 'online-1', opponent: 'bob', revealAfterGame: false });
+    expect(onlineSessionService.createSession).toHaveBeenCalled();
+  });
+
+  it('POST /online/sessions/:matchId/moves validates payload', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '1';
+      next();
+    });
+    const onlineSessionService = { handleMove: vi.fn() } as any;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m1/moves').send({ move: { row: 0 } });
+    expect(response.status).toBe(400);
+    expect(onlineSessionService.handleMove).not.toHaveBeenCalled();
+  });
+});
