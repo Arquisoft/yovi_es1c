@@ -126,16 +126,18 @@ function AppContent() {
       </div>
 
       <Dialog
-        open={shouldPrompt}
-        PaperProps={{
-          sx: {
-            minWidth: { xs: 'auto', sm: 460 },
-            border: '1px solid rgba(57, 255, 20, 0.34)',
-            background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
-          },
-        }}
+          open={shouldPrompt}
+          slotProps={{
+            paper: {
+              sx: {
+                minWidth: { xs: 'auto', sm: 460 },
+                border: '1px solid rgba(57, 255, 20, 0.34)',
+                background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
+              },
+            },
+          }}
       >
-        <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+      <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
           Partida activa detectada
         </DialogTitle>
         <DialogContent>

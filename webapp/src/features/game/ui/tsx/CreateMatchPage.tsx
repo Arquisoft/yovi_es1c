@@ -26,7 +26,7 @@ export default function CreateMatchPage() {
   const [mode, setMode] = useState<CreateMatchMode>('BOT');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const buttonLabel = loading ? 'Creando partida...' : mode === 'ONLINE' ? 'Buscar rival' : 'Crear partida';
   const handleCreateMatch = async () => {
     if (!token) {
       setError('Debes iniciar sesión para crear una partida');
@@ -168,7 +168,7 @@ export default function CreateMatchPage() {
           )}
 
           <Button variant="contained" onClick={handleCreateMatch} disabled={loading} sx={{ mt: 1 }}>
-            {loading ? 'Creando partida...' : mode === 'ONLINE' ? 'Buscar rival' : 'Crear partida'}
+            {buttonLabel}
           </Button>
         </Stack>
       </Paper>

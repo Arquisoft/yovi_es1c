@@ -14,8 +14,8 @@ export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerP
   }, [timerEndsAt]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(timer);
+    const timer = globalThis.setInterval(() => setNow(Date.now()), 250);
+    return () => globalThis.clearInterval(timer);
   }, []);
 
   const remaining = useMemo(() => Math.max(0, Math.ceil((timerEndsAt - now) / 1000)), [timerEndsAt, now]);

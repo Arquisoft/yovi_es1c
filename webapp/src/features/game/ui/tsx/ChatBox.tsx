@@ -3,11 +3,11 @@ import { Box, Button, IconButton, Paper, Stack, TextField, Typography } from '@m
 import type { ChatMessage } from '../../hooks/useChatSession';
 
 interface ChatBoxProps {
-    matchId: string | null;
-    winner: 'B' | 'R' | 'DRAW' | null;
-    localUserId: number | null;
-    messages: ChatMessage[];
-    sendMessage: (text: string) => void;
+    readonly matchId: string | null;
+    readonly winner: 'B' | 'R' | 'DRAW' | null;
+    readonly localUserId: number | null;
+    readonly messages: ChatMessage[];
+    readonly sendMessage: (text: string) => void;
 }
 
 const QUICK_EMOJIS = [

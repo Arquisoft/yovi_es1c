@@ -17,6 +17,21 @@ interface SessionStateWithMessagesPayload {
   messages?: ChatMessage[];
 }
 
+function deduplicateMessages(
+    prev: ChatMessage[],
+    incoming: ChatMessage[],
+    seen: Set<string>,
+): ChatMessage[] {
+  const next = [...prev];
+  for (const message of incoming) {
+    const key = `${message.timestamp}-${message.userId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(message);
+  }
+  return next.sort((a, b) => a.timestamp - b.timestamp);
+}
+
 export function useChatSession(matchId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const seenMessagesRef = useRef<Set<string>>(new Set());
@@ -28,16 +43,7 @@ export function useChatSession(matchId: string | null) {
     if (!matchId) return;
 
     const addMessages = (incoming: ChatMessage[]) => {
-      setMessages((prev) => {
-        const next = [...prev];
-        for (const message of incoming) {
-          const key = `${message.timestamp}-${message.userId}`;
-          if (seenMessagesRef.current.has(key)) continue;
-          seenMessagesRef.current.add(key);
-          next.push(message);
-        }
-        return next.sort((a, b) => a.timestamp - b.timestamp);
-      });
+      setMessages((prev) => deduplicateMessages(prev, incoming, seenMessagesRef.current));
     };
 
     const unsubscribeChat = onlineSocketClient.on<ChatMessagePayload>('chat:message', (payload) => {

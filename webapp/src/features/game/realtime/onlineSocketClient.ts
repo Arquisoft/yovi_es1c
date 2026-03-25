@@ -14,7 +14,7 @@ class OnlineSocketClient {
       this.socket.disconnect();
     }
 
-    this.socket = io(window.location.origin, {
+    this.socket = io(globalThis.location.origin, {
       path: '/api/game/socket.io',
       transports: ['websocket', 'polling'],
       auth: { token },
