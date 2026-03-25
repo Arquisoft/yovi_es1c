@@ -41,6 +41,25 @@ describe('onlineSocketClient', () => {
     expect(socket).toBe(mockSocket);
   });
 
+  it('reuses existing connected socket', () => {
+    const first = onlineSocketClient.connect('token-a');
+    const second = onlineSocketClient.connect('token-b');
+
+    expect(first).toBe(second);
+    expect(ioMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('disconnects stale socket before reconnecting', () => {
+    const first = onlineSocketClient.connect('token-a');
+    mockSocket.connected = false;
+
+    const second = onlineSocketClient.connect('token-b');
+
+    expect(first.disconnect).toHaveBeenCalled();
+    expect(second).toBe(mockSocket);
+    expect(ioMock).toHaveBeenCalledTimes(2);
+  });
+
   it('emits events through socket', () => {
     onlineSocketClient.connect('test-token');
     onlineSocketClient.emit('move:play', { row: 1, col: 2 });
@@ -48,15 +67,34 @@ describe('onlineSocketClient', () => {
     expect(mockSocket.emit).toHaveBeenCalledWith('move:play', { row: 1, col: 2 });
   });
 
-  it('disconnects active socket', () => {
-    onlineSocketClient.connect('test-token');
-    onlineSocketClient.disconnect();
+  it('returns noop unsubscribe when socket is absent', () => {
+    const unsub = onlineSocketClient.on('queue:status', vi.fn());
+    const unsubOnce = onlineSocketClient.once('queue:status', vi.fn());
 
-    expect(mockSocket.disconnect).toHaveBeenCalled();
+    expect(typeof unsub).toBe('function');
+    expect(typeof unsubOnce).toBe('function');
+    unsub();
+    unsubOnce();
   });
 
-  it('reports connected state', () => {
+  it('registers and unregisters listeners', () => {
+    onlineSocketClient.connect('test-token');
+    const handler = vi.fn();
+    const unsub = onlineSocketClient.on('session:state', handler);
+
+    expect(mockSocket.on).toHaveBeenCalledWith('session:state', handler);
+
+    unsub();
+    expect(mockSocket.off).toHaveBeenCalledWith('session:state', handler);
+  });
+
+  it('disconnects active socket and reports connected state', () => {
     onlineSocketClient.connect('test-token');
     expect(onlineSocketClient.isConnected()).toBe(true);
+
+    onlineSocketClient.disconnect();
+    expect(mockSocket.disconnect).toHaveBeenCalled();
+    expect(onlineSocketClient.raw()).toBeNull();
+    expect(onlineSocketClient.isConnected()).toBe(false);
   });
 });
