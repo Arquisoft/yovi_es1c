@@ -42,6 +42,19 @@ export class CredentialsRepository {
         });
     }
 
+    async findUserById(userId: number): Promise<{ id: number; username: string } | null> {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT id, username FROM users_credentials WHERE id = ?',
+                [userId],
+                (err, row: any) => {
+                    if (err) reject(err);
+                    else resolve(row || null);
+                }
+            );
+        });
+    }
+
     async storeRefreshToken(userId: number, tokenHash: string, familyId: string, expiresAt: string): Promise<void> {
         return new Promise((resolve, reject) => {
             this.db.run(
@@ -91,6 +104,21 @@ export class CredentialsRepository {
                  SET revoked_at = CURRENT_TIMESTAMP
                  WHERE family_id = ? AND revoked_at IS NULL`,
                 [familyId],
+                (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                }
+            );
+        });
+    }
+
+    async revokeAllUserSessions(userId: number): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `UPDATE refresh_tokens
+                 SET revoked_at = CURRENT_TIMESTAMP
+                 WHERE user_id = ? AND revoked_at IS NULL`,
+                [userId],
                 (err) => {
                     if (err) reject(err);
                     else resolve();

@@ -83,12 +83,32 @@ describe('StatsService', () => {
       const userId = 1;
 
       vi.spyOn(mockStatsRepository, 'getUserStats').mockRejectedValue(
-        new Error('Database connection failed')
+          new Error('Database connection failed')
       );
 
       await expect(statsService.getStats(userId)).rejects.toThrow(
-        'Database connection failed'
+          'Database connection failed'
       );
+    });
+  });
+
+  describe('getWinRateForUser', () => {
+    it('returns win_rate when stats exist', async () => {
+      vi.spyOn(mockStatsRepository, 'getUserStats').mockResolvedValue({
+        user_id: 10,
+        wins: 3,
+        losses: 1,
+        total_games: 4,
+        win_rate: 75,
+      });
+
+      await expect(statsService.getWinRateForUser(10)).resolves.toBe(75);
+    });
+
+    it('returns 0 when stats are missing', async () => {
+      vi.spyOn(mockStatsRepository, 'getUserStats').mockResolvedValue(undefined);
+
+      await expect(statsService.getWinRateForUser(999)).resolves.toBe(0);
     });
   });
 });

@@ -21,7 +21,7 @@ services:
       - monitor-net
     volumes:
       - ./auth/data:/app/auth/data
-      
+
   webapp:
     build:
       context: ./webapp
@@ -45,6 +45,40 @@ services:
       - "4000"
     networks:
       - monitor-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    networks:
+      - monitor-net
+
+  gameservice:
+    build: ./gameservice
+    container_name: gameservice
+    image: ghcr.io/arquisoft/yovi_es1c-gameservice:latest
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - GAME_DB_PATH=/app/data/game.db
+      - AUTH_SERVICE_URL=http://auth:3001
+      - REDIS_URL=redis://redis:6379
+      - MM_TIMEOUT_SEC=30
+      - TURN_TIMEOUT_SEC=25
+      - RECONNECT_GRACE_SEC=45
+    volumes:
+      - ./gameservice/data:/app/data
+    expose:
+      - "3002"
+    ports:
+      - "3002:3002"
+    depends_on:
+      - auth
+      - redis
+    networks:
+      - monitor-net
+
   nginx:
     image: nginx:alpine
     container_name: nginx_proxy
@@ -59,26 +93,10 @@ services:
       - gamey
       - gameservice
       - auth
+      - redis
     networks:
       - monitor-net
     restart: unless-stopped
-
-  gameservice:
-    build: ./gameservice
-    container_name: gameservice
-    image: ghcr.io/arquisoft/yovi_es1c-gameservice:latest
-    environment:
-      - JWT_SECRET=${JWT_SECRET}
-      - GAME_DB_PATH=/app/data/game.db
-      - AUTH_SERVICE_URL=http://auth:3001
-    volumes:
-      - ./gameservice/data:/app/data
-    expose:
-      - "3002"
-    ports:
-    - "3002:3002"
-    networks:
-      - monitor-net
 
   prometheus:
     image: prom/prometheus
