@@ -10,6 +10,7 @@ import {
     Button,
     Stack,
     Box,
+    Alert, // Importamos Alert
 } from "@mui/material";
 import { useAuth } from "../../../auth";
 import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
@@ -27,7 +28,7 @@ export default function CreateMatchPage() {
 
     const handleCreateMatch = async () => {
         if (!token) {
-            setError("Debes iniciar sesión para crear una partida");
+            setError("ACCESO DENEGADO: Debes iniciar sesión para crear una partida");
             return;
         }
 
@@ -64,32 +65,19 @@ export default function CreateMatchPage() {
         }
     };
 
-    if (!token) {
-        return (
-            <Box sx={{ textAlign: "center", mt: 4 }}>
-                <Typography variant="h5" color="error">
-                    Debes iniciar sesión para crear una partida
-                </Typography>
-                <Button variant="contained" onClick={() => navigate("/login")} sx={{ mt: 2 }}>
-                    Ir a Login
-                </Button>
-            </Box>
-        );
-    }
-
     return (
         <Box
             sx={{
-                position: "absolute",
-                top: 70,
-                left: 0,
-                right: 0,
-                minHeight: "calc(100vh - 70px)",
                 display: "flex",
                 justifyContent: "center",
-                alignItems: "center",
-                p: 2,
+                alignItems: "flex-start", // Alineado arriba para que el padding funcione mejor
+                minHeight: "100vh",
+                // Padding superior para compensar el Nav (70px del Nav + 40px de espacio)
+                pt: "110px",
+                pb: 4,
+                px: 2,
                 overflow: "auto",
+                boxSizing: "border-box"
             }}
         >
             <Paper
@@ -97,7 +85,6 @@ export default function CreateMatchPage() {
                     width: "100%",
                     maxWidth: 500,
                     padding: 4,
-                    margin: "0 auto",
                 }}
             >
                 <Box textAlign="center" mb={4}>
@@ -106,17 +93,26 @@ export default function CreateMatchPage() {
                         color="primary"
                         sx={{ mb: 1, textShadow: "0 0 8px rgba(57, 255, 20, 0.45)" }}
                     >
-                        Crear nueva partida
+                        NUEVA PARTIDA
                     </Typography>
                     <Typography variant="subtitle1" color="text.secondary">
-                        Configura tu partida y empieza a jugar
+                        CONFIGURACIÓN DE SISTEMA
                     </Typography>
                 </Box>
 
+                {/* ALERT DE ERROR QUE NO SE COME EL NAV */}
                 {error && (
-                    <Typography color="error" sx={{ mb: 2, textAlign: "center" }}>
+                    <Alert
+                        severity="error"
+                        onClose={() => setError(null)}
+                        sx={{
+                            mb: 3,
+                            fontSize: '1.1rem',
+                            border: '1px solid #ff5f5f',
+                        }}
+                    >
                         {error}
-                    </Typography>
+                    </Alert>
                 )}
 
                 <Stack spacing={3}>
@@ -144,8 +140,8 @@ export default function CreateMatchPage() {
                             label="Modo de juego"
                             onChange={(e) => setMode(e.target.value as GameMode)}
                         >
-                            <MenuItem value="BOT">VS Bot</MenuItem>
-                            <MenuItem value="LOCAL_2P">2 Jugadores</MenuItem>
+                            <MenuItem value="BOT">VS BOT</MenuItem>
+                            <MenuItem value="LOCAL_2P">2 JUGADORES (LOCAL)</MenuItem>
                         </Select>
                     </FormControl>
 
@@ -159,10 +155,10 @@ export default function CreateMatchPage() {
                                 label="Dificultad"
                                 onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
                             >
-                                <MenuItem value="easy">Fácil</MenuItem>
-                                <MenuItem value="medium">Media</MenuItem>
-                                <MenuItem value="hard">Difícil</MenuItem>
-                                <MenuItem value="expert">Imposible</MenuItem>
+                                <MenuItem value="easy">FÁCIL</MenuItem>
+                                <MenuItem value="medium">MEDIA</MenuItem>
+                                <MenuItem value="hard">DIFÍCIL</MenuItem>
+                                <MenuItem value="expert">IMPOSIBLE</MenuItem>
                             </Select>
                         </FormControl>
                     )}
@@ -171,10 +167,25 @@ export default function CreateMatchPage() {
                         variant="contained"
                         onClick={handleCreateMatch}
                         disabled={loading}
-                        sx={{ mt: 2 }}
+                        size="large"
+                        sx={{
+                            mt: 2,
+                            py: 1.5,
+                            fontSize: '1.2rem'
+                        }}
                     >
-                        {loading ? "Creando partida..." : "Crear partida"}
+                        {loading ? "INICIALIZANDO..." : "CREAR PARTIDA"}
                     </Button>
+
+                    {!token && (
+                        <Button
+                            variant="outlined"
+                            onClick={() => navigate("/login")}
+                            sx={{ borderColor: 'rgba(57, 255, 20, 0.3)' }}
+                        >
+                            IR A LOGIN
+                        </Button>
+                    )}
                 </Stack>
             </Paper>
         </Box>

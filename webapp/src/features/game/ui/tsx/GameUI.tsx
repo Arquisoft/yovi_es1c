@@ -133,7 +133,7 @@ export default function GameUI() {
 
                     {loading && <Paper sx={{ p: 2, my: 1, width: { xs: "100%", md: "80%" }, textAlign: "center" }}>Bot pensando...</Paper>}
 
-                    <Paper sx={{ mt: 3, padding: { xs: "8px", sm: "12px", md: "16px" }, display: "inline-flex", justifyContent: "center", alignItems: "center", width: "fit-content", maxWidth: "100%", overflow: "visible" }}>
+                    <Paper sx={{ mt: 3, padding: "10px", display: "flex", justifyContent: "center", alignItems: "center", width: "100%", maxWidth: "900px", overflow: "hidden" }}>
                         <Board layout={gameState.layout} size={gameState.size} onCellClick={actions.handleCellClick} currentPlayer={gameState.turn} />
                     </Paper>
 
