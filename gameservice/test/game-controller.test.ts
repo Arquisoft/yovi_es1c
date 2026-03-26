@@ -5,6 +5,7 @@ import { createGameController } from '../src/controllers/GameController';
 import { MatchService } from '../src/services/MatchService';
 import { StatsService } from '../src/services/StatsService';
 import { errorHandler } from '../src/middleware/error-handler';
+import { OnlineSessionService } from '../src/services/OnlineSessionService';
 
 describe('GameController integration tests', () => {
   let app: Express;
@@ -359,5 +360,154 @@ describe('GameController integration tests', () => {
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
     });
+  });
+});
+
+describe('GET /api/game/online/sessions/active', () => {
+  it('returns active session for authenticated user', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '7';
+      next();
+    });
+
+    const mockOnlineSessionService = {
+      getActiveSessionForUser: vi.fn().mockResolvedValue({ matchId: 'm-100', boardSize: 16 }),
+    } as unknown as OnlineSessionService;
+
+    const matchService = {} as MatchService;
+    const statsService = {} as StatsService;
+    app.use('/api/game', createGameController(matchService, statsService, undefined, mockOnlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ matchId: 'm-100', boardSize: 16 });
+    expect(mockOnlineSessionService.getActiveSessionForUser).toHaveBeenCalledWith(7);
+  });
+
+  it('returns 204 when no active session exists', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '7';
+      next();
+    });
+
+    const mockOnlineSessionService = {
+      getActiveSessionForUser: vi.fn().mockResolvedValue(null),
+    } as unknown as OnlineSessionService;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, mockOnlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+    expect(response.status).toBe(204);
+    expect(response.text).toBe('');
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const app = express();
+    app.use(express.json());
+
+    const mockOnlineSessionService = {
+      getActiveSessionForUser: vi.fn(),
+    } as unknown as OnlineSessionService;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, mockOnlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+    expect(response.status).toBe(401);
+    expect(mockOnlineSessionService.getActiveSessionForUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('GameController online routes', () => {
+  it('POST /online/queue returns 503 when matchmaking unavailable', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/queue').send({ boardSize: 8 });
+    expect(response.status).toBe(503);
+  });
+
+  it('POST /online/queue enqueues authenticated user', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '5';
+      (req as any).username = 'alice';
+      next();
+    });
+
+    const matchmakingService = {
+      joinQueue: vi.fn().mockResolvedValue({ joinedAt: 123 }),
+    } as any;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, matchmakingService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/queue').send({ boardSize: 8 });
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ queued: true, joinedAt: 123 });
+  });
+
+  it('GET /online/queue/match creates session when missing snapshot', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '1';
+      (req as any).username = 'alice';
+      next();
+    });
+
+    const matchmakingService = {
+      tryMatch: vi.fn().mockResolvedValue({
+        matchId: 'online-1',
+        playerA: { userId: 1, username: 'alice', boardSize: 8 },
+        playerB: { userId: 2, username: 'bob', boardSize: 8 },
+        revealAfterGame: false,
+      }),
+    } as any;
+
+    const onlineSessionService = {
+      getSnapshot: vi.fn().mockResolvedValue(null),
+      createSession: vi.fn().mockResolvedValue({
+        matchId: 'online-1',
+        players: [
+          { userId: 1, username: 'alice', symbol: 'B' },
+          { userId: 2, username: 'bob', symbol: 'R' },
+        ],
+      }),
+    } as any;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, matchmakingService, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).get('/api/game/online/queue/match');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ matched: true, matchId: 'online-1', opponent: 'bob', revealAfterGame: false });
+    expect(onlineSessionService.createSession).toHaveBeenCalled();
+  });
+
+  it('POST /online/sessions/:matchId/moves validates payload', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = '1';
+      next();
+    });
+    const onlineSessionService = { handleMove: vi.fn() } as any;
+
+    app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m1/moves').send({ move: { row: 0 } });
+    expect(response.status).toBe(400);
+    expect(onlineSessionService.handleMove).not.toHaveBeenCalled();
   });
 });

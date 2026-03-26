@@ -1,34 +1,47 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-    Paper,
-    Typography,
+    Alert,
+    Box,
+    Button,
     FormControl,
     InputLabel,
-    Select,
     MenuItem,
-    Button,
+    Paper,
+    Select,
     Stack,
-    Box,
-    Alert, // Importamos Alert
-} from "@mui/material";
-import { useAuth } from "../../../auth";
-import { fetchWithAuth } from "../../../../shared/api/fetchWithAuth";
-import { API_CONFIG } from "../../../../config/api.config";
-import type { BotDifficulty, GameMode } from "../../hooks/useGameController";
+    Typography,
+} from '@mui/material';
+import { useAuth } from '../../../auth';
+import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
+import { API_CONFIG } from '../../../../config/api.config';
+import type { BotDifficulty } from '../../hooks/useGameController';
+
+type CreateMatchMode = 'BOT' | 'LOCAL_2P' | 'ONLINE';
 
 export default function CreateMatchPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const [boardSize, setBoardSize] = useState<number>(8);
-    const [difficulty, setDifficulty] = useState<BotDifficulty>("medium");
-    const [mode, setMode] = useState<GameMode>("BOT");
+    const [difficulty, setDifficulty] = useState<BotDifficulty>('medium');
+    const [mode, setMode] = useState<CreateMatchMode>('BOT');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const buttonLabel = loading
+        ? 'INICIALIZANDO...'
+        : mode === 'ONLINE'
+            ? 'BUSCAR RIVAL'
+            : 'CREAR PARTIDA';
+
     const handleCreateMatch = async () => {
         if (!token) {
-            setError("ACCESO DENEGADO: Debes iniciar sesión para crear una partida");
+            setError('ACCESO DENEGADO: Debes iniciar sesión para crear una partida');
+            return;
+        }
+
+        if (mode === 'ONLINE') {
+            navigate('/online/matchmaking', { state: { boardSize } });
             return;
         }
 
@@ -37,61 +50,77 @@ export default function CreateMatchPage() {
 
         try {
             const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ boardSize, difficulty, mode }),
             });
 
             if (!res.ok) {
                 const text = await res.text();
-                throw new Error(text || "Error creating match");
+                throw new Error(text || 'Error creando la partida');
             }
 
             const data = await res.json();
 
-            navigate("/gamey", {
+            navigate('/gamey', {
                 state: {
                     matchId: data.matchId,
                     initialYEN: data.initialYEN,
                     boardSize,
                     mode,
-                    difficulty
-                }
+                    difficulty,
+                },
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Error desconocido");
+            setError(err instanceof Error ? err.message : 'Error desconocido');
         } finally {
             setLoading(false);
         }
     };
 
+    if (!token) {
+        return (
+            <Box sx={{ textAlign: 'center', mt: 4 }}>
+                <Typography variant="h5" color="error">
+                    ACCESO DENEGADO: Debes iniciar sesión para crear una partida
+                </Typography>
+                <Button variant="contained" onClick={() => navigate('/login')} sx={{ mt: 2 }}>
+                    IR A LOGIN
+                </Button>
+            </Box>
+        );
+    }
+
     return (
         <Box
             sx={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "flex-start", // Alineado arriba para que el padding funcione mejor
-                minHeight: "100vh",
-                // Padding superior para compensar el Nav (70px del Nav + 40px de espacio)
-                pt: "110px",
-                pb: 4,
-                px: 2,
-                overflow: "auto",
-                boxSizing: "border-box"
+                position: 'absolute',
+                top: 58,
+                left: 0,
+                right: 0,
+                minHeight: 'calc(100vh - 58px)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                p: 2,
+                overflow: 'auto',
             }}
         >
-            <Paper
-                sx={{
-                    width: "100%",
-                    maxWidth: 500,
-                    padding: 4,
-                }}
-            >
+            {}
+            <Paper sx={{ width: '100%', maxWidth: 540, p: 4 }} className="crt-panel">
                 <Box textAlign="center" mb={4}>
                     <Typography
+                        variant="overline"
+                        className="crt-screen-label"
+                        sx={{ display: 'block', mb: 1 }}
+                    >
+                        Match setup
+                    </Typography>
+                    <Typography
                         variant="h4"
+                        className="crt-heading"
                         color="primary"
-                        sx={{ mb: 1, textShadow: "0 0 8px rgba(57, 255, 20, 0.45)" }}
+                        sx={{ mb: 1, textShadow: '0 0 8px rgba(57, 255, 20, 0.45)' }}
                     >
                         NUEVA PARTIDA
                     </Typography>
@@ -100,7 +129,7 @@ export default function CreateMatchPage() {
                     </Typography>
                 </Box>
 
-                {/* ALERT DE ERROR QUE NO SE COME EL NAV */}
+                {}
                 {error && (
                     <Alert
                         severity="error"
@@ -138,14 +167,16 @@ export default function CreateMatchPage() {
                             id="game-mode"
                             value={mode}
                             label="Modo de juego"
-                            onChange={(e) => setMode(e.target.value as GameMode)}
+                            onChange={(e) => setMode(e.target.value as CreateMatchMode)}
                         >
+                            {/}
                             <MenuItem value="BOT">VS BOT</MenuItem>
                             <MenuItem value="LOCAL_2P">2 JUGADORES (LOCAL)</MenuItem>
+                            <MenuItem value="ONLINE">ONLINE</MenuItem>
                         </Select>
                     </FormControl>
 
-                    {mode === "BOT" && (
+                    {mode === 'BOT' && (
                         <FormControl fullWidth>
                             <InputLabel id="difficulty-label">Dificultad</InputLabel>
                             <Select
@@ -155,6 +186,7 @@ export default function CreateMatchPage() {
                                 label="Dificultad"
                                 onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
                             >
+                                {}
                                 <MenuItem value="easy">FÁCIL</MenuItem>
                                 <MenuItem value="medium">MEDIA</MenuItem>
                                 <MenuItem value="hard">DIFÍCIL</MenuItem>
@@ -163,6 +195,7 @@ export default function CreateMatchPage() {
                         </FormControl>
                     )}
 
+                    {}
                     <Button
                         variant="contained"
                         onClick={handleCreateMatch}
@@ -171,21 +204,11 @@ export default function CreateMatchPage() {
                         sx={{
                             mt: 2,
                             py: 1.5,
-                            fontSize: '1.2rem'
+                            fontSize: '1.2rem',
                         }}
                     >
-                        {loading ? "INICIALIZANDO..." : "CREAR PARTIDA"}
+                        {buttonLabel}
                     </Button>
-
-                    {!token && (
-                        <Button
-                            variant="outlined"
-                            onClick={() => navigate("/login")}
-                            sx={{ borderColor: 'rgba(57, 255, 20, 0.3)' }}
-                        >
-                            IR A LOGIN
-                        </Button>
-                    )}
                 </Stack>
             </Paper>
         </Box>

@@ -12,6 +12,15 @@ import {
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+
+function hasSqliteConstraintCode(error: unknown): boolean {
+    return typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && (error as { code?: unknown }).code === 'SQLITE_CONSTRAINT';
+}
+
+
 type AuthResponse = {
     accessToken: string;
     refreshToken: string;
@@ -31,8 +40,8 @@ export class AuthService {
 
         try {
             userId = await this.repo.createUser(username, passwordHash);
-        } catch (error: any) {
-            if (error?.code === 'SQLITE_CONSTRAINT') {
+        } catch (error: unknown) {
+            if (hasSqliteConstraintCode(error)) {
                 throw new UserAlreadyExistsError();
             }
 
@@ -55,6 +64,8 @@ export class AuthService {
         if (!user || !(await bcrypt.compare(password, user.password_hash))) {
             throw new BadCredentialsError();
         }
+
+        await this.repo.revokeAllUserSessions(user.id);
 
         const session = await this.issueSession(user.id, user.username);
 
@@ -103,7 +114,10 @@ export class AuthService {
             nextRefreshExpires
         );
 
-        const accessToken = this.signAccessToken(storedToken.user_id);
+        const user = await this.repo.findUserById(storedToken.user_id);
+        const usernameResolved = user?.username;
+
+        const accessToken = this.signAccessToken(storedToken.user_id, usernameResolved);
 
         return {
             accessToken,
