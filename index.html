@@ -488,6 +488,9 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_runtime_scenario_4_player_move_human_turn">6.4. Runtime Scenario 4: Player Move (Human Turn)</a></li>
 <li><a href="#_runtime_scenario_5_bot_api_interaction">6.5. Runtime Scenario 5: Bot API Interaction</a></li>
 <li><a href="#_runtime_scenario_6_statistics_and_history_retrieval">6.6. Runtime Scenario 6: Statistics and History Retrieval</a></li>
+<li><a href="#_runtime_scenario_7_online_matchmaking">6.7. Runtime Scenario 7: Online Matchmaking</a></li>
+<li><a href="#_runtime_scenario_8_real_time_online_session_human_vs_human">6.8. Runtime Scenario 8: Real-time Online Session (Human vs Human)</a></li>
+<li><a href="#_runtime_scenario_9_turn_timeout_and_bot_fallback">6.9. Runtime Scenario 9: Turn Timeout and Bot Fallback</a></li>
 </ul>
 </li>
 <li><a href="#section-deployment-view">7. Deployment View</a>
@@ -500,7 +503,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#section-concepts">8. Cross-cutting Concepts</a>
 <ul class="sectlevel2">
 <li><a href="#_domain_model">8.1. Domain Model</a></li>
-<li><a href="#_user_experience_ux">8.2. User experience (UX)</a></li>
+<li><a href="#_user_experience_ux">8.2. User Experience (UX)</a></li>
 <li><a href="#_safety_and_security_concepts">8.3. Safety and Security Concepts</a></li>
 <li><a href="#_architecture_and_design_patterns">8.4. Architecture and Design Patterns</a></li>
 <li><a href="#_development_concepts">8.5. Development Concepts</a></li>
@@ -510,12 +513,13 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="#section-design-decisions">9. Architecture Decisions</a>
 <ul class="sectlevel2">
-<li><a href="#_adr_1_microservices_architecture">9.1. ADR 1: Microservices architecture</a></li>
+<li><a href="#_adr_1_microservices_architecture">9.1. ADR 1: Microservices Architecture</a></li>
 <li><a href="#_adr_2_rust_for_game_server">9.2. ADR 2: Rust for Game Server</a></li>
 <li><a href="#_adr_3_docker_containerization">9.3. ADR 3: Docker Containerization</a></li>
 <li><a href="#_adr_4_sqlite_as_database_system">9.4. ADR 4: SQLite as Database System</a></li>
 <li><a href="#_adr_5_nginx_as_api_gateway">9.5. ADR 5: Nginx as API Gateway</a></li>
 <li><a href="#_adr_6_three_independent_databases_for_fault_isolation">9.6. ADR 6: Three Independent Databases for Fault Isolation</a></li>
+<li><a href="#_adr_7_redis_and_socket_io_for_online_matchmaking_and_real_time_sessions">9.7. ADR 7: Redis and Socket.IO for Online Matchmaking and Real-time Sessions</a></li>
 </ul>
 </li>
 <li><a href="#section-quality-scenarios">10. Quality Requirements</a>
@@ -590,11 +594,10 @@ For documentation of your own system you use better the <em>plain</em> version.<
 <p>YOVI is a web platform for playing the game Y, developed by Micrati.</p>
 </div>
 <div class="paragraph">
-<p>The system is designed for both human users and automated agents (bots). Its primary goal is to provide a smooth and engaging user experience when playing against an Artificial Intelligence (AI),
-with configurable board sizes and selectable difficulty levels.</p>
+<p>The system is designed for both human users and automated agents (bots). Its primary goals are to provide a smooth and engaging user experience when playing against an Artificial Intelligence (AI) with configurable board sizes and selectable difficulty levels, and to support real-time online multiplayer matches between human players through a matchmaking system.</p>
 </div>
 <div class="paragraph">
-<p>YOVI consists of a React-based web frontend (running in the browser), an Auth Service (managing authentication and credentials), a Users Service (managing user profile data), a Game Service (handling match persistence and statistics), and a Rust-based Game Server (handling game logic). All backend services communicate via REST APIs using JSON messages, with YEN notation for game states, and are accessible through a single Nginx API Gateway.</p>
+<p>YOVI consists of a React-based web frontend (running in the browser), an Auth Service (managing authentication and credentials), a Users Service (managing user profile data), a Game Service (handling match persistence, statistics, online matchmaking, and real-time sessions via Socket.IO), and a Rust-based Game Server (handling game logic and bot strategies). All backend services communicate via REST APIs using JSON messages, with YEN notation for game states, and are accessible through a single Nginx API Gateway.</p>
 </div>
 <div class="paragraph">
 <p>This section summarizes the most relevant functional requirements from an architectural perspective.</p>
@@ -620,8 +623,18 @@ with configurable board sizes and selectable difficulty levels.</p>
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Player</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Play Game</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The player accesses the web application in their browser and starts a new game of Y. The React frontend displays a board with configurable size. The player takes turns placing pieces on the board. After each player move, the frontend sends the current game state in YEN notation to the Game Server via Nginx. The AI responds with its move, which is applied to the board and shown to the player. The Game Service persists each move in <code>game.db</code>. The system manages turns and checks after each move if the game has ended. The process repeats until a victory or defeat condition occurs.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Play Game vs AI</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The player accesses the web application in their browser and starts a new game of Y against an AI bot. The React frontend displays a board with configurable size. The player takes turns placing pieces on the board. After each player move, the frontend sends the current game state in YEN notation to the Game Server via Nginx. The AI responds with its move, which is applied to the board and shown to the player. The Game Service persists each move in <code>game.db</code>. The system manages turns and checks after each move if the game has ended. The process repeats until a victory or defeat condition occurs.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Player</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Online Multiplayer Match</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A registered player joins the online matchmaking queue through the React frontend. The Game Service searches for another available player. When two players are matched, a real-time session is created and both players are connected via Socket.IO. Each player takes turns placing pieces; the board state is broadcast in real time to both clients after every move. If no opponent is found within the configured timeout (<code>MM_TIMEOUT_SEC</code>), the system assigns a bot as the opponent (bot fallback).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Player</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Turn Timeout and Bot Fallback</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">During an online match, each player has a limited time to make their move (<code>TURN_TIMEOUT_SEC</code>). If a player does not move within the allowed time, the <code>TurnTimerService</code> triggers the <code>BotFallbackService</code>, which computes and applies a move automatically on the player&#8217;s behalf, keeping the game progressing without interruption.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Player</p></td>
@@ -691,6 +704,10 @@ with configurable board sizes and selectable difficulty levels.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Security</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The system should protect backend services from direct external access, handle authentication properly, and ensure data integrity through controlled and isolated database access per service.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Real-time Responsiveness</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Online multiplayer matches must propagate board state updates to all connected players with minimal latency, ensuring a seamless turn-based experience over WebSocket connections.</p></td>
 </tr>
 </tbody>
 </table>
@@ -978,6 +995,12 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p><strong>Anonymous Play</strong>: Unregistered users can play but their scores are not persisted</p>
 </li>
+<li>
+<p><strong>Online Session</strong>: A real-time multiplayer match between two human players managed via Socket.IO</p>
+</li>
+<li>
+<p><strong>Matchmaking Queue</strong>: Redis-backed queue that pairs available players before creating an online session</p>
+</li>
 </ul>
 </div>
 </div>
@@ -988,7 +1011,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_system_architecture">3.2.1. System Architecture</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="1669" height="852">
+<img src="./images/technical-context-deployment.png" alt="technical context deployment" width="1724" height="852">
 </div>
 </div>
 </div>
@@ -1072,8 +1095,8 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx → Game Service</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3002 (HTTP)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API + WebSocket (Socket.IO)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3002 (HTTP / WS)</p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
@@ -1084,6 +1107,12 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p>Statistics retrieval</p>
+</li>
+<li>
+<p>Online matchmaking queue management</p>
+</li>
+<li>
+<p>Real-time online session updates via Socket.IO</p>
 </li>
 </ul>
 </div></div></td>
@@ -1105,6 +1134,24 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p>YEN format game logic</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Game Service → Redis</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Redis protocol</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">6379 (internal)</p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Matchmaking queue persistence</p>
+</li>
+<li>
+<p>Online session state storage</p>
+</li>
+<li>
+<p>Socket.IO adapter for multi-instance pub/sub</p>
 </li>
 </ul>
 </div></div></td>
@@ -1162,8 +1209,8 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>React Frontend (in Browser) → Nginx</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API, AJAX</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">80 (HTTP)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">HTTP, REST API, AJAX, WebSocket</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">80 (HTTP / WS)</p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
@@ -1177,6 +1224,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p>Statistics queries</p>
+</li>
+<li>
+<p>Real-time Socket.IO connection for online matches</p>
 </li>
 </ul>
 </div></div></td>
@@ -1237,6 +1287,31 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p><code>GET /api/game/stats/{userId}</code> - Retrieve player statistics and match history</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Online Matchmaking and Sessions (via Nginx → Game Service):</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>POST /api/game/online/queue</code> - Join the matchmaking queue</p>
+</li>
+<li>
+<p><code>GET /api/game/online/queue/match</code> - Poll to check if the player has been matched</p>
+</li>
+<li>
+<p><code>DELETE /api/game/online/queue</code> - Cancel matchmaking</p>
+</li>
+<li>
+<p><code>GET /api/game/online/sessions/active</code> - Get the current active online session for the authenticated user</p>
+</li>
+<li>
+<p><code>GET /api/game/online/sessions/:matchId</code> - Get the state of a specific online session</p>
+</li>
+<li>
+<p><code>POST /api/game/online/sessions/:matchId/moves</code> - Submit a move in an online session</p>
 </li>
 </ul>
 </div>
@@ -1318,10 +1393,13 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Containerization</strong>: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server) are containerized using Docker for consistent deployment</p>
+<p><strong>Containerization</strong>: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis) are containerized using Docker for consistent deployment</p>
 </li>
 <li>
 <p><strong>Databases</strong>: Three independent SQLite files (<code>auth.db</code>, <code>users.db</code>, <code>game.db</code>), each stored as a separate volume mount in its respective service container</p>
+</li>
+<li>
+<p><strong>Real-time State</strong>: Online session state and the matchmaking queue are stored in Redis, which runs as an independent container and is accessible only to the Game Service</p>
 </li>
 <li>
 <p><strong>Fault Isolation</strong>: A failure or overload in one database does not affect the others; authentication, profile, and game data are independently available</p>
@@ -1922,14 +2000,14 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_overview_diagram">5.1.1. Overview Diagram</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level1-overview.png" alt="level1 overview" width="1699" height="662">
+<img src="./images/level1-overview.png" alt="level1 overview" width="1730" height="679">
 </div>
 </div>
 <div class="paragraph">
 <p><strong>Motivation:</strong></p>
 </div>
 <div class="paragraph">
-<p>The Yovi system is decomposed into five main subsystems to achieve separation of concerns, independent scalability, technology-specific optimization, and fault isolation across data domains:</p>
+<p>The Yovi system is decomposed into six main subsystems to achieve separation of concerns, independent scalability, technology-specific optimization, and fault isolation across data domains:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -1946,15 +2024,18 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p><strong>Users Service</strong>: Profile layer with exclusive access to <code>users.db</code>, managing user profile data</p>
 </li>
 <li>
-<p><strong>Game Service</strong>: Game data layer with exclusive access to <code>game.db</code>, managing match persistence, move history, and statistics</p>
+<p><strong>Game Service</strong>: Game data and online play layer with exclusive access to <code>game.db</code> and Redis, managing match persistence, move history, statistics, online matchmaking, and real-time sessions via Socket.IO</p>
 </li>
 <li>
 <p><strong>Game Server</strong>: Pure game logic engine optimized for performance (Rust), completely stateless</p>
 </li>
+<li>
+<p><strong>Redis</strong>: Ephemeral in-memory store exclusively used by the Game Service for matchmaking queue state and active online session snapshots</p>
+</li>
 </ul>
 </div>
 <div class="paragraph">
-<p>Each service owns its own database. A failure or overload in one database does not propagate to the others, achieving fault isolation at the data layer.</p>
+<p>Each service owns its own data store. A failure or overload in one store does not propagate to the others, achieving fault isolation at the data layer.</p>
 </div>
 <div class="paragraph">
 <p><strong>Contained Building Blocks:</strong></p>
@@ -2032,6 +2113,9 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Makes HTTP API calls to all backend services through Nginx</p>
 </li>
 <li>
+<p>Establishes a Socket.IO connection for real-time online match updates</p>
+</li>
+<li>
 <p>Coordinates game flow from the client side</p>
 </li>
 </ul>
@@ -2089,10 +2173,10 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Single point of access to <code>game.db</code></p>
+<p>Single point of access to <code>game.db</code> and Redis</p>
 </li>
 <li>
-<p>Manages match lifecycle (creation, updates, completion)</p>
+<p>Manages match lifecycle (creation, updates, completion) for both AI and online matches</p>
 </li>
 <li>
 <p>Persists move history and serialized YEN board states</p>
@@ -2101,7 +2185,19 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Aggregates and provides player statistics and rankings</p>
 </li>
 <li>
-<p>Exposes REST API on port 3002 (internal)</p>
+<p>Implements Redis-backed matchmaking queue to pair online players</p>
+</li>
+<li>
+<p>Manages real-time online sessions via Socket.IO (with <code>@socket.io/redis-adapter</code>)</p>
+</li>
+<li>
+<p>Enforces per-turn timeouts and triggers automatic bot fallback when a player does not respond</p>
+</li>
+<li>
+<p>Supports reconnection grace periods before penalising disconnected players</p>
+</li>
+<li>
+<p>Exposes REST API on port 3002 (internal) and Socket.IO on the same port</p>
 </li>
 </ul>
 </div></div></td>
@@ -2117,7 +2213,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Validates moves and checks win conditions</p>
 </li>
 <li>
-<p>Computes bot moves using various strategies (random, heuristic)</p>
+<p>Computes bot moves using various strategies (random, heuristic, neural network)</p>
 </li>
 <li>
 <p>Completely stateless service using YEN notation</p>
@@ -2127,6 +2223,31 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 <li>
 <p>No database access, pure computation</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Redis</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>In-memory store exclusively used by the Game Service</p>
+</li>
+<li>
+<p>Persists matchmaking queue entries (players waiting for an opponent)</p>
+</li>
+<li>
+<p>Stores active online session snapshots (board state, turn, players)</p>
+</li>
+<li>
+<p>Acts as the pub/sub adapter for Socket.IO when multiple Game Service instances are running</p>
+</li>
+<li>
+<p>Data is ephemeral: session state is rebuilt or discarded when a match ends</p>
+</li>
+<li>
+<p>Exposed internally on port 6379</p>
 </li>
 </ul>
 </div></div></td>
@@ -2196,7 +2317,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <div class="ulist">
 <ul>
 <li>
-<p><strong>User → Nginx</strong>: HTTP REST API (port 80, public)</p>
+<p><strong>User → Nginx</strong>: HTTP REST API and WebSocket (port 80, public)</p>
 </li>
 <li>
 <p><strong>Nginx → React Frontend</strong>: Static file serving (HTML, JS, CSS)</p>
@@ -2208,13 +2329,16 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p><strong>Nginx → Users Service</strong>: REST API (<code>/api/users/*</code>, port 3000, internal)</p>
 </li>
 <li>
-<p><strong>Nginx → Game Service</strong>: REST API (<code>/api/game/*</code>, port 3002, internal)</p>
+<p><strong>Nginx → Game Service</strong>: REST API (<code>/api/game/*</code>, port 3002, internal) + Socket.IO WebSocket</p>
 </li>
 <li>
 <p><strong>Nginx → Game Server</strong>: REST API (<code>/api/gamey/*</code>, port 4000, internal)</p>
 </li>
 <li>
-<p><strong>React Frontend → Nginx</strong>: AJAX/Fetch API calls from browser</p>
+<p><strong>React Frontend → Nginx</strong>: AJAX/Fetch API calls and Socket.IO WebSocket connection from browser</p>
+</li>
+<li>
+<p><strong>Game Service → Redis</strong>: Redis protocol (port 6379, internal) for matchmaking queue and session state</p>
 </li>
 <li>
 <p><strong>Auth Service → auth.db</strong>: SQLite native SQL queries</p>
@@ -2228,7 +2352,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </ul>
 </div>
 <div class="paragraph">
-<p><strong>Communication Flow Example:</strong></p>
+<p><strong>Communication Flow Example (AI Match):</strong></p>
 </div>
 <div class="olist arabic">
 <ol class="arabic">
@@ -2255,6 +2379,31 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </li>
 </ol>
 </div>
+<div class="paragraph">
+<p><strong>Communication Flow Example (Online Match):</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>User joins matchmaking → React calls <code>POST /api/game/online/queue</code> → Game Service stores entry in Redis</p>
+</li>
+<li>
+<p>React polls <code>GET /api/game/online/queue/match</code> → Game Service checks Redis for a paired opponent</p>
+</li>
+<li>
+<p>When matched, Game Service creates an online session in Redis and returns match details</p>
+</li>
+<li>
+<p>Both clients connect via Socket.IO → receive real-time board state updates after each move</p>
+</li>
+<li>
+<p>Player submits a move → <code>POST /api/game/online/sessions/:matchId/moves</code> → Game Service validates, updates Redis session, broadcasts updated state via Socket.IO</p>
+</li>
+<li>
+<p>If a player exceeds their turn time → <code>TurnTimerService</code> fires → <code>BotFallbackService</code> computes and applies a move automatically</p>
+</li>
+</ol>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -2263,7 +2412,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_auth_service">5.2.1. White Box: Auth Service</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-auth.png" alt="level2 auth" width="506" height="627">
+<img src="./images/level2-auth.png" alt="level2 auth" width="512" height="627">
 </div>
 </div>
 <div class="paragraph">
@@ -2286,7 +2435,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Exposes REST API endpoints: <code>POST /api/auth/register</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/refresh</code></p>
+<p>Exposes REST API endpoints: <code>POST /api/auth/register</code>, <code>POST /api/auth/login</code>, <code>POST /api/auth/refresh</code>, <code>POST /api/auth/verify</code> (internal only)</p>
 </li>
 <li>
 <p>Input validation and error handling</p>
@@ -2339,7 +2488,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_users_service">5.2.2. White Box: Users Service</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-users.png" alt="level2 users" width="465" height="627">
+<img src="./images/level2-users.png" alt="level2 users" width="472" height="627">
 </div>
 </div>
 <div class="paragraph">
@@ -2362,13 +2511,16 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Exposes REST API endpoints: <code>GET /api/users/{id}</code>, <code>PUT /api/users/{id}</code>, <code>GET /api/users</code></p>
+<p>Exposes REST API endpoints: <code>POST /createuser</code></p>
 </li>
 <li>
-<p>Input validation and authentication middleware (JWT verification via Auth Service)</p>
+<p>Exposes Prometheus metrics at <code>/metrics</code></p>
 </li>
 <li>
-<p>Request/response mapping</p>
+<p>Exposes Swagger UI at <code>/api-docs</code></p>
+</li>
+<li>
+<p>Input validation and request/response mapping</p>
 </li>
 </ul>
 </div></div></td>
@@ -2412,7 +2564,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_game_service">5.2.3. White Box: Game Service</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-gameservice.png" alt="level2 gameservice" width="661" height="632">
+<img src="./images/level2-gameservice.png" alt="level2 gameservice" width="2149" height="721">
 </div>
 </div>
 <div class="paragraph">
@@ -2435,16 +2587,13 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Exposes REST API endpoints for match and stats operations</p>
+<p>Exposes all REST API endpoints for AI matches, statistics, matchmaking, and online sessions</p>
 </li>
 <li>
-<p>Endpoints: <code>POST /api/game/matches</code>, <code>GET /api/game/matches/{id}</code>, <code>POST /api/game/matches/{id}/moves</code>, <code>GET /api/game/stats/{userId}</code></p>
+<p>Input validation and JWT authentication middleware</p>
 </li>
 <li>
-<p>Input validation and authentication middleware (JWT verification)</p>
-</li>
-<li>
-<p>Request/response mapping</p>
+<p>Request/response mapping and error delegation</p>
 </li>
 </ul>
 </div></div></td>
@@ -2454,7 +2603,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Match creation and lifecycle management</p>
+<p>Match creation and lifecycle management for AI matches</p>
 </li>
 <li>
 <p>Stores match metadata (size, strategy, difficulty, participants)</p>
@@ -2465,9 +2614,6 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <li>
 <p>Persists serialized YEN board states and move history</p>
 </li>
-<li>
-<p>Match history queries</p>
-</li>
 </ul>
 </div></div></td>
 </tr>
@@ -2476,16 +2622,86 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Aggregates player statistics (wins/losses/draws)</p>
+<p>Aggregates player statistics (wins/losses)</p>
 </li>
 <li>
-<p>Calculates rankings and metrics</p>
+<p>Calculates win rate and other performance metrics</p>
 </li>
 <li>
-<p>Provides historical match data</p>
+<p>Provides historical match data per user</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchmakingService</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Manages the Redis-backed matchmaking queue</p>
 </li>
 <li>
-<p>Win rate calculations</p>
+<p>Adds, polls, and removes players from the queue</p>
+</li>
+<li>
+<p>Pairs two players when compatible entries are found</p>
+</li>
+<li>
+<p>Triggers bot fallback if no opponent is found within <code>MM_TIMEOUT_SEC</code></p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OnlineSessionService</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Creates and manages real-time online session state in Redis</p>
+</li>
+<li>
+<p>Validates and applies moves during online matches</p>
+</li>
+<li>
+<p>Delegates turn timing to <code>TurnTimerService</code></p>
+</li>
+<li>
+<p>Delegates automatic bot moves to <code>BotFallbackService</code></p>
+</li>
+<li>
+<p>Supports reconnection grace periods (<code>RECONNECT_GRACE_SEC</code>)</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>TurnTimerService</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Starts a countdown for each player&#8217;s turn</p>
+</li>
+<li>
+<p>Fires a timeout event after <code>TURN_TIMEOUT_SEC</code> seconds</p>
+</li>
+<li>
+<p>Notifies <code>OnlineSessionService</code> to trigger bot fallback</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>BotFallbackService</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Called when a player&#8217;s turn times out or no opponent is found during matchmaking</p>
+</li>
+<li>
+<p>Calls the Game Server (Rust) to compute a valid move</p>
+</li>
+<li>
+<p>Applies the bot move to the active session on behalf of the player</p>
 </li>
 </ul>
 </div></div></td>
@@ -2495,16 +2711,10 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
 <li>
-<p>Database access layer for matches in <code>game.db</code></p>
+<p>Database access layer for match records in <code>game.db</code></p>
 </li>
 <li>
-<p>Stores serialized YEN board states</p>
-</li>
-<li>
-<p>Query optimization for match history</p>
-</li>
-<li>
-<p>Match outcome persistence</p>
+<p>Stores and retrieves match metadata and move history</p>
 </li>
 </ul>
 </div></div></td>
@@ -2517,10 +2727,84 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <p>Database access layer for statistics in <code>game.db</code></p>
 </li>
 <li>
-<p>Optimized read queries for rankings</p>
+<p>Optimised read queries for per-user rankings and metrics</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>MatchmakingRepository</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Redis access layer for the matchmaking queue</p>
 </li>
 <li>
-<p>Computed statistics and performance metrics</p>
+<p>Stores and retrieves queue entries per player</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OnlineSessionRepository</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Redis access layer for active online session snapshots</p>
+</li>
+<li>
+<p>Stores board state, current turn, player list, and session metadata</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>SocketServer</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Initialises the Socket.IO server on port 3002</p>
+</li>
+<li>
+<p>Uses <code>@socket.io/redis-adapter</code> for pub/sub across instances</p>
+</li>
+<li>
+<p>Handles client connection, disconnection, and reconnection events</p>
+</li>
+<li>
+<p>Broadcasts updated board state to all players in a session after each move</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>VerifyJwt (Middleware)</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Intercepts authenticated requests</p>
+</li>
+<li>
+<p>Calls Auth Service internally (<code>/api/auth/verify</code>) to validate the JWT token</p>
+</li>
+<li>
+<p>Attaches <code>userId</code> and <code>username</code> to the request context on success</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ErrorHandler (Middleware)</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Global Express error handler</p>
+</li>
+<li>
+<p>Maps domain errors (e.g., <code>MatchNotFoundError</code>, <code>UnauthorizedMatchError</code>, <code>InvalidMoveError</code>) to appropriate HTTP status codes</p>
+</li>
+<li>
+<p>Prevents leaking internal error details to clients</p>
 </li>
 </ul>
 </div></div></td>
@@ -2532,7 +2816,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h4 id="_white_box_game_server">5.2.4. White Box: Game Server</h4>
 <div class="imageblock">
 <div class="content">
-<img src="./images/level2-gameserver.png" alt="level2 gameserver" width="1152" height="769">
+<img src="./images/level2-gameserver.png" alt="level2 gameserver" width="1372" height="769">
 </div>
 </div>
 <div class="paragraph">
@@ -2671,6 +2955,25 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 </div></div></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>NeuralNetworkStrategy</strong></p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Implements move selection using a trained neural network model</p>
+</li>
+<li>
+<p>Model weights loaded at startup from a file bundled with the service</p>
+</li>
+<li>
+<p>Provides stronger play than the heuristic strategy at higher difficulty levels</p>
+</li>
+<li>
+<p>Stateless inference, no runtime training</p>
+</li>
+</ul>
+</div></div></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>GameDomain Package</strong></p></td>
 <td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
 <ul>
@@ -2706,7 +3009,7 @@ Understanding them helps ensure that the architecture is feasible, maintainable,
 <h2 id="section-runtime-view">6. Runtime View</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, and statistics retrieval.
+<p>This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, statistics retrieval, and real-time online multiplayer sessions.
 The scenarios below are derived directly from the system&#8217;s architecture and message flows, using JSON/YEN as the canonical representation of game states.</p>
 </div>
 <div class="paragraph">
@@ -2937,6 +3240,102 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </li>
 </ul>
 </div>
+</div>
+<div class="sect2">
+<h3 id="_runtime_scenario_7_online_matchmaking">6.7. Runtime Scenario 7: Online Matchmaking</h3>
+<div class="paragraph">
+<p>A registered player joins the matchmaking queue looking for a human opponent. The Game Service stores the entry in Redis and waits for a second player. When two compatible players are found, an online session is created and both clients are notified.</p>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="./images/runtime-matchmaking.png" alt="runtime matchmaking" width="1207" height="988">
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Notable Aspects:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>The matchmaking queue is stored entirely in Redis, keeping <code>game.db</code> free from ephemeral queue state</p>
+</li>
+<li>
+<p>Both players poll independently; neither blocks the other&#8217;s request</p>
+</li>
+<li>
+<p>If no opponent is found within <code>MM_TIMEOUT_SEC</code>, the Game Service assigns a bot as the opponent and creates the session automatically</p>
+</li>
+<li>
+<p>Once a session is created in Redis, both clients proceed to connect via Socket.IO (see Scenario 8)</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_runtime_scenario_8_real_time_online_session_human_vs_human">6.8. Runtime Scenario 8: Real-time Online Session (Human vs Human)</h3>
+<div class="paragraph">
+<p>After being matched, both players connect via Socket.IO. The Game Service manages the session in Redis, enforces turn order, and broadcasts board state updates to both clients in real time after each move.</p>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="./images/runtime-online-session.png" alt="runtime online session" width="1226" height="1096">
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Notable Aspects:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>All real-time communication uses Socket.IO over WebSocket, proxied through Nginx</p>
+</li>
+<li>
+<p>The authoritative session state is kept in Redis for low-latency reads and updates</p>
+</li>
+<li>
+<p><code>game.db</code> is written for every move (durable history) while Redis holds the live session snapshot</p>
+</li>
+<li>
+<p>The <code>@socket.io/redis-adapter</code> ensures events are delivered correctly even if multiple Game Service instances are running</p>
+</li>
+<li>
+<p>When the game ends, the session is removed from Redis and the final result is persisted in <code>game.db</code></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_runtime_scenario_9_turn_timeout_and_bot_fallback">6.9. Runtime Scenario 9: Turn Timeout and Bot Fallback</h3>
+<div class="paragraph">
+<p>During an online session, each player has a limited time (<code>TURN_TIMEOUT_SEC</code>) to place their piece. If the timer expires, the <code>TurnTimerService</code> fires and <code>BotFallbackService</code> automatically computes and applies a move on behalf of the inactive player.</p>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="./images/runtime-turn-timeout.png" alt="runtime turn timeout" width="1742" height="677">
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Notable Aspects:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>TurnTimerService</code> starts a new countdown after each move (human or bot)</p>
+</li>
+<li>
+<p><code>BotFallbackService</code> calls the stateless Game Server (Rust) to compute the fallback move, ensuring consistency with the standard bot logic</p>
+</li>
+<li>
+<p>Both clients receive a <code>botFallback: true</code> flag in the board update event so the UI can inform players that the move was automatic</p>
+</li>
+<li>
+<p>The fallback move is persisted in <code>game.db</code> with an <code>auto</code> marker for auditability</p>
+</li>
+<li>
+<p>If a player disconnects, the <code>RECONNECT_GRACE_SEC</code> window is given before the timeout countdown begins</p>
+</li>
+</ul>
+</div>
 <div style="page-break-after: always;"></div>
 </div>
 </div>
@@ -2960,7 +3359,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/deployment-level1-architecture.png" alt="deployment level1 architecture" width="1357" height="848">
+<img src="./images/deployment-level1-architecture.png" alt="deployment level1 architecture" width="1548" height="930">
 </div>
 </div>
 <div class="paragraph">
@@ -2984,7 +3383,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p><strong>Independent Scalability:</strong> The system is divided into specific microservices (React Frontend, Auth Service, Users Service, Game Service, Game Server). Because of this, developers can give more resources to a specific service without affecting the others.</p>
 </li>
 <li>
-<p><strong>Fault Isolation:</strong> Each service owns its own database volume. An overload or failure in <code>game.db</code> does not affect <code>auth.db</code> or <code>users.db</code>, meaning authentication and profile access remain available even if the game data layer is under stress.</p>
+<p><strong>Fault Isolation:</strong> Each service owns its own data store. An overload or failure in <code>game.db</code> does not affect <code>auth.db</code> or <code>users.db</code>. Similarly, a Redis failure only affects online matchmaking and active sessions, while AI matches and authentication remain fully operational.</p>
 </li>
 </ul>
 </div>
@@ -3009,7 +3408,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Nginx (API Gateway)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM. It works as a Reverse Proxy and API Gateway. It is the only public entry point (Port 80) to route all incoming traffic. Handles CORS, rate limiting, and serves the React frontend static files. Routes API requests to backend services.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM. It works as a Reverse Proxy and API Gateway. It is the only public entry point (Port 80) to route all incoming traffic. Handles CORS, rate limiting, WebSocket proxying for Socket.IO, and serves the React frontend static files. Routes API requests to backend services.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Auth Service (Node.js + Express + TypeScript)</strong></p></td>
@@ -3017,15 +3416,27 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Users Service (Node.js + Express + TypeScript)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 3000, internal only). Exclusively manages user profile data. No other service has access to <code>users.db</code>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 3000, internal only). Exclusively manages user profile data. No other service has access to <code>users.db</code>. Exposes Prometheus metrics at <code>/metrics</code>.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Game Service (Node.js + Express + TypeScript)</strong></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 3002, internal only). Exclusively manages match persistence, move history, and player statistics. No other service has access to <code>game.db</code>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 3002, internal only). Exclusively manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. No other service has access to <code>game.db</code> or the Redis matchmaking/session data.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Game Server (Rust)</strong></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 4000, internal only). Calculates game logic and bot movements in YEN format. Completely stateless service optimized for performance. No database access whatsoever.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Redis</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 6379, internal only). Used exclusively by the Game Service to store the matchmaking queue and active online session state. Data is ephemeral: no host volume is required. Acts as the pub/sub adapter for Socket.IO.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Prometheus</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 9090). Scrapes metrics from the Users Service at regular intervals. Configuration located in <code>users/monitoring/prometheus/</code>.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Grafana</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployed in a Docker container inside the VM (Port 9091). Connects to Prometheus as a data source and displays system dashboards. Dashboard provisioning located in <code>users/monitoring/grafana/provisioning/</code>.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><strong>auth.db (SQLite)</strong></p></td>
@@ -3062,7 +3473,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p><strong>Consistency:</strong> It solves the classic "it works on my machine" problem.</p>
 </li>
 <li>
-<p><strong>Fast Setup:</strong> A new developer can start the complete system (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, and all three databases) with just one <code>docker-compose up</code> command.</p>
+<p><strong>Fast Setup:</strong> A new developer can start the complete system (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis, Prometheus, and Grafana) with just one <code>docker-compose up</code> command.</p>
 </li>
 </ul>
 </div>
@@ -3081,7 +3492,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </div>
 <div class="imageblock">
 <div class="content">
-<img src="./images/deployment-level2-dataflow.png" alt="deployment level2 dataflow" width="1865" height="811">
+<img src="./images/deployment-level2-dataflow.png" alt="deployment level2 dataflow" width="2142" height="896">
 </div>
 </div>
 <div class="paragraph">
@@ -3102,6 +3513,9 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p><strong>React app runs in browser</strong>: Makes API calls to <code>/api/auth/<strong></code>, <code>/api/users/</strong></code>, <code>/api/game/<strong></code> and <code>/api/gamey/</strong></code></p>
 </li>
 <li>
+<p><strong>React app connects via Socket.IO</strong> for real-time online sessions through <code>/api/game/socket.io/</code></p>
+</li>
+<li>
 <p><strong>Nginx routes API requests</strong> based on URL path:</p>
 <div class="ulist">
 <ul>
@@ -3112,7 +3526,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p><code>/api/users/*</code> → Users Service (port 3000)</p>
 </li>
 <li>
-<p><code>/api/game/*</code> → Game Service (port 3002)</p>
+<p><code>/api/game/*</code> → Game Service (port 3002), including WebSocket upgrade for Socket.IO</p>
 </li>
 <li>
 <p><code>/api/gamey/*</code> → Game Server (port 4000)</p>
@@ -3126,7 +3540,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </ul>
 </div>
 <div class="paragraph">
-<p><strong>Example User Flow:</strong></p>
+<p><strong>Example User Flow (AI Match):</strong></p>
 </div>
 <div class="olist arabic">
 <ol class="arabic">
@@ -3178,6 +3592,34 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 </ol>
 </div>
 <div class="paragraph">
+<p><strong>Example User Flow (Online Match):</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>User joins matchmaking → React sends <code>POST /api/game/online/queue</code> to Nginx</p>
+</li>
+<li>
+<p>Game Service stores the queue entry in Redis and waits for an opponent</p>
+</li>
+<li>
+<p>React polls <code>GET /api/game/online/queue/match</code> until a match is found</p>
+</li>
+<li>
+<p>Once matched, React establishes a Socket.IO WebSocket connection via Nginx to Game Service (port 3002)</p>
+</li>
+<li>
+<p>Both players receive real-time board updates via Socket.IO after each move</p>
+</li>
+<li>
+<p>If a player exceeds their turn time, <code>TurnTimerService</code> triggers <code>BotFallbackService</code>, which computes and applies an automatic move</p>
+</li>
+<li>
+<p>When the game ends, the session is removed from Redis and the result is persisted in <code>game.db</code></p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
 <p><strong>Internal Auth verification call (service-to-service only):</strong></p>
 </div>
 <div class="ulist">
@@ -3197,7 +3639,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p><strong>Data Storage and Fault Isolation:</strong></p>
 </div>
 <div class="paragraph">
-<p>Data storage is strictly controlled through three independent volumes, all inside the VM:</p>
+<p>Data storage is strictly controlled through independent volumes and in-memory stores, all inside the VM:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -3210,10 +3652,10 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <li>
 <p><code>game.db</code> is mounted exclusively inside the Game Service container. Only Game Service has read/write permissions. Stores matches, moves, and statistics.</p>
 </li>
+<li>
+<p><strong>Redis</strong> runs as an ephemeral container (no host volume). Only the Game Service connects to it. Stores the matchmaking queue and active online session snapshots. A Redis failure only affects online matchmaking and active sessions; AI matches and authentication remain fully operational.</p>
+</li>
 </ul>
-</div>
-<div class="paragraph">
-<p>If <code>game.db</code> becomes overloaded due to a high volume of concurrent matches, authentication (<code>auth.db</code>) and user profiles (<code>users.db</code>) remain fully operational. Each database fails independently.</p>
 </div>
 <div class="paragraph">
 <p>The Game Server has no database access and operates in a completely stateless manner. All game state persistence is delegated to the Game Service after each move.</p>
@@ -3222,7 +3664,7 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <p><strong>Network Isolation:</strong></p>
 </div>
 <div class="paragraph">
-<p>All backend services (Auth Service, Users Service, Game Service, Game Server) run on an internal Docker network. They cannot be accessed directly from outside the VM. Only Nginx has a public-facing port (80) exposed to the internet. This architecture ensures that:</p>
+<p>All backend services (Auth Service, Users Service, Game Service, Game Server, Redis) run on an internal Docker network. They cannot be accessed directly from outside the VM. Only Nginx (port 80), Prometheus (port 9090), and Grafana (port 9091) have public-facing ports exposed. This architecture ensures that:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -3238,6 +3680,9 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <li>
 <p>Services communicate only through defined internal APIs</p>
 </li>
+<li>
+<p>Redis is only reachable from within the Docker network</p>
+</li>
 </ul>
 </div>
 <div style="page-break-after: always;"></div>
@@ -3247,105 +3692,6 @@ Statistics are served by the Game Service from <code>game.db</code>.</p>
 <div class="sect1">
 <h2 id="section-concepts">8. Cross-cutting Concepts</h2>
 <div class="sectionbody">
-<div class="sidebarblock arc42help">
-<div class="content">
-<div class="paragraph">
-<div class="title">Content</div>
-<p>This section describes overall, principal regulations and solution ideas that are relevant in multiple parts (= cross-cutting) of your system.
-Such concepts are often related to multiple building blocks.
-They can include many different topics, such as</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>models, especially domain models</p>
-</li>
-<li>
-<p>architecture or design patterns</p>
-</li>
-<li>
-<p>rules for using specific technology</p>
-</li>
-<li>
-<p>principal, often technical decisions of an overarching (= cross-cutting) nature</p>
-</li>
-<li>
-<p>implementation rules</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<div class="title">Motivation</div>
-<p>Concepts form the basis for <em>conceptual integrity</em> (consistency, homogeneity) of the architecture.
-Thus, they are an important contribution to achieve inner qualities of your system.</p>
-</div>
-<div class="paragraph">
-<p>Some of these concepts cannot be assigned to individual building blocks, e.g. security or safety.</p>
-</div>
-<div class="paragraph">
-<div class="title">Form</div>
-<p>The form can be varied:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>concept papers with any kind of structure</p>
-</li>
-<li>
-<p>cross-cutting model excerpts or scenarios using notations of the architecture views</p>
-</li>
-<li>
-<p>sample implementations, especially for technical concepts</p>
-</li>
-<li>
-<p>reference to typical usage of standard frameworks (e.g. using Hibernate for object/relational mapping)</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<div class="title">Structure</div>
-<p>A potential (but not mandatory) structure for this section could be:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Domain concepts</p>
-</li>
-<li>
-<p>User Experience concepts (UX)</p>
-</li>
-<li>
-<p>Safety and security concepts</p>
-</li>
-<li>
-<p>Architecture and design patterns</p>
-</li>
-<li>
-<p>"Under-the-hood"</p>
-</li>
-<li>
-<p>development concepts</p>
-</li>
-<li>
-<p>operational concepts</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>Note: it might be difficult to assign individual concepts to one specific topic
-on this list.</p>
-</div>
-<div class="imageblock">
-<div class="content">
-<img src="./images/08-concepts-EN.drawio.png" alt="Possible topics for crosscutting concepts">
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Further Information</div>
-<p>See <a href="https://docs.arc42.org/section-8/">Concepts</a> in the arc42 documentation.</p>
-</div>
-</div>
-</div>
 <div class="sect2">
 <h3 id="_domain_model">8.1. Domain Model</h3>
 <div class="paragraph">
@@ -3360,7 +3706,7 @@ diagram:</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_user_experience_ux">8.2. User experience (UX)</h3>
+<h3 id="_user_experience_ux">8.2. User Experience (UX)</h3>
 <div class="paragraph">
 <p>Since the project includes a web interface,
 we wanted the user experience to be as smooth
@@ -3403,7 +3749,7 @@ Even though this is an academic project, we still apply basic security principle
 <ul>
 <li>
 <p><strong>API Gateway Isolation:</strong>
-Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while Users Service and Game Server run on internal Docker network ports.</p>
+Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while all backend services run on internal Docker network ports.</p>
 </li>
 <li>
 <p><strong>Authentication and Authorization:</strong>
@@ -3436,13 +3782,16 @@ application, we split the project into several smaller, independent services:</p
 <p><strong>React Frontend (webapp/):</strong> The user interface running in the browser. It is a single-page application (SPA) built with React, Vite, and TypeScript. The frontend manages UI state and coordinates API calls to backend services.</p>
 </li>
 <li>
-<p><strong>Nginx:</strong> The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, and serves the React frontend static files.</p>
+<p><strong>Nginx:</strong> The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, WebSocket proxying for Socket.IO, and serves the React frontend static files.</p>
 </li>
 <li>
 <p><strong>Auth Service (auth/):</strong> Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to <code>auth.db</code>.</p>
 </li>
 <li>
-<p><strong>Users Service (users/):</strong> Node.js + Express + TypeScript service that manages user profiles, match persistence, and statistics. It is the single point of access to <code>users.db</code>.</p>
+<p><strong>Users Service (users/):</strong> Node.js + Express + TypeScript service that manages user profile data. It is the single point of access to <code>users.db</code>.</p>
+</li>
+<li>
+<p><strong>Game Service (gameservice/):</strong> Node.js + Express + TypeScript service that manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. It is the single point of access to <code>game.db</code> and Redis.</p>
 </li>
 <li>
 <p><strong>Game Server (gamey/):</strong> Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.</p>
@@ -3454,15 +3803,19 @@ application, we split the project into several smaller, independent services:</p
 </div>
 <div class="paragraph">
 <p><strong>API Gateway Pattern:</strong>
-Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (<code>/api/users/<strong></code>, <code>/api/gamey/</strong></code>, <code>/</code>).</p>
+Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (<code>/api/auth/<strong></code>, <code>/api/users/</strong></code>, <code>/api/game/<strong></code>, <code>/api/gamey/</strong></code>, <code>/</code>).</p>
 </div>
 <div class="paragraph">
 <p><strong>Repository Pattern:</strong>
-The Users Service uses the Repository pattern to abstract database access, making it easier to test and maintain.</p>
+Each backend service uses the Repository pattern to abstract database access, making it easier to test and maintain.</p>
 </div>
 <div class="paragraph">
 <p><strong>Strategy Pattern:</strong>
-The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic) in an extensible way.</p>
+The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic, neural network) in an extensible way.</p>
+</div>
+<div class="paragraph">
+<p><strong>Observer Pattern (via Socket.IO events):</strong>
+The Game Service uses Socket.IO events to notify all connected clients of board state changes in real time, decoupling the session state update from the client rendering logic.</p>
 </div>
 <div class="paragraph">
 <p><strong>Separation of Concerns:</strong>
@@ -3496,6 +3849,12 @@ ensure that all components evolve consistently.</p>
 <p>Users Service (Node.js): API endpoint tests and integration tests</p>
 </li>
 <li>
+<p>Auth Service (Node.js): unit and integration tests for authentication flows</p>
+</li>
+<li>
+<p>Game Service (Node.js): unit and integration tests for match, matchmaking, and online session logic</p>
+</li>
+<li>
 <p>React Frontend: component tests and end-to-end tests</p>
 </li>
 </ul>
@@ -3514,29 +3873,51 @@ This helps detect errors early and keeps all services aligned.</p>
 <div class="sect2">
 <h3 id="_persistence_layer">8.6. Persistence Layer</h3>
 <div class="paragraph">
-<p>The application relies on SQL databases (SQLite - relational database) split by domain: <code>auth.db</code>, <code>users.db</code>, and <code>game.db</code>.</p>
+<p>The application relies on two complementary persistence mechanisms split by domain and lifetime:</p>
 </div>
 <div class="paragraph">
-<p>Each database is accessed exclusively by its owning service. This design decision ensures:</p>
+<p><strong>Durable storage (SQLite):</strong></p>
+</div>
+<div class="paragraph">
+<p>Three independent SQLite databases store long-lived data:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Data Consistency:</strong> each service manages transactions in its own domain</p>
+<p><code>auth.db</code> — accessible only through Auth Service. Stores user credentials and JWT token metadata.</p>
 </li>
 <li>
-<p><strong>Security:</strong> other services cannot directly access or modify another service&#8217;s database</p>
+<p><code>users.db</code> — accessible only through Users Service. Stores user profile data.</p>
 </li>
 <li>
-<p><strong>Separation of Concerns:</strong> Auth handles credentials/tokens, Users handles profiles/statistics, and Game handles match state</p>
+<p><code>game.db</code> — accessible only through Game Service. Stores match records, move history, and player statistics.</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p>Game sessions are computed in memory by the Rust Game Server and persisted to <code>game.db</code> when needed (history/resume). Credentials and token metadata remain exclusive to Auth Service in <code>auth.db</code>.</p>
+<p>Each database is accessed exclusively by its owning service. This design decision ensures data consistency, security, and separation of concerns.</p>
 </div>
 <div class="paragraph">
-<p>If additional persistence requirements arise in the future (for example, caching or match replay functionality), the system can be extended without affecting the existing services thanks to the microservice-based design.</p>
+<p><strong>Ephemeral storage (Redis):</strong></p>
+</div>
+<div class="paragraph">
+<p>Redis is used exclusively by the Game Service for data that is short-lived and must be accessed with low latency:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Matchmaking queue</strong>: stores the list of players waiting for an online opponent. Entries are created when a player joins and removed when matched or when the timeout expires.</p>
+</li>
+<li>
+<p><strong>Online session snapshots</strong>: stores the current board state, active turn, and player list for each ongoing online match. This allows the Game Service to process moves and broadcast updates without hitting <code>game.db</code> on every turn.</p>
+</li>
+<li>
+<p><strong>Socket.IO pub/sub adapter</strong>: Redis acts as the message broker between Socket.IO server instances, ensuring events are delivered to all connected clients even if multiple Game Service replicas are running.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Redis data is ephemeral and requires no host volume. If Redis restarts, ongoing online sessions are lost, but durable match history in <code>game.db</code> is unaffected.</p>
 </div>
 </div>
 <div class="sect2">
@@ -3564,7 +3945,13 @@ cause of the problem more easily.</p>
 <p><strong>Nginx:</strong> Returns standard HTTP error codes (400, 401, 404, 500) and logs errors for monitoring.</p>
 </li>
 <li>
+<p><strong>Auth Service:</strong> Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.</p>
+</li>
+<li>
 <p><strong>Users Service:</strong> Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.</p>
+</li>
+<li>
+<p><strong>Game Service:</strong> Uses typed domain errors (<code>MatchNotFoundError</code>, <code>UnauthorizedMatchError</code>, <code>InvalidMoveError</code>) mapped to HTTP status codes by a global error handler middleware. Socket.IO errors are emitted as structured events to the affected client.</p>
 </li>
 <li>
 <p><strong>Game Server:</strong> Returns structured error responses for invalid YEN notation, illegal moves, or computation failures. Rust&#8217;s Result type ensures explicit error handling.</p>
@@ -3579,7 +3966,7 @@ cause of the problem more easily.</p>
 <h2 id="section-design-decisions">9. Architecture Decisions</h2>
 <div class="sectionbody">
 <div class="sect2">
-<h3 id="_adr_1_microservices_architecture">9.1. ADR 1: Microservices architecture</h3>
+<h3 id="_adr_1_microservices_architecture">9.1. ADR 1: Microservices Architecture</h3>
 <div class="ulist">
 <ul>
 <li>
@@ -3613,16 +4000,16 @@ Although it would have simplified the development at first, this solution presen
 <p><strong>Users Service (Node.js + Express + TypeScript)</strong> managing user profile data, with exclusive access to <code>users.db</code></p>
 </li>
 <li>
-<p><strong>Game Service (Node.js + Express + TypeScript)</strong> managing match persistence, move history, and statistics, with exclusive access to <code>game.db</code></p>
+<p><strong>Game Service (Node.js + Express + TypeScript)</strong> managing match persistence, move history, statistics, online matchmaking, and real-time sessions, with exclusive access to <code>game.db</code> and Redis</p>
 </li>
 <li>
 <p><strong>React Frontend (Vite + TypeScript)</strong> for user interaction, running entirely in the browser and coordinating API calls to backend services</p>
 </li>
 <li>
-<p><strong>Nginx API Gateway</strong> routing requests and handling cross-cutting concerns (CORS, rate limiting, security)</p>
+<p><strong>Nginx API Gateway</strong> routing requests and handling cross-cutting concerns (CORS, rate limiting, WebSocket proxying, security)</p>
 </li>
 <li>
-<p>Each service owns its own database, ensuring fault isolation at the data layer<br>
+<p>Each service owns its own data store, ensuring fault isolation at the data layer<br>
 This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.</p>
 </li>
 </ul>
@@ -3639,7 +4026,7 @@ This approach allows each component to evolve independently while using the most
 <p>Enables independent development and deployment of all services</p>
 </li>
 <li>
-<p>Each database is isolated per domain, ensuring fault isolation</p>
+<p>Each data store is isolated per domain, ensuring fault isolation</p>
 </li>
 <li>
 <p>Nginx provides security isolation for backend services</p>
@@ -3739,7 +4126,7 @@ This approach allows each component to evolve independently while using the most
 </div>
 </li>
 <li>
-<p><strong>Decision:</strong> We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.</p>
+<p><strong>Decision:</strong> We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis, Prometheus, Grafana) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.</p>
 </li>
 <li>
 <p><strong>Pros:</strong></p>
@@ -3874,14 +4261,14 @@ This approach allows each component to evolve independently while using the most
 <p><code>/api/users/*</code> → Users Service (port 3000, internal)</p>
 </li>
 <li>
-<p><code>/api/game/*</code> → Game Service (port 3002, internal)</p>
+<p><code>/api/game/*</code> → Game Service (port 3002, internal), including WebSocket upgrade for Socket.IO</p>
 </li>
 <li>
 <p><code>/api/gamey/*</code> → Game Server (port 4000, internal)</p>
 </li>
 <li>
 <p><code>/*</code> → React Frontend static files
-Nginx will also handle CORS headers, rate limiting, and request logging.</p>
+Nginx will also handle CORS headers, rate limiting, WebSocket proxying, and request logging.</p>
 </li>
 </ul>
 </div>
@@ -3897,7 +4284,7 @@ Nginx will also handle CORS headers, rate limiting, and request logging.</p>
 <p>Backend services are isolated on internal Docker network</p>
 </li>
 <li>
-<p>Centralized handling of CORS, rate limiting, and logging</p>
+<p>Centralized handling of CORS, rate limiting, WebSocket proxying, and logging</p>
 </li>
 <li>
 <p>High performance and battle-tested in production environments</p>
@@ -3995,6 +4382,95 @@ Each database is mounted as an independent Docker volume, and no service has acc
 </li>
 <li>
 <p>Cross-service consistency (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_adr_7_redis_and_socket_io_for_online_matchmaking_and_real_time_sessions">9.7. ADR 7: Redis and Socket.IO for Online Matchmaking and Real-time Sessions</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Context:</strong> Adding online human-vs-human matches required two capabilities that the existing architecture could not provide efficiently: (1) a low-latency shared queue to pair players waiting for an opponent, and (2) a real-time bidirectional communication channel to propagate board state updates to both players instantly after each move. Polling a REST endpoint for both purposes would introduce unacceptable latency and unnecessary load on <code>game.db</code>.</p>
+</li>
+<li>
+<p><strong>Status:</strong> Proposed by the development team.</p>
+</li>
+<li>
+<p><strong>Possible alternatives:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>REST polling only (no Redis, no WebSocket):</strong> Both matchmaking and move synchronisation would be handled by clients polling REST endpoints against <code>game.db</code>. Simple to implement, but introduces high latency for move propagation, increased database load, and a poor real-time user experience.</p>
+</li>
+<li>
+<p><strong>Long polling / Server-Sent Events (SSE):</strong> A lighter alternative to WebSocket for server-to-client push. Would reduce polling overhead but does not support bidirectional communication natively, complicating turn submission and event acknowledgment.</p>
+</li>
+<li>
+<p><strong>In-memory matchmaking queue (no Redis):</strong> A plain Node.js in-memory queue instead of Redis. Simpler to set up, but the queue is lost on service restart and does not support multiple Game Service instances sharing the same queue state.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Decision:</strong> We decided to introduce <strong>Redis</strong> as an ephemeral in-memory store and <strong>Socket.IO</strong> as the real-time communication layer, both exclusively used by the Game Service:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Redis</strong> stores the matchmaking queue entries and active online session snapshots (board state, current turn, player list). It also acts as the <code>@socket.io/redis-adapter</code> pub/sub backend, ensuring Socket.IO events are delivered correctly even if multiple Game Service instances are running.</p>
+</li>
+<li>
+<p><strong>Socket.IO</strong> provides a WebSocket-based bidirectional channel between the React Frontend and the Game Service. After each move, the Game Service broadcasts the updated board state to all players in the session. Turn timeout events and bot fallback notifications are also delivered via Socket.IO.</p>
+</li>
+<li>
+<p>Redis runs as a separate Docker container (port 6379, internal only) with no host volume, as its data is fully ephemeral.</p>
+</li>
+<li>
+<p>Nginx proxies the Socket.IO WebSocket connection transparently under <code>/api/game/socket.io/</code>.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Pros:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Low-latency real-time updates: board state changes are pushed to clients instantly via WebSocket instead of requiring polling</p>
+</li>
+<li>
+<p>Redis decouples matchmaking queue state from <code>game.db</code>, avoiding write contention under high concurrency</p>
+</li>
+<li>
+<p>The <code>@socket.io/redis-adapter</code> enables horizontal scaling of the Game Service without losing session events</p>
+</li>
+<li>
+<p>Turn timeout and bot fallback logic integrates naturally with Socket.IO event emission</p>
+</li>
+<li>
+<p>Redis failure only affects online matchmaking and active sessions; AI matches, authentication, and statistics remain fully operational</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Cons:</strong></p>
+<div class="ulist">
+<ul>
+<li>
+<p>Adds two new components (Redis and Socket.IO) to the architecture, increasing operational complexity</p>
+</li>
+<li>
+<p>Online session state is ephemeral: a Redis restart causes active online sessions to be lost (ongoing match state cannot be recovered without additional persistence logic)</p>
+</li>
+<li>
+<p>Nginx must be configured to handle WebSocket upgrades correctly for the Socket.IO path</p>
+</li>
+<li>
+<p>Debugging real-time event flows is more complex than tracing synchronous REST calls</p>
 </li>
 </ul>
 </div>
@@ -4212,7 +4688,7 @@ Each database is mounted as an independent Docker volume, and no service has acc
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>API Gateway</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architectural component that serves as the single public entry point, routing client requests to backend services and managing cross-cutting concerns</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architectural component that serves as the single public entry point, routing client requests to backend services and managing cross-cutting concerns such as CORS, rate limiting, and WebSocket proxying</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Nginx</strong></em></p></td>
@@ -4220,15 +4696,11 @@ Each database is mounted as an independent Docker volume, and no service has acc
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Anonymous Play</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Game mode where unregistered users can play without persisting their statistics or match history</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Game mode where unregistered users can play against the AI without persisting their statistics or match history</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Arc42</strong></em></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architecture documentation template followed in this project for structural consistency</em></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>BFF (Backend for Frontend)</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Architectural pattern where the Web App Server orchestrates calls to multiple backend services (Users Service and Game Server)</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Barycentric Coordinates</strong></em></p></td>
@@ -4243,6 +4715,10 @@ Each database is mounted as an independent Docker volume, and no service has acc
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>External automated agent that plays through the system&#8217;s Bot API</em></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Bot Fallback</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Mechanism triggered by <code>BotFallbackService</code> when a player does not respond within the allowed turn time (<code>TURN_TIMEOUT_SEC</code>) or when no human opponent is found during matchmaking (<code>MM_TIMEOUT_SEC</code>). The Game Service calls the Rust Game Server to compute and apply a move automatically on the inactive player&#8217;s behalf.</em></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>CORS (Cross-Origin Resource Sharing)</strong></em></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>HTTP-header based mechanism that allows a server to indicate which origins are permitted to access its resources from a browser</em></p></td>
 </tr>
@@ -4252,43 +4728,67 @@ Each database is mounted as an independent Docker volume, and no service has acc
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Game Server</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Rust-based microservice responsible for core game logic, move validation, and bot AI strategies</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Rust-based microservice responsible for core game logic, move validation, and bot AI strategies. Completely stateless and has no database access.</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Game Service</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Node.js microservice responsible for match persistence, move history, player statistics, online matchmaking, and real-time session management via Socket.IO. Single point of access to <code>game.db</code> and Redis.</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Match</strong></em></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>Game session between two players (human or bot) with a specific board size and strategy configuration</em></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Matchmaking</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Process by which the Game Service pairs two human players waiting in the Redis-backed queue to start an online session. If no opponent is found within <code>MM_TIMEOUT_SEC</code>, a bot is assigned as the opponent.</em></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Microservices</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Distributed architecture pattern where the system is decomposed into independent services (Frontend, Web App Server, Users Service, Game Server)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Distributed architecture pattern where the system is decomposed into independent services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server), each owning its own data store</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Move/Movement</strong></em></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>Player action placing a piece at specific coordinates on the board</em></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Online Session</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>A real-time multiplayer match between two human players (or a human and a bot fallback), managed by the Game Service via Socket.IO. Session state is stored in Redis for low-latency access during play.</em></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>PlantUML</strong></em></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>Tool used for generating architectural diagrams throughout the documentation</em></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Redis</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>In-memory data store used exclusively by the Game Service to persist the matchmaking queue and active online session snapshots, and to act as the pub/sub adapter for Socket.IO</em></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Registered Player</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>User with an account who can access match history, statistics, and personalized features</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>User with an account who can access match history, statistics, and online multiplayer features</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Reverse Proxy</strong></em></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em>Server (Nginx) that forwards client requests to appropriate backend services and returns responses</em></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Socket.IO</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Library providing WebSocket-based bidirectional communication between the React Frontend and the Game Service. Used to broadcast real-time board state updates, turn notifications, timeout events, and game-over signals to all players in an online session.</em></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>SQLite</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Embedded relational database used for persisting users, matches, and statistics</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Embedded relational database used for durable persistence of credentials (<code>auth.db</code>), user profiles (<code>users.db</code>), and match data (<code>game.db</code>)</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Stateless Service</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Service that does not maintain persistent state between requests (e.g., Game Server)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Service that does not maintain persistent state between requests (e.g., Game Server). All state is passed in each request or stored externally.</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Strategy</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>AI difficulty level and bot behavior configuration (e.g., random, heuristic)</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>AI difficulty level and bot behavior configuration (e.g., random, heuristic, neural network)</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Turn Timeout</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Maximum time (<code>TURN_TIMEOUT_SEC</code>) a player has to submit a move during an online session. If the timer expires, <code>TurnTimerService</code> fires and <code>BotFallbackService</code> plays automatically on the player&#8217;s behalf.</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Upstream</strong></em></p></td>
@@ -4296,15 +4796,11 @@ Each database is mounted as an independent Docker volume, and no service has acc
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Users Service</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Node.js microservice that acts as the single point of access to the database, managing authentication, user accounts, match persistence, and statistics</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Node.js microservice responsible for managing user profile data. Single point of access to <code>users.db</code>.</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>WAL (Write-Ahead Logging)</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>SQLite mode that enables concurrent reads during writes, improving database performance</em></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Web App Server</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Node.js/Express/TypeScript service implementing the BFF pattern, orchestrating requests between Frontend, Users Service, and Game Server</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>SQLite mode that enables concurrent reads during writes, improving database performance under load</em></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>Win Checker</strong></em></p></td>
@@ -4316,7 +4812,11 @@ Each database is mounted as an independent Docker volume, and no service has acc
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>YEN (Y-Encoded Notation)</strong></em></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Domain-specific format for representing board positions and moves in the Y game, used for inter-service communication</em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Domain-specific format for representing board positions and moves in the Y game, used for inter-service communication between the React Frontend, Game Service, and Game Server</em></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em><strong>YGN (Y Game Notation)</strong></em></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><em>Alternative notation format supported by the Game Server for recording complete game sequences, used for match replay and history export</em></p></td>
 </tr>
 </tbody>
 </table>
@@ -4326,7 +4826,7 @@ Each database is mounted as an independent Docker volume, and no service has acc
 <div id="footer">
 <div id="footer-text">
 Version 8.2 EN<br>
-Last updated 2026-02-22 22:23:46 +0100
+Last updated 2026-03-24 23:48:57 +0100
 </div>
 </div>
 </body>
