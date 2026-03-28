@@ -26,13 +26,14 @@ package "Yovi System" {
   database "auth.db\n(SQLite)" as authdb <<database>>
   database "users.db\n(SQLite)" as usersdb <<database>>
   database "game.db\n(SQLite)" as gamedb <<database>>
+  database "Redis\n(In-memory store)" as redis <<database>>
 }
 
-user -down-> nginx : HTTP (80)\nREST/JSON
+user -down-> nginx : HTTP (80)\nREST/JSON\nWebSocket
 nginx -down-> frontend : Serve static files
 nginx -down-> auth : HTTP (3001)\n/api/auth/*
 nginx -down-> users : HTTP (3000)\n/api/users/*
-nginx -down-> gameservice : HTTP (3002)\n/api/game/*
+nginx -down-> gameservice : HTTP (3002)\n/api/game/*\nSocket.IO
 nginx -down-> gamey : HTTP (4000)\n/api/gamey/*
 
 frontend ..> nginx : API calls from browser\n(/api/auth/*, /api/users/*, /api/game/*, /api/gamey/*)
@@ -40,6 +41,7 @@ frontend ..> nginx : API calls from browser\n(/api/auth/*, /api/users/*, /api/ga
 auth -down-> authdb : SQLite\nSQL
 users -down-> usersdb : SQLite\nSQL
 gameservice -down-> gamedb : SQLite\nSQL
+gameservice -down-> redis : Redis protocol\nMatchmaking & sessions
 
 note right of nginx
   **API Gateway**
@@ -62,8 +64,10 @@ note right of users
 end note
 
 note right of gameservice
-  **Game Data Layer**
+  **Game Data & Online Layer**
   Match & stats persistence
+  Online matchmaking (Redis)
+  Real-time sessions (Socket.IO)
   Game data (game.db)
 end note
 
@@ -73,21 +77,29 @@ note right of gamey
   Move validation & bot AI
 end note
 
+note right of redis
+  **Ephemeral Store**
+  Matchmaking queue
+  Active online sessions
+  Socket.IO pub/sub adapter
+end note
+
 @enduml
 ----
 
 **Motivation:**
 
-The Yovi system is decomposed into five main subsystems to achieve separation of concerns, independent scalability, technology-specific optimization, and fault isolation across data domains:
+The Yovi system is decomposed into six main subsystems to achieve separation of concerns, independent scalability, technology-specific optimization, and fault isolation across data domains:
 
 * **Nginx (API Gateway)**: Single public entry point for all requests, handling routing, rate limiting, and CORS
 * **React Frontend (Webapp)**: User interface layer running in the browser, managing UI state and coordinating API calls to backend services
 * **Auth Service**: Authentication layer with exclusive access to `auth.db`, managing credentials, registration, login, and JWT tokens
 * **Users Service**: Profile layer with exclusive access to `users.db`, managing user profile data
-* **Game Service**: Game data layer with exclusive access to `game.db`, managing match persistence, move history, and statistics
+* **Game Service**: Game data and online play layer with exclusive access to `game.db` and Redis, managing match persistence, move history, statistics, online matchmaking, and real-time sessions via Socket.IO
 * **Game Server**: Pure game logic engine optimized for performance (Rust), completely stateless
+* **Redis**: Ephemeral in-memory store exclusively used by the Game Service for matchmaking queue state and active online session snapshots
 
-Each service owns its own database. A failure or overload in one database does not propagate to the others, achieving fault isolation at the data layer.
+Each service owns its own data store. A failure or overload in one store does not propagate to the others, achieving fault isolation at the data layer.
 
 **Contained Building Blocks:**
 
@@ -113,6 +125,7 @@ a| • Single-page application (SPA) running in user's browser
 • Handles user interactions (login, game moves, statistics viewing)
 • Manages client-side state (game state, user session)
 • Makes HTTP API calls to all backend services through Nginx
+• Establishes a Socket.IO connection for real-time online match updates
 • Coordinates game flow from the client side
 
 | **Auth Service**
@@ -131,19 +144,31 @@ a| • Single point of access to `users.db`
 • Exposes REST API on port 3000 (internal)
 
 | **Game Service**
-a| • Single point of access to `game.db`
-• Manages match lifecycle (creation, updates, completion)
+a| • Single point of access to `game.db` and Redis
+• Manages match lifecycle (creation, updates, completion) for both AI and online matches
 • Persists move history and serialized YEN board states
 • Aggregates and provides player statistics and rankings
-• Exposes REST API on port 3002 (internal)
+• Implements Redis-backed matchmaking queue to pair online players
+• Manages real-time online sessions via Socket.IO (with `@socket.io/redis-adapter`)
+• Enforces per-turn timeouts and triggers automatic bot fallback when a player does not respond
+• Supports reconnection grace periods before penalising disconnected players
+• Exposes REST API on port 3002 (internal) and Socket.IO on the same port
 
 | **Game Server (Rust)**
 a| • Implements core Y game rules and logic
 • Validates moves and checks win conditions
-• Computes bot moves using various strategies (random, heuristic)
+• Computes bot moves using various strategies (random, heuristic, neural network)
 • Completely stateless service using YEN notation
 • Exposes REST API on port 4000 (internal)
 • No database access, pure computation
+
+| **Redis**
+a| • In-memory store exclusively used by the Game Service
+• Persists matchmaking queue entries (players waiting for an opponent)
+• Stores active online session snapshots (board state, turn, players)
+• Acts as the pub/sub adapter for Socket.IO when multiple Game Service instances are running
+• Data is ephemeral: session state is rebuilt or discarded when a match ends
+• Exposed internally on port 6379
 
 | **auth.db (SQLite)**
 a| • Stores user credentials (hashed passwords)
@@ -166,18 +191,19 @@ a| • Stores match records and metadata (size, strategy, difficulty, status)
 
 **Important Interfaces:**
 
-* **User → Nginx**: HTTP REST API (port 80, public)
+* **User → Nginx**: HTTP REST API and WebSocket (port 80, public)
 * **Nginx → React Frontend**: Static file serving (HTML, JS, CSS)
 * **Nginx → Auth Service**: REST API (`/api/auth/*`, port 3001, internal)
 * **Nginx → Users Service**: REST API (`/api/users/*`, port 3000, internal)
-* **Nginx → Game Service**: REST API (`/api/game/*`, port 3002, internal)
+* **Nginx → Game Service**: REST API (`/api/game/*`, port 3002, internal) + Socket.IO WebSocket
 * **Nginx → Game Server**: REST API (`/api/gamey/*`, port 4000, internal)
-* **React Frontend → Nginx**: AJAX/Fetch API calls from browser
+* **React Frontend → Nginx**: AJAX/Fetch API calls and Socket.IO WebSocket connection from browser
+* **Game Service → Redis**: Redis protocol (port 6379, internal) for matchmaking queue and session state
 * **Auth Service → auth.db**: SQLite native SQL queries
 * **Users Service → users.db**: SQLite native SQL queries
 * **Game Service → game.db**: SQLite native SQL queries
 
-**Communication Flow Example:**
+**Communication Flow Example (AI Match):**
 
 1. User loads the app → Nginx serves React static files → React runs in browser
 2. User clicks "Login" → React calls `POST /api/auth/login` → Nginx routes to Auth Service
@@ -186,6 +212,15 @@ a| • Stores match records and metadata (size, strategy, difficulty, status)
 5. User makes a move → React calls `POST /api/gamey/play` → Nginx routes to Game Server → returns updated YEN
 6. Game Server returns move validation → React calls `POST /api/game/matches/{id}/moves` → Game Service persists in `game.db`
 7. React updates UI
+
+**Communication Flow Example (Online Match):**
+
+1. User joins matchmaking → React calls `POST /api/game/online/queue` → Game Service stores entry in Redis
+2. React polls `GET /api/game/online/queue/match` → Game Service checks Redis for a paired opponent
+3. When matched, Game Service creates an online session in Redis and returns match details
+4. Both clients connect via Socket.IO → receive real-time board state updates after each move
+5. Player submits a move → `POST /api/game/online/sessions/:matchId/moves` → Game Service validates, updates Redis session, broadcasts updated state via Socket.IO
+6. If a player exceeds their turn time → `TurnTimerService` fires → `BotFallbackService` computes and applies a move automatically
 
 === Level 2
 
@@ -220,6 +255,7 @@ note right of [AuthController]
   POST /api/auth/register
   POST /api/auth/login
   POST /api/auth/refresh
+  POST /api/auth/verify (internal only)
 end note
 
 note right of [AuthService]
@@ -245,7 +281,7 @@ end note
 | Component | Responsibility
 
 | **AuthController**
-a| • Exposes REST API endpoints: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`
+a| • Exposes REST API endpoints: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/verify` (internal only)
 • Input validation and error handling
 • Request/response mapping
 
@@ -289,9 +325,9 @@ database "users.db (SQLite)" as usersdb <<database>>
 
 note right of [UsersController]
   **Endpoints:**
-  GET /api/users/{id}
-  PUT /api/users/{id}
-  GET /api/users (search)
+  POST /createuser
+  GET /metrics (Prometheus)
+  GET /api-docs (Swagger UI)
 end note
 
 note right of [UserService]
@@ -316,9 +352,10 @@ end note
 | Component | Responsibility
 
 | **UsersController**
-a| • Exposes REST API endpoints: `GET /api/users/{id}`, `PUT /api/users/{id}`, `GET /api/users`
-• Input validation and authentication middleware (JWT verification via Auth Service)
-• Request/response mapping
+a| • Exposes REST API endpoints: `POST /createuser`
+• Exposes Prometheus metrics at `/metrics`
+• Exposes Swagger UI at `/api-docs`
+• Input validation and request/response mapping
 
 | **UserService**
 a| • CRUD operations for user profiles
@@ -345,43 +382,95 @@ package "Game Service (Node.js + TypeScript)" {
   package "Services" <<frame>> {
     component [MatchService] <<TS>>
     component [StatsService] <<TS>>
+    component [MatchmakingService] <<TS>>
+    component [OnlineSessionService] <<TS>>
+    component [TurnTimerService] <<TS>>
+    component [BotFallbackService] <<TS>>
   }
 
   package "Repositories" <<frame>> {
     component [MatchRepository] <<TS>>
     component [StatsRepository] <<TS>>
+    component [MatchmakingRepository] <<TS>>
+    component [OnlineSessionRepository] <<TS>>
+  }
+
+  package "Realtime" <<frame>> {
+    component [SocketServer] <<TS>>
+  }
+
+  package "Middleware" <<frame>> {
+    component [VerifyJwt] <<TS>>
+    component [ErrorHandler] <<TS>>
   }
 }
 
 database "game.db (SQLite)" as gamedb <<database>>
+database "Redis" as redis <<database>>
 
 [GameController] ..> [MatchService]
 [GameController] ..> [StatsService]
+[GameController] ..> [MatchmakingService]
+[GameController] ..> [OnlineSessionService]
+
+[OnlineSessionService] ..> [TurnTimerService]
+[OnlineSessionService] ..> [BotFallbackService]
+
 [MatchService] ..> [MatchRepository]
 [StatsService] ..> [StatsRepository]
+[MatchmakingService] ..> [MatchmakingRepository]
+[OnlineSessionService] ..> [OnlineSessionRepository]
+
 [MatchRepository] --> gamedb
 [StatsRepository] --> gamedb
+[MatchmakingRepository] --> redis
+[OnlineSessionRepository] --> redis
+
+[SocketServer] ..> [OnlineSessionService]
 
 note right of [GameController]
-  **Endpoints:**
-  POST /api/game/matches
-  GET /api/game/matches/{id}
-  POST /api/game/matches/{id}/moves
-  GET /api/game/stats/{userId}
+  **REST Endpoints:**
+  POST   /api/game/matches
+  GET    /api/game/matches/:id
+  POST   /api/game/matches/:id/moves
+  GET    /api/game/stats/:userId
+  POST   /api/game/online/queue
+  GET    /api/game/online/queue/match
+  DELETE /api/game/online/queue
+  GET    /api/game/online/sessions/active
+  GET    /api/game/online/sessions/:matchId
+  POST   /api/game/online/sessions/:matchId/moves
 end note
 
-note right of [MatchService]
-  **Business Logic:**
-  Match lifecycle management
-  Move history persistence
-  YEN board state storage
+note right of [MatchmakingService]
+  Redis-backed queue
+  Pairs waiting players
+  Bot fallback on MM_TIMEOUT_SEC
 end note
 
-note right of [StatsRepository]
-  **Repository Pattern**
-  Abstracts game.db access
-  Enables testing with mocks
-  Single point of game DB access
+note right of [OnlineSessionService]
+  Real-time session state in Redis
+  Turn control via TurnTimerService
+  Bot fallback via BotFallbackService
+  RECONNECT_GRACE_SEC support
+end note
+
+note right of [SocketServer]
+  Socket.IO server
+  @socket.io/redis-adapter
+  Broadcasts board state
+  to connected clients
+end note
+
+note right of [TurnTimerService]
+  Per-turn countdown
+  Fires on TURN_TIMEOUT_SEC
+end note
+
+note right of [BotFallbackService]
+  Calls Game Server (Rust)
+  Applies bot move automatically
+  when player does not respond
 end note
 
 @enduml
@@ -394,34 +483,75 @@ end note
 | Component | Responsibility
 
 | **GameController**
-a| • Exposes REST API endpoints for match and stats operations
-• Endpoints: `POST /api/game/matches`, `GET /api/game/matches/{id}`, `POST /api/game/matches/{id}/moves`, `GET /api/game/stats/{userId}`
-• Input validation and authentication middleware (JWT verification)
-• Request/response mapping
+a| • Exposes all REST API endpoints for AI matches, statistics, matchmaking, and online sessions
+• Input validation and JWT authentication middleware
+• Request/response mapping and error delegation
 
 | **MatchService**
-a| • Match creation and lifecycle management
+a| • Match creation and lifecycle management for AI matches
 • Stores match metadata (size, strategy, difficulty, participants)
 • Updates match status (ongoing/finished)
 • Persists serialized YEN board states and move history
-• Match history queries
 
 | **StatsService**
-a| • Aggregates player statistics (wins/losses/draws)
-• Calculates rankings and metrics
-• Provides historical match data
-• Win rate calculations
+a| • Aggregates player statistics (wins/losses)
+• Calculates win rate and other performance metrics
+• Provides historical match data per user
+
+| **MatchmakingService**
+a| • Manages the Redis-backed matchmaking queue
+• Adds, polls, and removes players from the queue
+• Pairs two players when compatible entries are found
+• Triggers bot fallback if no opponent is found within `MM_TIMEOUT_SEC`
+
+| **OnlineSessionService**
+a| • Creates and manages real-time online session state in Redis
+• Validates and applies moves during online matches
+• Delegates turn timing to `TurnTimerService`
+• Delegates automatic bot moves to `BotFallbackService`
+• Supports reconnection grace periods (`RECONNECT_GRACE_SEC`)
+
+| **TurnTimerService**
+a| • Starts a countdown for each player's turn
+• Fires a timeout event after `TURN_TIMEOUT_SEC` seconds
+• Notifies `OnlineSessionService` to trigger bot fallback
+
+| **BotFallbackService**
+a| • Called when a player's turn times out or no opponent is found during matchmaking
+• Calls the Game Server (Rust) to compute a valid move
+• Applies the bot move to the active session on behalf of the player
 
 | **MatchRepository**
-a| • Database access layer for matches in `game.db`
-• Stores serialized YEN board states
-• Query optimization for match history
-• Match outcome persistence
+a| • Database access layer for match records in `game.db`
+• Stores and retrieves match metadata and move history
 
 | **StatsRepository**
 a| • Database access layer for statistics in `game.db`
-• Optimized read queries for rankings
-• Computed statistics and performance metrics
+• Optimised read queries for per-user rankings and metrics
+
+| **MatchmakingRepository**
+a| • Redis access layer for the matchmaking queue
+• Stores and retrieves queue entries per player
+
+| **OnlineSessionRepository**
+a| • Redis access layer for active online session snapshots
+• Stores board state, current turn, player list, and session metadata
+
+| **SocketServer**
+a| • Initialises the Socket.IO server on port 3002
+• Uses `@socket.io/redis-adapter` for pub/sub across instances
+• Handles client connection, disconnection, and reconnection events
+• Broadcasts updated board state to all players in a session after each move
+
+| **VerifyJwt (Middleware)**
+a| • Intercepts authenticated requests
+• Calls Auth Service internally (`/api/auth/verify`) to validate the JWT token
+• Attaches `userId` and `username` to the request context on success
+
+| **ErrorHandler (Middleware)**
+a| • Global Express error handler
+• Maps domain errors (e.g., `MatchNotFoundError`, `UnauthorizedMatchError`, `InvalidMoveError`) to appropriate HTTP status codes
+• Prevents leaking internal error details to clients
 |===
 
 ==== White Box: Game Server
@@ -438,6 +568,7 @@ package "Game Server (Rust)" {
   interface "Strategy" as IStrategy <<interface>>
   component [RandomStrategy] <<RUST>> #LightGreen
   component [HeuristicStrategy] <<RUST>> #LightGreen
+  component [NeuralNetworkStrategy] <<RUST>> #LightGreen
 
   package "GameDomain" <<frame>> {
     component [Game] <<RUST>>
@@ -457,6 +588,7 @@ package "Game Server (Rust)" {
 
 IStrategy <|.. [RandomStrategy]
 IStrategy <|.. [HeuristicStrategy]
+IStrategy <|.. [NeuralNetworkStrategy]
 
 [Game] *-- [Board]
 [Game] *-- [Move]
@@ -525,6 +657,12 @@ a| • Implements heuristic-based move evaluation
 • Considers board control, connection potential, blocking opponent
 • Configurable difficulty levels affect search depth
 • Position evaluation function
+
+| **NeuralNetworkStrategy**
+a| • Implements move selection using a trained neural network model
+• Model weights loaded at startup from a file bundled with the service
+• Provides stronger play than the heuristic strategy at higher difficulty levels
+• Stateless inference, no runtime training
 
 | **GameDomain Package**
 a| • **Game**: Aggregates board, players, move history, game state

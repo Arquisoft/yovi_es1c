@@ -3,60 +3,6 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-concepts]]
 == Cross-cutting Concepts
 
-
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Content
-This section describes overall, principal regulations and solution ideas that are relevant in multiple parts (= cross-cutting) of your system.
-Such concepts are often related to multiple building blocks.
-They can include many different topics, such as
-
-* models, especially domain models
-* architecture or design patterns
-* rules for using specific technology
-* principal, often technical decisions of an overarching (= cross-cutting) nature
-* implementation rules
-
-
-.Motivation
-Concepts form the basis for _conceptual integrity_ (consistency, homogeneity) of the architecture.
-Thus, they are an important contribution to achieve inner qualities of your system.
-
-Some of these concepts cannot be assigned to individual building blocks, e.g. security or safety.
-
-
-.Form
-The form can be varied:
-
-* concept papers with any kind of structure
-* cross-cutting model excerpts or scenarios using notations of the architecture views
-* sample implementations, especially for technical concepts
-* reference to typical usage of standard frameworks (e.g. using Hibernate for object/relational mapping)
-
-.Structure
-A potential (but not mandatory) structure for this section could be:
-
-* Domain concepts
-* User Experience concepts (UX)
-* Safety and security concepts
-* Architecture and design patterns
-* "Under-the-hood"
-* development concepts
-* operational concepts
-
-Note: it might be difficult to assign individual concepts to one specific topic
-on this list.
-
-image::08-concepts-EN.drawio.png["Possible topics for crosscutting concepts"]
-
-
-.Further Information
-
-See https://docs.arc42.org/section-8/[Concepts] in the arc42 documentation.
-****
-endif::arc42help[]
-
 === Domain Model
 
 A first version of the domain model of the application, representing all the entities
@@ -111,7 +57,7 @@ YBot --> Coordinates : returns >
 @enduml
 ----
 
-=== User experience (UX)
+=== User Experience (UX)
 
 Since the project includes a web interface,
 we wanted the user experience to be as smooth
@@ -141,7 +87,7 @@ affects both the backend services and the frontend.
 Even though this is an academic project, we still apply basic security principles.
 
 • **API Gateway Isolation:**
-Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while Users Service and Game Server run on internal Docker network ports.
+Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while all backend services run on internal Docker network ports.
 
 • **Authentication and Authorization:**
 Only authenticated users can access certain features, such as creating matches or viewing their profile. The Auth Service handles JWT authentication and exposes token verification for internal service-to-service authorization checks.
@@ -162,24 +108,29 @@ application, we split the project into several smaller, independent services:
 
 • **React Frontend (webapp/):** The user interface running in the browser. It is a single-page application (SPA) built with React, Vite, and TypeScript. The frontend manages UI state and coordinates API calls to backend services.
 
-• **Nginx:** The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, and serves the React frontend static files.
+• **Nginx:** The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, WebSocket proxying for Socket.IO, and serves the React frontend static files.
 
 • **Auth Service (auth/):** Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to `auth.db`.
 
-• **Users Service (users/):** Node.js + Express + TypeScript service that manages user profiles, match persistence, and statistics. It is the single point of access to `users.db`.
+• **Users Service (users/):** Node.js + Express + TypeScript service that manages user profile data. It is the single point of access to `users.db`.
+
+• **Game Service (gameservice/):** Node.js + Express + TypeScript service that manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. It is the single point of access to `game.db` and Redis.
 
 • **Game Server (gamey/):** Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.
 
 Some patterns we use:
 
 **API Gateway Pattern:**
-Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (`/api/users/*`, `/api/gamey/*`, `/`).
+Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (`/api/auth/*`, `/api/users/*`, `/api/game/*`, `/api/gamey/*`, `/`).
 
 **Repository Pattern:**
-The Users Service uses the Repository pattern to abstract database access, making it easier to test and maintain.
+Each backend service uses the Repository pattern to abstract database access, making it easier to test and maintain.
 
 **Strategy Pattern:**
-The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic) in an extensible way.
+The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic, neural network) in an extensible way.
+
+**Observer Pattern (via Socket.IO events):**
+The Game Service uses Socket.IO events to notify all connected clients of board state changes in real time, decoupling the session state update from the client rendering logic.
 
 **Separation of Concerns:**
 The frontend separates UI components, state management (React hooks/context), and API call logic into distinct layers.
@@ -199,6 +150,8 @@ Each part of the system includes automated tests:
 
 • Rust Game Server: unit tests for game logic and strategies
 • Users Service (Node.js): API endpoint tests and integration tests
+• Auth Service (Node.js): unit and integration tests for authentication flows
+• Game Service (Node.js): unit and integration tests for match, matchmaking, and online session logic
 • React Frontend: component tests and end-to-end tests
 
 Testing is transversal because it guarantees correctness across all services.
@@ -210,17 +163,27 @@ This helps detect errors early and keeps all services aligned.
 
 === Persistence Layer
 
-The application relies on SQL databases (SQLite - relational database) split by domain: `auth.db`, `users.db`, and `game.db`.
+The application relies on two complementary persistence mechanisms split by domain and lifetime:
 
-Each database is accessed exclusively by its owning service. This design decision ensures:
+**Durable storage (SQLite):**
 
-• **Data Consistency:** each service manages transactions in its own domain
-• **Security:** other services cannot directly access or modify another service's database
-• **Separation of Concerns:** Auth handles credentials/tokens, Users handles profiles/statistics, and Game handles match state
+Three independent SQLite databases store long-lived data:
 
-Game sessions are computed in memory by the Rust Game Server and persisted to `game.db` when needed (history/resume). Credentials and token metadata remain exclusive to Auth Service in `auth.db`.
+* `auth.db` — accessible only through Auth Service. Stores user credentials and JWT token metadata.
+* `users.db` — accessible only through Users Service. Stores user profile data.
+* `game.db` — accessible only through Game Service. Stores match records, move history, and player statistics.
 
-If additional persistence requirements arise in the future (for example, caching or match replay functionality), the system can be extended without affecting the existing services thanks to the microservice-based design.
+Each database is accessed exclusively by its owning service. This design decision ensures data consistency, security, and separation of concerns.
+
+**Ephemeral storage (Redis):**
+
+Redis is used exclusively by the Game Service for data that is short-lived and must be accessed with low latency:
+
+* **Matchmaking queue**: stores the list of players waiting for an online opponent. Entries are created when a player joins and removed when matched or when the timeout expires.
+* **Online session snapshots**: stores the current board state, active turn, and player list for each ongoing online match. This allows the Game Service to process moves and broadcast updates without hitting `game.db` on every turn.
+* **Socket.IO pub/sub adapter**: Redis acts as the message broker between Socket.IO server instances, ensuring events are delivered to all connected clients even if multiple Game Service replicas are running.
+
+Redis data is ephemeral and requires no host volume. If Redis restarts, ongoing online sessions are lost, but durable match history in `game.db` is unaffected.
 
 === Error Handling
 
@@ -239,6 +202,10 @@ cause of the problem more easily.
 
 • **Nginx:** Returns standard HTTP error codes (400, 401, 404, 500) and logs errors for monitoring.
 
+• **Auth Service:** Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.
+
 • **Users Service:** Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.
+
+• **Game Service:** Uses typed domain errors (`MatchNotFoundError`, `UnauthorizedMatchError`, `InvalidMoveError`) mapped to HTTP status codes by a global error handler middleware. Socket.IO errors are emitted as structured events to the affected client.
 
 • **Game Server:** Returns structured error responses for invalid YEN notation, illegal moves, or computation failures. Rust's Result type ensures explicit error handling.
