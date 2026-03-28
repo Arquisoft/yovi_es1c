@@ -1,8 +1,8 @@
 import math
 import random
 import numpy as np
-from dataclasses import dataclass, field
-from model import PolicyValueNet, encode_board, total_cells, pad_encoded_input
+from dataclasses import dataclass
+from model import PolicyValueNet, encode_board, total_cells, GRID_SIZE, MAX_CELLS, NUM_CHANNELS
 
 
 # ─────────────────────────────────────────────
@@ -11,12 +11,11 @@ from model import PolicyValueNet, encode_board, total_cells, pad_encoded_input
 
 @dataclass
 class BoardState:
-    """Estado mínimo del juego Y para el self-play en Python."""
     size: int
-    cells: list[int]          # 0=vacío, 1=jugador0, 2=jugador1
-    current_player: int       # 0 o 1
+    cells: list[int]
+    current_player: int
     done: bool = False
-    winner: int = -1          # -1 si no hay ganador todavía
+    winner: int = -1
 
     @classmethod
     def new(cls, size: int) -> "BoardState":
@@ -39,19 +38,16 @@ class BoardState:
             new_state.winner = winner
         return new_state
 
-    def encode(self) -> list[float]:
-        encoded = encode_board(self.cells, self.size, self.current_player)
-        return pad_encoded_input(encoded, self.size).tolist()
+    def encode(self) -> tuple:
+        return encode_board(self.cells, self.size, self.current_player)
 
 
 # ─────────────────────────────────────────────
-#  Lógica de victoria del juego Y
+#  Lógica de victoria
 # ─────────────────────────────────────────────
 
 def get_neighbors(idx: int, size: int) -> list[int]:
-    """Vecinos de una celda en coordenadas de índice."""
     n = total_cells(size)
-    # Reconstruct (x, y, z) from index
     row, col = index_to_row_col(idx, size)
     x = size - 1 - row
     y = col
@@ -85,61 +81,17 @@ def row_col_to_index(row: int, col: int, size: int) -> int:
 
 
 def touches_sides(idx: int, size: int) -> tuple[bool, bool, bool]:
-    """Devuelve (side_a, side_b, side_c) para una celda."""
     row, col = index_to_row_col(idx, size)
     x = size - 1 - row
     y = col
     z = row - col
     return x == 0, y == 0, z == 0
 
-def get_symmetries(cells: list[int], policy: list[float], size: int) -> list[tuple[list[int], list[float]]]:
-    """
-    Multiplica un estado por 6 aprovechando las simetrías del triángulo.
-    Utiliza permutaciones de las coordenadas baricéntricas (x, y, z).
-    """
-    symmetries = []
-    # Las 6 permutaciones posibles de (x, y, z) corresponden a las 6 simetrías del triángulo
-    permutations = [
-        (0, 1, 2), (1, 2, 0), (2, 0, 1),
-        (0, 2, 1), (2, 1, 0), (1, 0, 2)
-    ]
 
-    n = total_cells(size)
-
-    for p in permutations:
-        new_cells = [0] * n
-        new_policy = [0.0] * n
-
-        for idx in range(n):
-            # 1. Obtener coordenadas (x, y, z) de la celda actual
-            row, col = index_to_row_col(idx, size)
-            x = size - 1 - row
-            y = col
-            z = row - col
-            orig_coords = (x, y, z)
-
-            # 2. Permutar las coordenadas según la simetría actual
-            nx, ny, nz = orig_coords[p[0]], orig_coords[p[1]], orig_coords[p[2]]
-
-            # 3. Volver a calcular la fila y columna (despejando de tus fórmulas originales)
-            new_row = size - 1 - nx
-            new_col = ny
-            new_idx = row_col_to_index(new_row, new_col, size)
-
-            # 4. Mapear el estado del tablero y la política al nuevo índice
-            new_cells[new_idx] = cells[idx]
-            if idx < len(policy):
-                new_policy[new_idx] = policy[idx]
-
-        symmetries.append((new_cells, new_policy))
-
-    return symmetries
 def check_winner(state: BoardState, last_idx: int, player: int) -> int:
-    """BFS/Union-Find simplificado: comprueba si `player` ganó tras colocar en last_idx."""
     target = player + 1
     visited = set()
     side_a = side_b = side_c = False
-
     stack = [last_idx]
     while stack:
         idx = stack.pop()
@@ -157,8 +109,38 @@ def check_winner(state: BoardState, last_idx: int, player: int) -> int:
         for nb in get_neighbors(idx, state.size):
             if nb not in visited and state.cells[nb] == target:
                 stack.append(nb)
-
     return -1
+
+
+def get_symmetries(
+        cells: list[int],
+        policy: list[float],
+        size: int,
+) -> list[tuple[list[int], list[float]]]:
+    symmetries = []
+    permutations = [
+        (0, 1, 2), (1, 2, 0), (2, 0, 1),
+        (0, 2, 1), (2, 1, 0), (1, 0, 2),
+    ]
+    n = total_cells(size)
+    for p in permutations:
+        new_cells  = [0] * n
+        new_policy = [0.0] * n
+        for idx in range(n):
+            row, col = index_to_row_col(idx, size)
+            x = size - 1 - row
+            y = col
+            z = row - col
+            orig_coords = (x, y, z)
+            nx, ny, nz = orig_coords[p[0]], orig_coords[p[1]], orig_coords[p[2]]
+            new_row = size - 1 - nx
+            new_col = ny
+            new_idx = row_col_to_index(new_row, new_col, size)
+            new_cells[new_idx] = cells[idx]
+            if idx < len(policy):
+                new_policy[new_idx] = policy[idx]
+        symmetries.append((new_cells, new_policy))
+    return symmetries
 
 
 # ─────────────────────────────────────────────
@@ -167,11 +149,11 @@ def check_winner(state: BoardState, last_idx: int, player: int) -> int:
 
 class MctsNode:
     def __init__(self, state: BoardState, prior: float = 1.0, parent=None):
-        self.state   = state
-        self.prior   = prior
-        self.parent  = parent
-        self.children: dict[int, "MctsNode"] = {}  # move → child
-        self.visits  = 0
+        self.state     = state
+        self.prior     = prior
+        self.parent    = parent
+        self.children: dict[int, "MctsNode"] = {}
+        self.visits    = 0
         self.value_sum = 0.0
 
     @property
@@ -186,7 +168,6 @@ class MctsNode:
         return len(self.children) == 0
 
     def expand(self, policy: list[float]):
-        """Expande el nodo con los movimientos disponibles y sus priors."""
         moves = self.state.available_moves()
         for move in moves:
             prior = policy[move] if move < len(policy) else 1.0 / len(moves)
@@ -200,7 +181,6 @@ class MctsNode:
         return max(self.children, key=lambda m: self.children[m].visits)
 
     def visit_counts(self) -> list[float]:
-        """Política MCTS normalizada por visitas (para entrenamiento)."""
         n = total_cells(self.state.size)
         counts = [0.0] * n
         total = sum(c.visits for c in self.children.values())
@@ -211,7 +191,6 @@ class MctsNode:
 
 
 def mcts_search(root: MctsNode, model: PolicyValueNet | None, simulations: int) -> MctsNode:
-    """Ejecuta `simulations` iteraciones de MCTS desde `root`."""
     for _ in range(simulations):
         node = root
 
@@ -228,28 +207,24 @@ def mcts_search(root: MctsNode, model: PolicyValueNet | None, simulations: int) 
                     node.state.current_player,
                 )
             else:
-                # Sin red: política uniforme + simulación aleatoria
                 n_moves = len(node.state.available_moves())
-                policy = [1.0 / n_moves] * total_cells(node.state.size)
-                value  = random_playout(node.state)
-
+                policy  = [1.0 / n_moves] * total_cells(node.state.size)
+                value   = random_playout(node.state)
             node.expand(policy)
         else:
-            # Nodo terminal
             value = 1.0 if node.state.winner == root.state.current_player else -1.0
 
         # 3. Backpropagation
         while node is not None:
             node.visits    += 1
             node.value_sum += value
-            value = -value  # alternamos perspectiva
-            node = node.parent
+            value   = -value
+            node    = node.parent
 
     return root
 
 
 def random_playout(state: BoardState) -> float:
-    """Simulación aleatoria hasta el final. Devuelve 1.0 si gana el jugador inicial."""
     initial_player = state.current_player
     current = state
     while not current.done:
@@ -271,98 +246,84 @@ def random_playout(state: BoardState) -> float:
 
 @dataclass
 class GameExample:
-    """Un ejemplo de entrenamiento generado por self-play."""
-    encoded_state: list[float]   # input de la red
-    mcts_policy:   list[float]   # target de la policy head
-    outcome:       float         # +1.0 o -1.0 (resultado final desde perspectiva del jugador)
+    encoded_state: list[float]  # grid aplanado: NUM_CHANNELS * GRID_SIZE * GRID_SIZE floats
+    board_norm:    float        # escalar board_size / GRID_SIZE
+    mcts_policy:   list[float]  # target policy (longitud total_cells(board_size))
+    outcome:       float        # +1.0 o -1.0
 
 
 def play_game(
         model: PolicyValueNet | None,
         board_size: int,
         simulations: int = 100,
-        temperature_drop_move: int = 10, # Bajar la temperatura después de X movimientos
+        temperature_drop_move: int = 10,
 ) -> list[GameExample]:
-    """
-    Juega una partida completa de self-play.
-    Devuelve lista de GameExample para entrenamiento.
-    """
     state = BoardState.new(board_size)
-    examples_raw = []  # (encoded_state, mcts_policy, player_at_move)
+    examples_raw = []  # (cells, mcts_policy, player_at_move)
     move_count = 0
 
     while not state.done:
         root = MctsNode(state)
 
-        # Inyectamos ruido directamente a la raíz
+        # Inyectar ruido Dirichlet en la raíz (solo con modelo)
         if model is not None:
             policy, _ = model.predict(state.cells, state.size, state.current_player)
             root.expand(policy)
-
-            # Parámetros estándar de AlphaZero
-            dirichlet_alpha = 0.3
+            dirichlet_alpha      = 0.3
             exploration_fraction = 0.25
-
-            # Generamos ruido y lo mezclamos con los priors de la red
             noise = np.random.dirichlet([dirichlet_alpha] * len(root.children))
             for i, child in enumerate(root.children.values()):
-                child.prior = child.prior * (1 - exploration_fraction) + noise[i] * exploration_fraction
+                child.prior = (
+                        child.prior * (1 - exploration_fraction)
+                        + noise[i] * exploration_fraction
+                )
 
-        # Ejecutamos las simulaciones (mcts_search usará los priors con ruido en la raíz)
         mcts_search(root, model, simulations)
-
         mcts_policy = root.visit_counts()
 
-        # Guardamos el estado y la política MCTS
-        examples_raw.append((
-            state.cells,
-            mcts_policy,
-            state.current_player,
-        ))
+        examples_raw.append((state.cells[:], mcts_policy, state.current_player))
 
-        # Reducción de la temperatura conforme va avanzando la partida
+        # Selección de movimiento con temperatura
         current_temp = 1.0 if move_count < temperature_drop_move else 0.05
-
-        if current_temp > 0.1: # Temperatura alta: elección proporcional a visitas
-            moves  = list(root.children.keys())
+        moves  = list(root.children.keys())
+        if current_temp > 0.1:
             counts = [root.children[m].visits ** (1.0 / current_temp) for m in moves]
             total  = sum(counts)
             probs  = [c / total for c in counts]
             move   = random.choices(moves, weights=probs)[0]
-        else: # Temperatura casi cero: elegimos el movimiento más visitado de forma determinista
+        else:
             move = root.most_visited_move()
 
         state = state.apply_move(move)
         move_count += 1
 
-    # Asignar outcomes ahora que sabemos quién ganó
-    winner = state.winner
+    # Asignar outcomes y generar simetrías
+    winner   = state.winner
     examples = []
-    for cells, policy, player in examples_raw:
+    for cells, policy, player in examples_raw:                    # ← bug corregido
         outcome = 1.0 if player == winner else -1.0
-        # Generamos las 6 posiciones equivalentes
         syms = get_symmetries(cells, policy, board_size)
-
         for sym_cells, sym_policy in syms:
-            # Codificamos y padeamos cada versión simétrica ANTES de enviarla a la red
-            encoded = encode_board(sym_cells, board_size, player)
-            padded = pad_encoded_input(encoded, board_size).tolist()
-
-            examples.append(GameExample(padded, sym_policy, outcome))
+            grid, board_norm = encode_board(sym_cells, board_size, player)
+            examples.append(GameExample(
+                encoded_state=grid.numpy().flatten().tolist(),
+                board_norm=board_norm,
+                mcts_policy=sym_policy,
+                outcome=outcome,
+            ))
 
     return examples
 
 
 def generate_self_play_data(
-    model: PolicyValueNet | None,
-    num_games: int,
-    board_sizes: list[int],
-    simulations: int = 100,
+        model: PolicyValueNet | None,
+        num_games: int,
+        board_sizes: list[int],
+        simulations: int = 100,
 ) -> list[GameExample]:
-    """Genera `num_games` partidas de self-play en tableros de distintos tamaños."""
     all_examples = []
     for i in range(num_games):
-        size = random.choice(board_sizes)
+        size     = random.choice(board_sizes)
         examples = play_game(model, size, simulations)
         all_examples.extend(examples)
         if (i + 1) % 10 == 0:
@@ -371,9 +332,9 @@ def generate_self_play_data(
 
 
 if __name__ == "__main__":
-    # Smoke test: una partida sin modelo (MCTS puro aleatorio)
     print("Generando partida de prueba (MCTS puro, sin red)...")
     examples = play_game(model=None, board_size=5, simulations=50)
-    print(f"Partida completada: {len(examples)} movimientos")
-    print(f"Primer ejemplo — policy sum: {sum(examples[0].mcts_policy):.4f}, outcome: {examples[0].outcome}")
+    print(f"Partida completada: {len(examples)} ejemplos (con simetrías)")
+    if examples:
+        print(f"Primer ejemplo — policy sum: {sum(examples[0].mcts_policy):.4f}, outcome: {examples[0].outcome}")
     print("Smoke test OK ✓")

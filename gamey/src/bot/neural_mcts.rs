@@ -91,14 +91,12 @@ impl MctsNode {
 pub struct NeuralMctsBot {
     name: String,
     net: Arc<NeuralNet>,
-
     /// Número de simulaciones MCTS por movimiento.
-    /// Más simulaciones = más fuerte pero más lento.
     /// Recomendado: 200 (fácil), 800 (difícil), 2000 (imbatible)
     simulations: u32,
-
-    /// Constante de exploración PUCT (típicamente sqrt(2) ≈ 1.41)
+    /// Constante de exploración PUCT
     c_puct: f32,
+    pub use_dirichlet: bool,
 }
 
 impl NeuralMctsBot {
@@ -109,7 +107,15 @@ impl NeuralMctsBot {
             net,
             simulations,
             c_puct: std::f32::consts::SQRT_2,
+            use_dirichlet: false,
         }
+    }
+
+    /// Constructor para self-play con exploración Dirichlet.
+    pub fn new_self_play(net: Arc<NeuralNet>, simulations: u32) -> Self {
+        let mut bot = Self::new(net, simulations);
+        bot.use_dirichlet = true;
+        bot
     }
 
     /// Ejecuta una simulación MCTS completa desde la raíz.
@@ -259,7 +265,25 @@ impl YBot for NeuralMctsBot {
             .collect();
         root.expanded = true;
         root.visits = 1;
+        if self.use_dirichlet && !root.children.is_empty() {
+            use rand::Rng;
+            let alpha = 0.3_f32;
+            let eps   = 0.25_f32;
+            let n     = root.children.len();
+            let mut rng = rand::rng();
+            let mut noise: Vec<f32> = (0..n)
+                .map(|_| {
+                    let u: f32 = rng.random::<f32>().max(1e-10);
+                    (-u.ln()).powf(1.0 / alpha)
+                })
+                .collect();
+            let sum: f32 = noise.iter().sum();
+            for v in &mut noise { *v /= sum; }
 
+            for (child, &ni) in root.children.iter_mut().zip(noise.iter()) {
+                child.prior = child.prior * (1.0 - eps) + ni * eps;
+            }
+        }
         // Ejecuta las simulaciones
         for _ in 0..self.simulations {
             self.run_simulation(&mut root, board);
@@ -424,6 +448,25 @@ mod tests {
         let bot = make_bot_with_model(800);
         assert_eq!(bot.name(), "neural_mcts_s800");
     }
+    #[test]
+    fn test_default_bot_has_no_dirichlet() {
+        let net = NeuralNet::load("models/yovi_model.onnx").expect("modelo");
+        let bot = NeuralMctsBot::new(net, 50);
+        assert!(!bot.use_dirichlet, "El bot de evaluación no debe usar Dirichlet");
+    }
+
+    #[test]
+    fn test_self_play_bot_has_dirichlet() {
+        let net = NeuralNet::load("models/yovi_model.onnx").expect("modelo");
+        let bot = NeuralMctsBot::new_self_play(net, 50);
+        assert!(bot.use_dirichlet, "El bot de self-play debe usar Dirichlet");
+        let board = GameY::new(5);
+        let mv = bot.choose_move(&board);
+        assert!(mv.is_some());
+        let idx = mv.unwrap().to_index(board.board_size());
+        assert!(board.available_cells().contains(&idx));
+    }
+
 }
 
 
