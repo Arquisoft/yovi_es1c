@@ -118,6 +118,7 @@ services:
       - "9091:3000"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
     networks:
       - monitor-net
 

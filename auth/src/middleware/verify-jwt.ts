@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { recordVerifyAttempt, startJwtVerifyTimer } from '../metrics.js';
 
 const UNAUTHORIZED_RESPONSE = { valid: false };
 
@@ -22,14 +23,18 @@ export function verifyToken(req: Request, res: Response) {
     const token = extractToken(req);
 
     if (!token) {
+        recordVerifyAttempt('missing_token');
         return res.status(401).json(UNAUTHORIZED_RESPONSE);
     }
 
     const jwtSecret = process.env.JWT_SECRET;
 
     if (!jwtSecret) {
+        recordVerifyAttempt('missing_secret');
         return res.status(401).json(UNAUTHORIZED_RESPONSE);
     }
+
+    const endVerify = startJwtVerifyTimer();
 
     try {
         const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as jwt.JwtPayload;
@@ -37,8 +42,11 @@ export function verifyToken(req: Request, res: Response) {
         const tokenType = decoded.tokenType;
 
         if (!userId || tokenType !== 'access') {
+            recordVerifyAttempt('wrong_token_type');
             return res.status(401).json(UNAUTHORIZED_RESPONSE);
         }
+
+        recordVerifyAttempt('success');
 
         return res.status(200).json({
             valid: true,
@@ -51,6 +59,9 @@ export function verifyToken(req: Request, res: Response) {
             },
         });
     } catch {
+        recordVerifyAttempt('invalid_token');
         return res.status(401).json(UNAUTHORIZED_RESPONSE);
+    } finally {
+        endVerify();
     }
 }
