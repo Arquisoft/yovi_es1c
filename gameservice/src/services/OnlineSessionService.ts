@@ -2,7 +2,7 @@ import { SessionStatePayload } from '../realtime/events/session.events';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { OnlineChatMessage, OnlineSessionState } from '../types/online';
 import { TurnTimerService } from './TurnTimerService';
-
+import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
 export type MoveErrorCode = 'VERSION_CONFLICT' | 'NOT_YOUR_TURN' | 'INVALID_MOVE' | 'SESSION_NOT_FOUND' | 'RECONNECT_EXPIRED';
 
 export interface RedisSessionClient {
@@ -40,7 +40,12 @@ export class OnlineSessionService {
       private readonly deps: SessionDeps = {},
   ) {}
 
-  async createSession(matchId: string, size: number, players: [{ userId: number; username: string }, { userId: number; username: string }], opponentType: 'HUMAN' | 'BOT'): Promise<OnlineSessionState> {
+  async createSession(
+      matchId: string,
+      size: number,
+      players: [{ userId: number; username: string }, { userId: number; username: string }],
+      opponentType: 'HUMAN' | 'BOT'
+  ): Promise<OnlineSessionState> {
     const layout = Array.from({ length: size }, (_, idx) => '.'.repeat(idx + 1)).join('/');
     const state: OnlineSessionState = {
       matchId,
@@ -65,7 +70,9 @@ export class OnlineSessionService {
       winner: null,
       messages: [],
     };
+
     await this.saveState(state);
+    onlineSessionEvents.inc({ event: 'created' });
     return state;
   }
 
@@ -103,6 +110,8 @@ export class OnlineSessionService {
     };
 
     await this.saveState(nextState);
+    onlineChatMessages.inc();
+
     this.deps.io?.to(matchId).emit('chat:message', {
       matchId,
       ...message,
@@ -115,18 +124,21 @@ export class OnlineSessionService {
     const state = await this.getState(matchId);
     if (!state) {
       const error = new OnlineSessionError('SESSION_NOT_FOUND', 'Session not found');
+      onlineMoveErrors.inc({ code: error.code });
       this.emitSessionError(matchId, userId, error);
       throw error;
     }
 
     if (state.winner) {
       const error = new OnlineSessionError('INVALID_MOVE', 'Session already finished');
+      onlineMoveErrors.inc({ code: error.code });
       this.emitSessionError(matchId, userId, error);
       throw error;
     }
 
     if (expectedVersion !== state.version) {
       const error = new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch');
+      onlineMoveErrors.inc({ code: error.code });
       this.emitSessionError(matchId, userId, error);
       throw error;
     }
@@ -134,12 +146,14 @@ export class OnlineSessionService {
     const currentPlayer = state.players[state.turn];
     if (currentPlayer.userId !== userId) {
       const error = new OnlineSessionError('NOT_YOUR_TURN', 'Not your turn');
+      onlineMoveErrors.inc({ code: error.code });
       this.emitSessionError(matchId, userId, error);
       throw error;
     }
 
     if (!this.isMoveValid(state, move)) {
       const error = new OnlineSessionError('INVALID_MOVE', 'Invalid move for current board state');
+      onlineMoveErrors.inc({ code: error.code });
       this.emitSessionError(matchId, userId, error);
       throw error;
     }
@@ -156,6 +170,12 @@ export class OnlineSessionService {
     };
 
     await this.saveState(nextState);
+    onlineMoves.inc();
+
+    if (winner) {
+      onlineSessionEvents.inc({ event: 'finished' });
+    }
+
     this.emitSessionState(nextState);
     return nextState;
   }
@@ -167,9 +187,12 @@ export class OnlineSessionService {
   async markDisconnected(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
     const state = await this.getState(matchId);
     if (!state) return null;
+
     state.connection[userId] = 'DISCONNECTED';
     state.reconnectDeadline[userId] = now + this.reconnectGraceSec * 1000;
     await this.saveState(state);
+    reconnectEvents.inc({ event: 'disconnected' });
+
     return state;
   }
 
@@ -180,6 +203,7 @@ export class OnlineSessionService {
     const deadline = state.reconnectDeadline[userId];
     if (deadline !== null && deadline <= now) {
       const error = new OnlineSessionError('RECONNECT_EXPIRED', 'Reconnect grace period has expired');
+      reconnectEvents.inc({ event: 'expired' });
       this.emitSessionError(matchId, userId, error);
       throw error;
     }
@@ -187,6 +211,8 @@ export class OnlineSessionService {
     state.connection[userId] = 'CONNECTED';
     state.reconnectDeadline[userId] = null;
     await this.saveState(state);
+    reconnectEvents.inc({ event: 'reconnected' });
+
     return state;
   }
 
@@ -194,15 +220,22 @@ export class OnlineSessionService {
   async expireGrace(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
     const state = await this.getState(matchId);
     if (!state) return null;
+
     const deadline = state.reconnectDeadline[userId];
     if (deadline && deadline <= now) {
       state.connection[userId] = 'DISCONNECTED';
       state.winner = state.players[0].userId === userId ? 'R' : 'B';
       await this.saveState(state);
+
+      reconnectEvents.inc({ event: 'expired_forfeit' });
+      onlineSessionEvents.inc({ event: 'finished' });
+
       this.emitSessionState(state);
     }
+
     return state;
   }
+
 
   async getSnapshot(matchId: string): Promise<OnlineSessionState | null> {
     return this.getState(matchId);
@@ -395,6 +428,8 @@ export class OnlineSessionService {
 
     const currentPlayer = state.players[state.turn];
     if (currentPlayer.userId !== userId) return;
+
+    turnTimeouts.inc();
 
     const randomMove = this.pickRandomMove(state.layout);
     if (!randomMove) return;

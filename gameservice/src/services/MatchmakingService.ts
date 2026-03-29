@@ -3,6 +3,7 @@ import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from './BotFallbackService';
 import { OnlineMatchAssignment, OnlineQueueEntry, OnlineSessionState } from '../types/online';
 import { StatsService } from './StatsService';
+import { matchmakingDuration, matchmakingEvents } from '../metrics';
 
 export interface RedisCommandClient {
   zAdd(key: string, members: { score: number; value: string }[]): Promise<number>;
@@ -79,15 +80,17 @@ export class MatchmakingService {
       await this.repository.enqueue(queueEntry);
     }
 
+    matchmakingEvents.inc({ event: 'queue', result: 'join' });
     return queueEntry;
   }
 
   async cancelQueue(userId: number): Promise<void> {
     if (this.deps.redis) {
       await this.removeFromRedisQueue(userId);
-      return;
+    } else {
+      await this.repository.cancel(userId);
     }
-    await this.repository.cancel(userId);
+    matchmakingEvents.inc({ event: 'queue', result: 'cancel' });
   }
 
   startWorker(): void {
@@ -132,20 +135,29 @@ export class MatchmakingService {
   }
 
   private async tryMatchCandidate(
-    self: OnlineQueueEntry,
-    allCandidates: OnlineQueueEntry[],
-    boardSize: number,
-    now: number,
+      self: OnlineQueueEntry,
+      allCandidates: OnlineQueueEntry[],
+      boardSize: number,
+      now: number,
   ): Promise<OnlineMatchAssignment | null> {
     const waitedSec = (now - self.joinedAt) / 1000;
     const skillRange = waitedSec >= 20 ? 2 : waitedSec >= 10 ? 1 : 0;
-    const rival = allCandidates.find((entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange);
+    const rival = allCandidates.find(
+        (entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange
+    );
 
     if (rival) {
       const claimed = this.deps.redis
-        ? await this.claimPairAtomicallyRedis(boardSize, self.userId, rival.userId)
-        : await this.repository.claimPair(self, rival);
-      if (!claimed) return null;
+          ? await this.claimPairAtomicallyRedis(boardSize, self.userId, rival.userId)
+          : await this.repository.claimPair(self, rival);
+
+      if (!claimed) {
+        matchmakingEvents.inc({ event: 'assignment', result: 'claim_conflict' });
+        return null;
+      }
+
+      matchmakingDuration.observe(waitedSec);
+      matchmakingEvents.inc({ event: 'assignment', result: 'human' });
 
       const assignment: OnlineMatchAssignment = {
         matchId: `online-${randomUUID()}`,
@@ -161,6 +173,9 @@ export class MatchmakingService {
 
     if (waitedSec >= this.timeoutSec) {
       await this.cancelQueue(self.userId);
+      matchmakingDuration.observe(waitedSec);
+      matchmakingEvents.inc({ event: 'assignment', result: 'bot_timeout' });
+
       return {
         matchId: `online-${randomUUID()}`,
         playerA: self,

@@ -7,7 +7,7 @@ import { StatsService } from '../services/StatsService';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { TurnTimerService as TurnTimerSvc } from '../services/TurnTimerService';
 import { MovePayload } from '../types/online';
-
+import { activeSocketConnections } from '../metrics';
 interface AuthClaims {
   sub: string;
   username?: string;
@@ -197,6 +197,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
       return;
     }
 
+    activeSocketConnections.inc();
     socket.join(`user:${user.userId}`);
 
     socket.on(
@@ -265,6 +266,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
           );
         }),
     );
+
     socket.on(
         'turn:timeout',
         safeAsync<{ matchId: string; version: number } | undefined>(socket, async (payload) => {
@@ -293,22 +295,20 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
     socket.on(
         'disconnect',
         safeAsync<undefined>(socket, async () => {
+          activeSocketConnections.dec();
           await matchmakingService.cancelQueue(user.userId);
 
-          // Primero intenta con el activeMatchId del socket
           if (socket.data.activeMatchId) {
             await sessionService.markDisconnected(socket.data.activeMatchId, user.userId);
             return;
           }
 
-          // Fallback: busca en Redis si hay sesión activa para este usuario
           const active = await sessionService.getActiveSessionForUser(user.userId);
           if (active) {
             await sessionService.markDisconnected(active.matchId, user.userId);
           }
         }),
     );
-
   });
 
   ioSingleton = io;

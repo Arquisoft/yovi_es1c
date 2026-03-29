@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'users-service'
+    static_configs:
+      - targets: ['users:3000']
+
+  - job_name: 'game-service'
+    static_configs:
+      - targets: ['gameservice:3002']
+
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth:3001']
