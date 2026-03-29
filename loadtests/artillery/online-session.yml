@@ -1,0 +1,43 @@
+config:
+  target: "{{ $env.TARGET_URL }}"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 20
+      name: "Sustained load"
+    - duration: 30
+      arrivalRate: 0
+      name: "Cool down"
+  engines:
+    socketio-v3: {}
+  processor: "./helpers.js"       # ← carga el helper
+
+scenarios:
+  - name: "Online session — full turn cycle"
+    engine: socketio-v3
+    beforeScenario: "getAuthToken"  # ← obtiene JWT antes de cada usuario
+    flow:
+      - think: 1
+
+      - emit:
+          channel: "joinSession"
+          data:
+            matchId: "loadtest-match-{{ $randomNumber(1, 500) }}"
+          acknowledge:
+            match: "sessionJoined"
+
+      - think: 2
+
+      - emit:
+          channel: "move"
+          data:
+            matchId: "loadtest-match-{{ $randomNumber(1, 500) }}"
+            position: "0,0"
+            token: "{{ token }}"    # ← inyecta el JWT en el evento
+
+      - think: 3
+
+      - emit:
+          channel: "disconnect"

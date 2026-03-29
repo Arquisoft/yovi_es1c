@@ -1,0 +1,26 @@
+config:
+  target: "{{ $env.TARGET_URL }}"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Simulate inactive players"
+  engines:
+    socketio-v3: {}
+  processor: "./helpers.js"
+
+scenarios:
+  - name: "Player connects but never moves — triggers bot fallback"
+    engine: socketio-v3
+    beforeScenario: "getAuthToken"
+    flow:
+      - emit:
+          channel: "joinSession"
+          data:
+            matchId: "loadtest-timeout-{{ $randomNumber(1, 100) }}"
+            token: "{{ token }}"
+
+      # Stays connected but never moves → TurnTimerService fires
+      - think: 60
+
+      - emit:
+          channel: "disconnect"
