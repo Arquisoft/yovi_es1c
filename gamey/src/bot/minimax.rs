@@ -67,8 +67,13 @@ where
         if depth == max_depth || board.check_game_over() {
             return self.evaluate(board, player);
         }
-    
-        let moves = Self::generate_moves(board);
+
+        let mut moves = Self::generate_moves(board);
+        moves = Self::order_moves(board, moves, player);
+
+        // poda por anchura dinámica
+        let limit = if depth < 2 { 16 } else { 5 };
+        let moves = moves.into_iter().take(limit).collect::<Vec<_>>();
     
         if moves.is_empty() {
             return self.evaluate(board, player);
@@ -158,6 +163,37 @@ where
 
         // Non-terminal position → use heuristic
         self.heuristic.evaluate(board, player)
+    }
+
+    fn order_moves(board: &GameY, moves: Vec<Coordinates>, player: PlayerId) -> Vec<Coordinates> {
+        let center = board.board_size() as i32 / 2;
+
+        let mut scored_moves: Vec<(i32, Coordinates)> = moves.into_iter().map(|mv| {
+            let mut score = 1000;
+
+            // Bonus por cercanía al centro
+            let dx = mv.x() as i32 - center;
+            let dy = mv.y() as i32 - center;
+            let dz = mv.z() as i32 - center;
+            let dist = dx.abs() + dy.abs() + dz.abs();
+            score -= dist*100; // menor distancia = mejor
+
+            // Bonus por vecinos
+            for n in board.get_neighbors(&mv) {
+                if let Some((_, p)) = board.get_board_map().get(&n) {
+                    if *p == player {
+                        score += 10;
+                    } else {
+                        score += 3;
+                    }
+                }
+            }
+
+            (score, mv)
+        }).collect();
+
+        scored_moves.sort_by_key(|(s, _)| -*s);
+        scored_moves.into_iter().map(|(_, mv)| mv).collect()
     }
 }
 
