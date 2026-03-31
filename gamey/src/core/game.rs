@@ -57,6 +57,21 @@ impl GameY {
         }
     }
 
+    pub fn get_board_map(&self) -> &HashMap<Coordinates, (SetIdx, PlayerId)> {
+        &self.board_map
+    }
+
+    pub fn get_sets(&self) -> &Vec<PlayerSet> {
+        &self.sets
+    }
+
+    pub fn find_const(&self, mut i: SetIdx) -> SetIdx {
+        while self.sets[i].parent != i {
+            i = self.sets[i].parent;
+        }
+        i
+    }
+
     /// Returns the current game status.
     pub fn status(&self) -> &GameStatus {
         &self.status
@@ -293,7 +308,7 @@ impl GameY {
     }
 
     /// Returns the neighboring coordinates for a given cell.
-    fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
+    pub(crate) fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
         let mut neighbors = Vec::new();
         let x = coords.x();
         let y = coords.y();
@@ -450,7 +465,7 @@ impl GameY {
     }
 
     /// Disjoint Set Union 'Find' with path compression
-    fn find(&mut self, i: SetIdx) -> SetIdx {
+    pub(crate) fn find(&mut self, i: SetIdx) -> SetIdx {
         if self.sets[i].parent == i {
             i
         } else {
