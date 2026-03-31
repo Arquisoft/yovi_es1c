@@ -107,40 +107,47 @@ impl SetConnectivityHeuristic {
 
     /// Bonus por bloquear al oponente
     fn block_opponent_score(board: &GameY, player: PlayerId, _set: &PlayerSet) -> i32 {
-        let mut score = 0;
         let opponent = GameY::other_player(player);
 
-        for opp_set in board.get_sets().iter() {
-            // Verifica si el set pertenece al oponente
-            if opp_set.cells.is_empty() {
-                continue;
-            }
-            let first_cell = opp_set.cells[0];
-            if let Some((_, p)) = board.get_board_map().get(&first_cell) {
-                if *p != opponent {
-                    continue;
-                }
-            } else {
-                continue;
-            }
+        board
+            .get_sets()
+            .iter()
+            .filter(|s| Self::is_opponent_set(board, s, opponent))
+            .map(|s| Self::opponent_set_pressure(board, s))
+            .sum()
+    }
 
-            // Encuentra la frontera vacía alrededor del set → posibles expansiones
-            for cell in &opp_set.cells {
-                for neighbor in board.get_neighbors(cell) {
-                    if !board.get_board_map().contains_key(&neighbor) {
-                        // Penaliza por el potencial de expansión del oponente
-                        score += (opp_set.size as i32) * 50;
+    fn opponent_set_pressure(board: &GameY, set: &PlayerSet) -> i32 {
+        let mut score = 0;
 
-                        let sides_touched = (opp_set.touches_side_a as i32)
-                            + (opp_set.touches_side_b as i32)
-                            + (opp_set.touches_side_c as i32);
-                        score += sides_touched * 100;
-                    }
+        for cell in &set.cells {
+            for neighbor in board.get_neighbors(cell) {
+                if !board.get_board_map().contains_key(&neighbor) {
+                    score += (set.size as i32) * 50;
+
+                    let sides_touched = (set.touches_side_a as i32)
+                        + (set.touches_side_b as i32)
+                        + (set.touches_side_c as i32);
+
+                    score += sides_touched * 100;
                 }
             }
         }
 
         score
+    }
+
+    fn is_opponent_set(board: &GameY, set: &PlayerSet, opponent: PlayerId) -> bool {
+        if set.cells.is_empty() {
+            return false;
+        }
+
+        let first_cell = set.cells[0];
+
+        match board.get_board_map().get(&first_cell) {
+            Some((_, p)) => *p == opponent,
+            None => false,
+        }
     }
 }
 
