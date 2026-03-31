@@ -63,7 +63,7 @@ where
         mut alpha: i32,
         mut beta: i32,
     ) -> i32 {
-    
+        // Corte
         if depth == max_depth || board.check_game_over() {
             return self.evaluate(board, player);
         }
@@ -71,80 +71,86 @@ where
         let mut moves = Self::generate_moves(board);
         moves = Self::order_moves(board, moves, player);
 
-        // poda por anchura dinámica
         let limit = if depth < 2 { 16 } else { 5 };
-        let moves = moves.into_iter().take(limit).collect::<Vec<_>>();
-    
+        let moves: Vec<_> = moves.into_iter().take(limit).collect();
+
         if moves.is_empty() {
             return self.evaluate(board, player);
         }
-    
+
         let current_player = board.next_player().unwrap();
-    
-        // MAX node
+
         if current_player == player {
-            let mut value = i32::MIN;
-    
-            for mv in moves {
-                let mut new_board = board.clone();
-    
-                new_board.add_move(Movement::Placement {
-                    player: current_player,
-                    coords: mv,
-                }).unwrap();
-    
-                let score = self.minimax(
-                    &new_board,
-                    player,
-                    depth + 1,
-                    max_depth,
-                    alpha,
-                    beta,
-                );
-    
-                value = value.max(score);
-                alpha = alpha.max(value);
-    
-                // PRUNING
-                if beta <= alpha {
-                    break;
-                }
-            }
-    
-            value
+            self.max_node(board, player, depth, max_depth, moves, alpha, beta)
+        } else {
+            self.min_node(board, player, depth, max_depth, moves, alpha, beta)
         }
-        // MIN node
-        else {
-            let mut value = i32::MAX;
-    
-            for mv in moves {
-                let mut new_board = board.clone();
-    
-                new_board.add_move(Movement::Placement {
-                    player: current_player,
-                    coords: mv,
-                }).unwrap();
-    
-                let score = self.minimax(
-                    &new_board,
-                    player,
-                    depth + 1,
-                    max_depth,
-                    alpha,
-                    beta,
-                );
-    
-                value = value.min(score);
-                beta = beta.min(value);
-    
-                // PRUNING
-                if beta <= alpha {
-                    break;
-                }
+    }
+
+    fn max_node(
+        &self,
+        board: &GameY,
+        player: PlayerId,
+        depth: u32,
+        max_depth: u32,
+        moves: Vec<Coordinates>,
+        mut alpha: i32,
+        beta: i32,
+    ) -> i32 {
+        let mut value = i32::MIN;
+
+        for mv in moves {
+            let mut new_board = board.clone();
+
+            new_board.add_move(Movement::Placement {
+                player: board.next_player().unwrap(),
+                coords: mv,
+            }).unwrap();
+
+            let score = self.minimax(&new_board, player, depth + 1, max_depth, alpha, beta);
+
+            value = value.max(score);
+            alpha = alpha.max(value);
+
+            if beta <= alpha {
+                break;
             }
-    
-            value
         }
+
+        value
+    }
+
+    fn min_node(
+        &self,
+        board: &GameY,
+        player: PlayerId,
+        depth: u32,
+        max_depth: u32,
+        moves: Vec<Coordinates>,
+        mut beta: i32,
+        alpha: i32,
+    ) -> i32 {
+        let mut value = i32::MAX;
+
+        for mv in moves {
+            let mut new_board = board.clone();
+
+            new_board.add_move(Movement::Placement {
+                player: board.next_player().unwrap(),
+                coords: mv,
+            }).unwrap();
+
+            let score = self.minimax(&new_board, player, depth + 1, max_depth, alpha, beta);
+
+            value = value.min(score);
+            beta = beta.min(value);
+
+            if beta <= alpha {
+                break;
+            }
+        }
+
+        value
     }
 
     /// Evaluates a board state from the perspective of `player`.
