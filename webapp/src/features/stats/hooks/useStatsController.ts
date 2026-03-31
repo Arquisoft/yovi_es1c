@@ -45,7 +45,7 @@ export const useStatsController = (userId: string) => {
     try {
       const token = localStorage.getItem("jwt");
 
-      const res = await fetchWithAuth(`${GAME_API_URL}/api/game/stats/${userId}`, {
+      const res = await fetchWithAuth(`${GAME_API_URL}/stats/${userId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

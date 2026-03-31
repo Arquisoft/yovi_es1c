@@ -30,8 +30,8 @@ export function validateCreateMatch(data: unknown): CreateMatchRequest {
 
   const normalizedDifficulty = String(difficulty).toLowerCase();
 
-  if (!['easy', 'medium', 'hard'].includes(normalizedDifficulty)) {
-    throw new ValidationError('difficulty must be easy, medium, or hard');
+  if (!['easy', 'medium', 'hard','expert'].includes(normalizedDifficulty)) {
+    throw new ValidationError('difficulty must be easy, medium, hard or expert');
   }
 
   return { boardSize, difficulty: normalizedDifficulty };

@@ -10,8 +10,8 @@ import {
 import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 import { API_CONFIG } from "../../../config/api.config";
 
-export type GameMode = "BOT" | "LOCAL_2P";
-export type BotDifficulty = "easy" | "medium" | "hard";
+export type GameMode = "BOT" | "LOCAL_2P" | "ONLINE";
+export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
 
 const DEFAULT_BOARD_SIZE = 8;
 
@@ -90,6 +90,11 @@ export const useGameController = (
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
+
+        if (gameMode === "ONLINE") {
+            setMessage("Esperando al servidor online...");
+            return;
+        }
 
         if (gameMode === "LOCAL_2P") {
             setGameState((prev) => {

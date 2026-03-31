@@ -1,131 +1,103 @@
 .container {
-    position: absolute;
-    top: 100px;
-    left: 0;
-    right: 0;
-    min-height: calc(100vh - 100px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 16px;
-    overflow: auto;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+  position: absolute;
+  top: 58px;
+  left: 0;
+  right: 0;
+  min-height: calc(100vh - 58px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 18px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(57, 255, 20, 0.16), transparent 22%),
+    linear-gradient(180deg, rgba(3, 16, 3, 0.95) 0%, rgba(1, 10, 1, 0.96) 100%);
 }
 
 .mainBox {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    max-width: 1200px;
-    min-height: 80vh;
-    background-color: rgba(0,0,0,0.8);
-    border-radius: 16px;
-    box-shadow: 0 0 20px rgba(0,255,255,0.3), 0 0 20px rgba(255,0,212,0.3);
-    overflow: hidden;
-    border: 1px solid rgba(0,255,255,0.5);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1180px;
+  min-height: calc(100vh - 140px);
+  background: linear-gradient(180deg, rgba(8, 24, 8, 0.92) 0%, rgba(3, 15, 3, 0.96) 100%);
+  border: 1px solid rgba(57, 255, 20, 0.22);
+  box-shadow: 0 0 28px rgba(57, 255, 20, 0.14), inset 0 0 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 }
 
 .sidebar {
-    width: 100%;
-    max-width: 280px;
-    background-color: rgba(0,0,0,0.7);
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    border-right: 1px solid rgba(0,255,255,0.5);
+  width: 100%;
+  max-width: 300px;
+  background: rgba(4, 14, 4, 0.82);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  border-right: 1px solid rgba(57, 255, 20, 0.14);
+}
+
+.title,
+.gameTitle,
+.gameOver {
+  color: #39ff14;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 12px rgba(57, 255, 20, 0.45);
 }
 
 .title {
-    color: #ffffff;
-    text-align: center;
-    font-weight: bold;
-    text-shadow: 0 0 5px #00fff7;
+  text-align: center;
 }
 
 .cardStatic {
-    border-radius: 16px;
-    background-color: rgba(0,0,0,0.7) !important; /* 🔥 fuerza el fondo */
-    border: 1px solid #00fff7;
-    box-shadow: 0 0 8px #00fff7;
+  background: rgba(5, 18, 5, 0.84) !important;
+  border: 1px solid rgba(57, 255, 20, 0.18) !important;
+  box-shadow: 0 0 12px rgba(57, 255, 20, 0.08) !important;
 }
 
 .cardContent {
-    background-color: transparent !important; /* 🔥 evita blanco */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
 }
 
 .avatarStatic {
-    width: 50px;
-    height: 50px;
-    border: 2px solid #fff;
-    box-shadow: 0 0 10px #00fff7;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(57, 255, 20, 0.26);
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.16);
 }
 
 .restartButton {
-    margin-top: 32px;
-    padding: 16px;
-    border-radius: 12px;
-    background-color: #00fff7 !important;
-    color: #000 !important;
-    box-shadow: 0 0 15px #00fff7;
-    font-size: 1.2rem;
+  margin-top: auto;
 }
 
-.gameTitle {
-    color: #ffffff;
-    text-align: center;
-    margin-bottom: 16px;
-    text-shadow: 0 0 5px #00fff7, 0 0 10px #ff00d4;
+.boardPanel {
+  margin-top: 20px;
+  padding: 12px;
+  background: rgba(0, 7, 0, 0.76);
+  border: 1px solid rgba(57, 255, 20, 0.18);
+  box-shadow: 0 0 16px rgba(57, 255, 20, 0.08);
 }
 
-.gameOver {
-    margin-top: 24px;
-    font-weight: bold;
-    color: #fff;
-    text-shadow: 0 0 10px #00fff7, 0 0 15px #ff00d4;
-    text-align: center;
+.statusPanel {
+  width: min(100%, 720px);
+  margin-bottom: 12px;
 }
 
-/* Mobile tweaks */
-@media (max-width: 600px) {
-    .mainBox {
-        border-radius: 12px;
-        box-shadow: 0 0 10px rgba(0,255,255,0.2), 0 0 10px rgba(255,0,212,0.2);
-    }
-
-    .sidebar {
-        border-right: none;
-        border-bottom: 1px solid rgba(0,255,255,0.5);
-        padding: 16px;
-    }
-
-    .gameTitle {
-        font-size: 1.8rem;
-    }
-
-    .restartButton {
-        width: 100%;
-        font-size: 1rem;
-        padding: 12px;
-    }
+@media (min-width: 960px) {
+  .mainBox {
+    flex-direction: row;
+  }
 }
 
-/* Tablet tweaks */
-@media (min-width: 601px) and (max-width: 960px) {
-    .mainBox {
-        flex-direction: column;
-    }
-
-    .sidebar {
-        width: 100%;
-        max-width: none;
-        border-right: none;
-        border-bottom: 1px solid rgba(0,255,255,0.5);
-    }
+@media (max-width: 959px) {
+  .sidebar {
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid rgba(57, 255, 20, 0.14);
+  }
 }

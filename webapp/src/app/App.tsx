@@ -1,17 +1,17 @@
-import { BrowserRouter, Routes, Route, Navigate, Link as RouterLink } from 'react-router-dom';
-import { Box, Button, CssBaseline, Typography } from '@mui/material';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useEffect, useMemo, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Button,
+  CssBaseline,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Typography,
+} from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
 import styles from './styles/App.module.css';
-
-const darkTheme = createTheme({
-    palette: {
-        mode: 'dark',
-        background: {
-            default: '#242424',
-            paper: '#1a1a1a',
-        },
-    },
-});
+import { phosphorTheme } from './theme/phosphorTheme';
 
 import RegisterForm from '../features/auth/ui/RegisterForm.tsx';
 import LoginForm from '../features/auth/ui/LoginForm.tsx';
@@ -19,82 +19,156 @@ import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import Nav from '../components/layout/Nav';
 import { AuthProvider, useAuth } from '../features/auth';
 import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
+import OnlineMatchmakingPage from '../features/game/ui/tsx/OnlineMatchmakingPage.tsx';
 import StatsUI from '../features/stats/ui/StatsUI.tsx';
+import { useActiveSession } from '../features/game/hooks/useActiveSession';
 
-function HomeRedirect() {
-    const { user } = useAuth();
-    if (user) {
-        return (
-            <Box
-                sx={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 2,
-                    px: 2,
-                    textAlign: 'center',
-                }}
-            >
-                <Typography variant="h4" fontWeight={700}>
-                    Welcome back, {user.username}!
-                </Typography>
-                <Typography variant="body1" color="text.secondary">
-                    Ready to play? Choose an option below.
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
-                    <Button
-                        component={RouterLink}
-                        to="/create-match"
-                        variant="contained"
-                        size="large"
-                        sx={{ borderRadius: 2, fontWeight: 600, px: 4 }}
-                    >
-                        Play
-                    </Button>
-                    <Button
-                        component={RouterLink}
-                        to="/stats"
-                        variant="outlined"
-                        size="large"
-                        sx={{ borderRadius: 2, fontWeight: 600, px: 4 }}
-                    >
-                        Stats
-                    </Button>
-                </Box>
-            </Box>
-        );
-    }
+function HomeScreen() {
+  const { user } = useAuth();
+
+  if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <section className={styles.homeScreen}>
+      <div className={styles.homeBackdrop} />
+      <div className={`${styles.homeFrame} crt-panel crt-flicker`}>
+        <pre className={styles.homeAscii}>{`██╗   ██╗ ██████╗ ██╗   ██╗██╗
+╚██╗ ██╔╝██╔═══██╗██║   ██║██║
+ ╚████╔╝ ██║   ██║██║   ██║██║
+  ╚██╔╝  ██║   ██║╚██╗ ██╔╝██║
+   ██║   ╚██████╔╝ ╚████╔╝ ██║
+   ╚═╝    ╚═════╝   ╚═══╝  ╚═╝`}</pre>
+        <div className={`${styles.statusLine} crt-blink`}>Player 1 up</div>
+        <h1 className={styles.heroTitle}>Welcome back</h1>
+        <p className={styles.heroUser}>{user.username}</p>
+        <div className={styles.actionRow}>
+          <RouterLink to="/create-match" className={styles.primaryAction}>
+            Play
+          </RouterLink>
+          <RouterLink to="/stats" className={styles.secondaryAction}>
+            Stats
+          </RouterLink>
+        </div>
+        <p className={`${styles.promptLine} crt-blink`}>Press start</p>
+      </div>
+    </section>
+  );
+}
+
+function AppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { matchId, boardSize } = useActiveSession();
+  const [dismissedMatchId, setDismissedMatchId] = useState<string | null>(null);
+
+  const storageKey = useMemo(() => (matchId ? `abandoned:${matchId}` : null), [matchId]);
+  const isDismissed = useMemo(
+    () => (storageKey ? localStorage.getItem(storageKey) === 'true' : false),
+    [storageKey],
+  );
+
+  const shouldPrompt = Boolean(
+    user &&
+      matchId &&
+      boardSize &&
+      !isDismissed &&
+      dismissedMatchId !== matchId &&
+      location.pathname !== '/gamey',
+  );
+
+  useEffect(() => {
+    if (!matchId) {
+      setDismissedMatchId(null);
+    }
+  }, [matchId]);
+
+  const handleReconnect = () => {
+    if (!matchId || !boardSize) return;
+    navigate('/gamey', {
+      state: {
+        matchId,
+        boardSize,
+        mode: 'ONLINE',
+        difficulty: 'medium',
+      },
+    });
+  };
+
+  const handleAbandon = () => {
+    if (!matchId) return;
+    localStorage.setItem(`abandoned:${matchId}`, 'true');
+    setDismissedMatchId(matchId);
+  };
+
+  return (
+    <>
+      <div className={styles.App}>
+        <div className={styles.screenNoise} />
+        <div className={styles.vignette} />
+        <div className={styles.crtOverlay} />
+        <span className={`${styles.cornerDeco} ${styles.cornerTopLeft}`} />
+        <span className={`${styles.cornerDeco} ${styles.cornerTopRight}`} />
+        <span className={`${styles.cornerDeco} ${styles.cornerBottomLeft}`} />
+        <span className={`${styles.cornerDeco} ${styles.cornerBottomRight}`} />
+        <Nav />
+        <Routes>
+          <Route path="/" element={<HomeScreen />} />
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/register" element={<RegisterForm />} />
+          <Route path="/create-match" element={<CreateMatchPage />} />
+          <Route path="/online/matchmaking" element={<OnlineMatchmakingPage />} />
+          <Route path="/gamey" element={<GameUI />} />
+          <Route path="/stats" element={<StatsUI />} />
+        </Routes>
+      </div>
+
+      <Dialog
+          open={shouldPrompt}
+          slotProps={{
+            paper: {
+              sx: {
+                minWidth: { xs: 'auto', sm: 460 },
+                border: '1px solid rgba(57, 255, 20, 0.34)',
+                background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
+              },
+            },
+          }}
+      >
+      <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+          Partida activa detectada
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Tienes una partida en curso. ¿Quieres reconectarte?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="outlined" onClick={handleAbandon}>
+            Abandonar partida
+          </Button>
+          <Button variant="contained" onClick={handleReconnect}>
+            Reconectarme
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
 }
 
 function App() {
-    return (
-        <BrowserRouter>
-            <AuthProvider>
-                <ThemeProvider theme={darkTheme}>
-                    <CssBaseline />
-                    <div className={styles.App}>
-                        <Nav />
-
-                        <Routes>
-                            <Route path="/" element={<HomeRedirect />} />
-                            <Route path="/login" element={<LoginForm />} />
-                            <Route path="/register" element={<RegisterForm />} />
-                            <Route path="/create-match" element={<CreateMatchPage />} />
-                            <Route path="/gamey" element={<GameUI />} />
-                            <Route path="/stats" element={<StatsUI />} />
-                        </Routes>
-                    </div>
-                </ThemeProvider>
-            </AuthProvider>
-        </BrowserRouter>
-    );
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <ThemeProvider theme={phosphorTheme}>
+          <CssBaseline />
+          <AppContent />
+        </ThemeProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  );
 }
 
 export default App;

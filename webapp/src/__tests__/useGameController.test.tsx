@@ -4,6 +4,7 @@ import {useGameController} from "../features/game/hooks/useGameController";
 import {describe, it, expect, beforeEach, vi, afterEach} from "vitest";
 import * as fetchWithAuthModule from "../shared/api/fetchWithAuth";
 
+
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 describe("useGameController", () => {
@@ -588,5 +589,72 @@ describe("useGameController", () => {
         expect(result.current.state.gameOver).toBe(true);
         expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
         expect(window.alert).toHaveBeenCalledWith("¡Felicidades Jugador 1!");
+    });
+    it("uses expert difficulty when selected", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response(JSON.stringify({coords: {x: 0, y: 0, z: 0}}), {
+                status: 200,
+                headers: {"Content-Type": "application/json"},
+            })
+        );
+
+        const {result} = renderHook(() =>
+            // size por defecto 8, modo BOT por defecto, sin YEN ni matchId, dificultad expert
+            useGameController(8, "BOT", undefined, undefined, "expert")
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalled();
+        });
+
+        const [url] = fetchMock.mock.calls[0];
+        expect(url).toContain("/v1/ybot/choose/expert");
+    });
+
+    it("online mode shows waiting message and skips bot fetch", async () => {
+        const { result } = renderHook(() => useGameController(8, "ONLINE"));
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        expect(result.current.state.message).toBe("Esperando al servidor online...");
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("handles 409 bot error", async () => {
+        fetchMock.mockResolvedValueOnce(new Response("", { status: 409 }));
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.error).toBe("Juego ya ha terminado o conflicto de estado.");
+            expect(result.current.state.loading).toBe(false);
+        });
+    });
+
+    it("handles malformed coords payload", async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response(JSON.stringify({ coords: { x: 1 } }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            })
+        );
+        const { result } = renderHook(() => useGameController());
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.error).toBe("Respuesta inválida del bot.");
+        });
     });
 });

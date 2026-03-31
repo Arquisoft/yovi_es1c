@@ -1,84 +1,74 @@
-import { Typography, Paper, Card, CardContent, Stack } from "@mui/material";
-import { DataGrid } from "@mui/x-data-grid";
-import { useStatsController } from "../hooks/useStatsController";
-import styles from "./StatsUI.module.css";
+import { Box, Card, CardContent, Paper, Typography } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
+import { useStatsController } from '../hooks/useStatsController';
+import styles from './StatsUI.module.css';
 
 export default function StatsUI() {
-  const userId = localStorage.getItem("userId") || "";
+  const userId = localStorage.getItem('userId') || '';
   const { state } = useStatsController(userId);
   const { stats, loading, error, isMocked } = state;
 
-  if (loading)
+  if (loading) {
     return (
-      <Typography color="white" textAlign="center" mt={10}>
+      <Typography color="text.primary" textAlign="center" mt={10}>
         Cargando estadísticas...
       </Typography>
     );
+  }
 
-  if (error)
+  if (error) {
     return (
-      <Typography color="red" textAlign="center" mt={10}>
+      <Typography color="error.main" textAlign="center" mt={10}>
         {error}
       </Typography>
     );
+  }
 
   if (!stats) return null;
 
   const matches = stats.matches ?? [];
+  const winrate = stats.totalMatches ? ((stats.wins / stats.totalMatches) * 100).toFixed(1) : 0;
 
-  const winrate = stats.totalMatches
-    ? ((stats.wins / stats.totalMatches) * 100).toFixed(1)
-    : 0;
-
-const columns = [
-  {
-    field: "createdAt",
-    headerName: "Fecha",
-    flex: 1,
-    valueFormatter: (params: any) => {
-      const val = params.value;
-      if (!val) return "N/A";
-      const date = new Date(val);
-      return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString();
+  const columns = [
+    {
+      field: 'createdAt',
+      headerName: 'Fecha',
+      flex: 1,
+      valueFormatter: (params: any) => {
+        const value = params.value;
+        if (!value) return 'N/A';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+      },
     },
-  },
-  { field: "mode", headerName: "Modo", flex: 1 },
-  { field: "status", headerName: "Resultado", flex: 1 },
-];
+    { field: 'mode', headerName: 'Modo', flex: 1 },
+    { field: 'status', headerName: 'Resultado', flex: 1 },
+  ];
 
   return (
     <div className={styles.container}>
-      <div style={{ maxWidth: 1100, width: "100%" }}>
+      <div style={{ maxWidth: 1120, width: '100%' }}>
         <Typography variant="h3" className={styles.header}>
-          📊 Estadísticas del jugador
+          Estadísticas del jugador
         </Typography>
+        <Typography className={`${styles.subheader} crt-blink`}>monitor de rendimiento</Typography>
 
-        {isMocked && (
-          <Typography className={styles.mockWarning}>
-            ⚠️ Los datos mostrados son mockeados (simulados)
-          </Typography>
-        )}
+        {isMocked && <Typography className={styles.mockWarning}>⚠️ Los datos mostrados son mockeados (simulados)</Typography>}
 
-        <Stack
-          className={styles.statGrid}
-          direction="row"
-          spacing={2}
-          justifyContent="center"
-          flexWrap="wrap"
-        >
-          <StatCard title="Partidas jugadas" value={stats.totalMatches} color="#00fff7" />
-          <StatCard title="Victorias" value={stats.wins} color="#00ff88" />
-          <StatCard title="Derrotas" value={stats.losses} color="#ff3b3b" />
-          <StatCard title="Winrate" value={`${winrate}%`} color="#ff00d4" />
-        </Stack>
+        <Box className={styles.statGrid}>
+          <StatCard title="Partidas jugadas" value={stats.totalMatches} />
+          <StatCard title="Victorias" value={stats.wins} />
+          <StatCard title="Derrotas" value={stats.losses} />
+          <StatCard title="Winrate" value={`${winrate}%`} />
+        </Box>
 
         <Paper className={styles.paper}>
-          <Typography variant="h6" sx={{ color: "#fff", mb: 2 }}>
+          <Typography variant="h6" className="crt-heading" sx={{ mb: 2 }}>
             Historial de partidas
           </Typography>
 
           {matches.length === 0 ? (
-            <Typography color="white" textAlign="center" py={4}>
+            <Typography color="text.secondary" textAlign="center" py={4}>
               No hay partidas registradas todavía
             </Typography>
           ) : (
@@ -88,30 +78,40 @@ const columns = [
               getRowId={(row: any) => row.matchId}
               autoHeight
               pageSizeOptions={[5, 10, 25]}
-              initialState={{
-                pagination: { paginationModel: { pageSize: 5, page: 0 } },
-              }}
+              initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
               sx={{
-                border: "none",
-                color: "#e5e7eb",
-                backgroundColor: "rgba(2,6,23,0.9)",
-                "& .MuiDataGrid-columnHeaders": {
-                  backgroundColor: "#020617 !important",
-                  borderBottom: "2px solid #00fff7",
+                border: 'none',
+                color: '#9dff95',
+                backgroundColor: 'transparent',
+                fontFamily: "'VT323', 'Courier New', monospace",
+                fontSize: '1rem',
+                letterSpacing: '0.08em',
+                '& .MuiDataGrid-columnHeaders': {
+                  backgroundColor: 'rgba(2, 11, 2, 0.96) !important',
+                  borderBottom: '1px solid rgba(57, 255, 20, 0.3)',
                 },
-                "& .MuiDataGrid-columnHeader": {
-                  backgroundColor: "#020617 !important",
-                  color: "#00fff7",
-                  fontWeight: "bold",
-                  letterSpacing: "1px",
-                  textTransform: "uppercase",
+                '& .MuiDataGrid-columnHeader': {
+                  backgroundColor: 'transparent !important',
+                  color: 'rgba(157, 255, 149, 0.72)',
+                  textTransform: 'uppercase',
                 },
-                "& .MuiDataGrid-cell": { borderBottom: "1px solid rgba(255,255,255,0.05)" },
-                "& .MuiDataGrid-row": { backgroundColor: "rgba(15,23,42,0.6)" },
-                "& .MuiDataGrid-row:hover": { backgroundColor: "rgba(0,255,247,0.1)" },
-                "& .MuiDataGrid-footerContainer": { backgroundColor: "#020617", borderTop: "1px solid #00fff7" },
-                "& .MuiTablePagination-root": { color: "#fff" },
-                "& .MuiSvgIcon-root": { color: "#00fff7" },
+                '& .MuiDataGrid-cell': {
+                  borderBottom: '1px solid rgba(57, 255, 20, 0.08)',
+                },
+                '& .MuiDataGrid-row:hover': {
+                  backgroundColor: 'rgba(57, 255, 20, 0.06)',
+                },
+                '& .MuiDataGrid-footerContainer': {
+                  borderTop: '1px solid rgba(57, 255, 20, 0.18)',
+                  color: 'rgba(157, 255, 149, 0.62)',
+                },
+                '& .MuiTablePagination-root': {
+                  color: 'rgba(157, 255, 149, 0.62)',
+                  fontFamily: "'VT323', 'Courier New', monospace",
+                },
+                '& .MuiSvgIcon-root': {
+                  color: 'rgba(157, 255, 149, 0.62)',
+                },
               }}
             />
           )}
@@ -121,22 +121,20 @@ const columns = [
   );
 }
 
-function StatCard({ title, value, color }: any) {
+function StatCard({ title, value }: { title: string; value: string | number }) {
   return (
     <Card
+      className="crt-panel"
       sx={{
         minWidth: 200,
-        bgcolor: "rgba(0,0,0,0.9)",
-        border: `1px solid ${color}`,
-        boxShadow: `0 0 12px ${color}`,
+        background: 'linear-gradient(180deg, rgba(7, 22, 7, 0.94) 0%, rgba(2, 13, 2, 0.94) 100%)',
       }}
     >
-      <CardContent sx={{ textAlign: "center" }}>
-        <Typography variant="subtitle2" color="#aaa">{title}</Typography>
-        <Typography
-          variant="h4"
-          sx={{ color, textShadow: `0 0 10px ${color}`, fontWeight: "bold" }}
-        >
+      <CardContent sx={{ textAlign: 'center' }}>
+        <Typography className="crt-screen-label" sx={{ mb: 1, fontSize: '0.78rem' }}>
+          {title}
+        </Typography>
+        <Typography variant="h4" className="crt-heading" sx={{ fontSize: '2.2rem' }}>
           {value}
         </Typography>
       </CardContent>

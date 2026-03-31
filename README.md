@@ -5,12 +5,10 @@
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Arquisoft_yovi_es1c&metric=coverage)](https://sonarcloud.io/summary/new_code?id=Arquisoft_yovi_es1c)
 [![CodeScene Average Code Health](https://codescene.io/projects/76242/status-badges/average-code-health)](https://codescene.io/projects/76242)
 
-This project is a template with some basic functionality for the ASW labs.
+YOVI is a web platform for playing the game Y, developed for UniOvi as part of the ASW course.
 
-# El proyecto está desplegado en: [aqui](http://4.251.107.62)
+## Contributors
 
-
-# Contributors
 - UO302313 - David Fernando Bolaños Lopez
 - UO294946 - Raúl Velasco Vizán
 - UO301919 - Ángela Nistal Guerrero
@@ -19,228 +17,248 @@ This project is a template with some basic functionality for the ASW labs.
 
 ## Project Structure
 
-The project is divided into three main components, each in its own directory:
+The project is divided into the following components, each in its own directory:
 
-- `webapp/`: A frontend application built with React, Vite, and TypeScript.
-- `users/`: A backend service for managing users and profile/statistics data, built with Node.js and Express.
-- `auth/`: A backend authentication service (Node.js + Express + TypeScript) for register/login/refresh and internal JWT verification.
-- `gamey/`: A Rust game engine and bot service.
-- `docs/`: Architecture documentation sources following Arc42 template
+- `webapp/`: Frontend single-page application built with React, Vite, and TypeScript.
+- `users/`: Backend service for user profile management, built with Node.js, Express, and TypeScript.
+- `auth/`: Authentication service (Node.js + Express + TypeScript). Handles registration, login, token refresh, and internal JWT verification.
+- `gamey/`: Y game engine and bot server implemented in Rust.
+- `gameservice/`: Online game service (Node.js + Express + TypeScript). Manages match persistence, statistics, online matchmaking, and real-time sessions via Socket.IO with Redis.
+- `nginx/`: API Gateway configuration (reverse proxy, rate limiting, CORS, SPA fallback).
+- `docs/`: Architecture documentation following the Arc42 template.
 
-Each component has its own `package.json` file with the necessary scripts to run and test the application.
+## Features
 
-## Basic Features
-
-- **User Registration**: The web application provides a simple form to register new users.
-- **User Service**: The user service receives the registration request, simulates some processing, and returns a welcome message.
-- **GameY**: A basic Game engine which only chooses a random piece.
+- **User registration and login**: Full JWT-based authentication (access token + refresh token).
+- **Play vs AI**: The player selects board size and difficulty and plays against a bot powered by the Rust game engine.
+- **Online multiplayer (human vs human)**: A matchmaking system pairs two players. The match is played in real time via Socket.IO. If a player exceeds their turn time limit, a bot automatically plays in their place.
+- **Match history and statistics**: Registered players can view their match history, wins, losses, and performance metrics.
+- **External bot API**: External bots can register and play matches against the system's AI through the public API.
+- **Monitoring**: Prometheus and Grafana are available for system metrics.
 
 ## Components
 
 ### Webapp
 
-The `webapp` is a single-page application (SPA) created with [Vite](https://vitejs.dev/) and [React](https://reactjs.org/).
+A single-page application (SPA) built with [Vite](https://vitejs.dev/), [React](https://reactjs.org/), TypeScript, and Material UI. Uses React Router for client-side navigation.
 
-- `src/App.tsx`: The main component of the application.
-- `src/RegisterForm.tsx`: The component that renders the user registration form.
-- `package.json`: Contains scripts to run, build, and test the webapp.
-- `vite.config.ts`: Configuration file for Vite.
-- `Dockerfile`: Defines the Docker image for the webapp.
+Internal structure (`src/`):
+- `features/auth/`: Login and registration pages and logic.
+- `features/game/`: Game board, turn logic, and match flow.
+- `features/stats/`: Player statistics visualization.
+- `features/botApi/`: External bot API interface.
+- `components/`: Shared reusable UI components.
+- `shared/`: Shared utilities, hooks, and types.
 
 ### Users Service
 
-The `users` service is a simple REST API built with [Node.js](https://nodejs.org/) and [Express](https://expressjs.com/).
+A REST API built with [Node.js](https://nodejs.org/), [Express](https://expressjs.com/), and TypeScript.
 
-- `users-service.js`: The main file for the user service. It defines an endpoint `/createuser` to handle user creation.
-- `package.json`: Contains scripts to start the service.
-- `Dockerfile`: Defines the Docker image for the user service.
-
+- Manages user profile data in `users.db` (SQLite).
+- Exposes a Swagger UI at `/api-docs` and Prometheus metrics.
+- Exposed internally on port `3000`.
 
 ### Auth Service
 
-The `auth` service is the authentication backend built with [Node.js](https://nodejs.org/), [Express](https://expressjs.com/) and TypeScript.
+Authentication backend built with Node.js, Express, and TypeScript.
 
-- `src/index.ts`: Entry point and route mounting under `/api/auth`.
-- `src/routes/auth.routes.ts`: Auth endpoints (`register`, `login`, `refresh`, `verify`).
-- `openapi.yaml`: OpenAPI 3.x contract for Auth endpoints.
-- `package.json`: Contains scripts for run/test/coverage.
+- `src/index.ts`: Entry point, mounts routes under `/api/auth`.
+- `src/routes/auth.routes.ts`: Authentication endpoints.
+- `openapi.yaml`: OpenAPI 3.x contract.
 
-Auth endpoints:
+Endpoints:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
-- `POST /api/auth/verify` (**internal only; blocked externally in Nginx**)
+- `POST /api/auth/verify` (**internal use only — blocked externally by Nginx with 403**)
 
-Important env vars:
+Key environment variables:
 - `JWT_SECRET` (required)
-- `AUTH_DB_PATH` (defaults to `/app/auth/data/auth.db` in compose)
+- `AUTH_DB_PATH` (defaults to `/app/auth/data/auth.db`)
 
-Internal verification URL for service-to-service calls:
-- `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify` (recommended timeout: 500ms–1s)
+Internal verification URL (service-to-service):
+- `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
 
-### Gamey
+### Gamey (Game Server)
 
-The `gamey` component is a Rust-based game engine with bot support, built with [Rust](https://www.rust-lang.org/) and [Cargo](https://doc.rust-lang.org/cargo/).
+A stateless Y game engine and bot server implemented in [Rust](https://www.rust-lang.org/).
 
-- `src/main.rs`: Entry point for the application.
-- `src/lib.rs`: Library exports for the gamey engine.
-- `src/bot/`: Bot implementation and registry.
-- `src/core/`: Core game logic including actions, coordinates, game state, and player management.
-- `src/notation/`: Game notation support (YEN, YGN).
-- `src/web/`: Web interface components.
-- `Cargo.toml`: Project manifest with dependencies and metadata.
-- `Dockerfile`: Defines the Docker image for the gamey service.
+- `src/main.rs`: Entry point.
+- `src/bot/`: Bot implementations and strategy registry.
+- `src/core/`: Core game logic (actions, coordinates, game state, player management).
+- `src/notation/`: YEN/YGN notation support.
+- `src/web/`: HTTP service layer.
+- `Cargo.toml`: Project manifest.
+
+Exposed internally on port `4000`.
+
+### Game Service
+
+The online game and matchmaking service built with Node.js, Express, and TypeScript.
+
+- Manages the full lifecycle of both AI and online human-vs-human matches.
+- Persists match state and move history in YEN notation in `game.db` (SQLite).
+- Exposes aggregated statistics per player.
+- Implements a **Redis-backed matchmaking queue** to pair online players.
+- Manages **real-time online sessions** via Socket.IO (with `@socket.io/redis-adapter`).
+- Enforces **per-turn timeouts** and triggers **automatic bot fallback** if a player does not respond in time.
+- Supports **reconnection grace periods** before penalising a disconnected player's session.
+
+Exposed internally on port `3002`.
+
+### Nginx (API Gateway)
+
+The single public entry point (port `80`). Routes all requests to internal services:
+
+| Path | Target Service |
+|---|---|
+| `/api/auth/*` | Auth Service (3001) |
+| `/api/users/*` | Users Service (3000) |
+| `/api/game/*` | Game Service (3002) |
+| `/api/gamey/*` | Game Server / Gamey (4000) |
+| `/*` | React Frontend (webapp) |
+
+`/api/auth/verify` is blocked externally (returns `403`).
+Includes rate limiting (`10 req/s` with burst of 20), CORS headers, static asset caching, and SPA fallback.
+
+### Monitoring
+
+- **Prometheus**: Available at `http://localhost:9090`. Configuration located in `users/monitoring/prometheus/`.
+- **Grafana**: Available at `http://localhost:9091`. Dashboards provisioned from `users/monitoring/grafana/provisioning/`.
+
+---
 
 ## Running the Project
 
-You can run this project using Docker (recommended) or locally without Docker.
+### Prerequisites
 
-### With Docker
+- [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed.
+- A `.env` file created in the root directory (see [Environment Configuration](#environment-configuration)).
 
-This is the easiest way to get the project running. You need to have [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed.
-
-1. **Build and run the containers:**
-    From the root directory of the project, run:
+### With Docker (recommended)
 
 ```bash
 docker-compose up --build
 ```
 
-This command will build the Docker images for both the `webapp` and `users` services and start them.
+Once running:
 
-2.**Access the application:**
-- Web application: [http://localhost](http://localhost)
-- User service API: [http://localhost:3000](http://localhost:3000)
-- Gamey API: [http://localhost:4000](http://localhost:4000)
+| Service | URL |
+|---|---|
+| Web application | http://localhost |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:9091 |
+
+All backend services (auth, users, gameservice, gamey) are **internal** and only accessible through Nginx.
 
 ### Without Docker
 
-To run the project locally without Docker, you will need to run each component in a separate terminal.
+Run each component in a separate terminal.
 
-#### Prerequisites
-
-* [Node.js](https://nodejs.org/) and npm installed.
-
-#### 1. Running the User Service
-
-Navigate to the `users` directory:
+#### 1. Users Service
 
 ```bash
 cd users
-```
-
-Install dependencies:
-
-```bash
 npm install
+npm run dev
 ```
 
-Run the service:
+#### 2. Auth Service
 
 ```bash
-npm start
+cd auth
+npm install
+npm run start
 ```
 
-The user service will be available at `http://localhost:3000`.
+#### 3. Game Service
 
-#### 2. Running the Web Application
+> Requires a running Redis instance. Use Docker Compose to start it automatically.
 
-Navigate to the `webapp` directory:
+```bash
+cd gameservice
+npm install
+npm run dev
+```
+
+#### 4. Gamey (Game Server)
+
+```bash
+cd gamey
+cargo run
+```
+
+#### 5. Webapp
 
 ```bash
 cd webapp
-```
-
-Install dependencies:
-
-```bash
 npm install
-```
-
-Run the application:
-
-```bash
 npm run dev
 ```
 
 The web application will be available at `http://localhost:5173`.
 
-#### 3. Running the Auth Service
-
-Navigate to the `auth` directory:
-
-```bash
-cd auth
-```
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Run the service:
-
-```bash
-npm run start
-```
-
-Run tests and coverage:
-
-```bash
-npm test
-npm run test:coverage
-```
-
-Verify `auth.db` exists (from monorepo root, when running with compose volume `./data:/app/data`):
-
-```bash
-test -f ./data/auth.db && echo "auth.db exists"
-```
-
-#### 4. Running the GameY application
-
-At this moment the GameY application is not needed but once it is needed you should also start it from the command line.
+---
 
 ## Available Scripts
 
-Each component has its own set of scripts defined in its `package.json`. Here are some of the most important ones:
+### Webapp (`webapp/`)
 
-### Webapp (`webapp/package.json`)
+- `npm run dev`: Start the development server.
+- `npm run build`: Compile TypeScript and generate the production bundle.
+- `npm test`: Run unit tests with Vitest.
+- `npm run test:coverage`: Run tests with coverage report.
+- `npm run test:e2e`: Run end-to-end tests with Cucumber + Playwright.
+- `npm run start:all`: Start the webapp and users service concurrently (useful for local E2E testing).
 
-- `npm run dev`: Starts the development server for the webapp.
-- `npm test`: Runs the unit tests.
-- `npm run test:e2e`: Runs the end-to-end tests.
-- `npm run start:all`: A convenience script to start both the `webapp` and the `users` service concurrently.
+### Users (`users/`)
 
-### Users (`users/package.json`)
+- `npm run dev`: Start in development mode with hot reload.
+- `npm run build`: Compile TypeScript.
+- `npm start`: Run the compiled service.
+- `npm test`: Run tests with Vitest.
+- `npm run test:coverage`: Run tests with coverage report.
 
-- `npm start`: Starts the user service.
-- `npm test`: Runs the tests for the service.
+### Auth (`auth/`)
 
-### Auth (`auth/package.json`)
+- `npm run start`: Start the auth service.
+- `npm test`: Run auth service tests.
+- `npm run test:coverage`: Run tests with coverage report.
+- `npm run db:init`: Initialise the auth database schema.
 
-- `npm run start`: Starts the auth service.
-- `npm test`: Runs auth service tests.
-- `npm run test:coverage`: Runs auth tests with coverage.
-- `npm run db:init`: Initializes the auth database schema.
+### Game Service (`gameservice/`)
 
-### Gamey (`gamey/Cargo.toml`)
+- `npm run dev`: Start in development mode with hot reload.
+- `npm run build`: Compile TypeScript to `dist/`.
+- `npm start`: Run the compiled service.
+- `npm test`: Run tests with Vitest.
+- `npm run test:coverage`: Run tests with coverage report.
 
-- `cargo build`: Builds the gamey application.
-- `cargo test`: Runs the unit tests.
-- `cargo run`: Runs the gamey application.
-- `cargo doc`: Generates documentation for the GameY engine application
+### Gamey (`gamey/`)
+
+- `cargo build`: Compile the game server.
+- `cargo run`: Run the game server.
+- `cargo test`: Run unit tests.
+- `cargo doc`: Generate engine documentation.
+
+---
 
 ## Environment Configuration
 
-Before running the project (especially with Docker), you must create a `.env` file in the root directory. This file is not committed to the repository for security reasons.
-
-Create a file named `.env` and add the following variables:
+Create a `.env` file in the root directory before running the project with Docker:
 
 ```properties
-# Secret key used to sign JWT tokens for authentication
+# Secret key used to sign and verify JWT tokens
 JWT_SECRET=yovi_es1c_2526
 
-# Internal path where the services will look for the database files inside the containers
-DB_PATH=/app/data/
+# Internal path to the auth database file (inside the container)
+AUTH_DB_PATH=/app/auth/data/auth.db
+
+# Internal path to the game service database file (inside the container)
+GAME_DB_PATH=/app/data/game.db
+
+# Matchmaking and online session timeouts (in seconds)
+MM_TIMEOUT_SEC=30
+TURN_TIMEOUT_SEC=25
+RECONNECT_GRACE_SEC=45
+```
