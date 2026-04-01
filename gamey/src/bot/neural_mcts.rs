@@ -207,7 +207,7 @@ impl YBot for NeuralMctsBot {
             .map(|&idx| Coordinates::from_index(idx, board.board_size()))
             .collect();
 
-        // Extraemos todo el jugo a tu CPU
+        // Obtenemos todos los hilos disponibles
         let num_threads = rayon::current_num_threads().max(1);
         let sims_per_thread = self.simulations / num_threads as u32;
         let n = moves_coords.len();
