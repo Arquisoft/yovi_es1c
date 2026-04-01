@@ -3,54 +3,66 @@ import { check, sleep } from 'k6';
 import { gameOptions, BASE_URL, TEST_USER } from './config.js';
 export const options = gameOptions;
 
-function login() {
+function registerAndLogin() {
+    const headers = { 'Content-Type': 'application/json' };
+    const username = `game_vu_${__VU}_${__ITER}`;
+    const password = TEST_USER.password;
+
+    http.post(
+        `${BASE_URL}/api/auth/register`,
+        JSON.stringify({ username, password }),
+        { headers }
+    );
+
     const res = http.post(
         `${BASE_URL}/api/auth/login`,
-        JSON.stringify({ username: TEST_USER.username, password: TEST_USER.password }),
-        { headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ username, password }),
+        { headers }
     );
+
     if (res.status !== 200) return null;
-    return res.json('accessToken');
+    return {
+        token: res.json('accessToken'),
+        userId: res.json('userId'),
+    };
 }
 
 export default function () {
-    const token = login();
-    if (!token) return;
+    const auth = registerAndLogin();
+    if (!auth) return;
 
     const headers = {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${auth.token}`,
     };
 
-    // Create a new AI match
     const createRes = http.post(
         `${BASE_URL}/api/game/matches`,
-        JSON.stringify({ size: 5, strategy: 'heuristic', difficulty: 2 }),
+        JSON.stringify({ boardSize: 5, difficulty: 'medium' }),
         { headers }
     );
 
     check(createRes, {
-        'match created':       (r) => r.status === 201,
-        'match has id':        (r) => r.json('id') !== undefined,
-        'match has yen state': (r) => r.json('state') !== undefined,
+        'match created':  (r) => r.status === 201,
+        'match has id':   (r) => r.json('matchId') !== undefined,
     });
 
     if (createRes.status !== 201) return;
 
-    const matchId = createRes.json('id');
+    const matchId = createRes.json('matchId');
 
-    // Get match state
     const getRes = http.get(`${BASE_URL}/api/game/matches/${matchId}`, { headers });
 
     check(getRes, {
-        'get match status 200': (r) => r.status === 200,
-        'get match has state':  (r) => r.json('state') !== undefined,
+        'get match status 200':   (r) => r.status === 200,
+        'get match has status':   (r) => r.json('status') !== undefined,
     });
 
-    // Submit a move
+    if (getRes.status !== 200) return;
+
     const moveRes = http.post(
         `${BASE_URL}/api/game/matches/${matchId}/moves`,
-        JSON.stringify({ position: '0,0', updatedYEN: getRes.json('state') }),
+        JSON.stringify({ position_yen: '0,0', player: 'USER', moveNumber: 1 }),
         { headers }
     );
 
@@ -58,8 +70,7 @@ export default function () {
         'move accepted': (r) => r.status === 200 || r.status === 201,
     });
 
-    // Get stats
-    const statsRes = http.get(`${BASE_URL}/api/game/stats/me`, { headers });
+    const statsRes = http.get(`${BASE_URL}/api/game/stats/${auth.userId}`, { headers });
 
     check(statsRes, {
         'stats status 200': (r) => r.status === 200,

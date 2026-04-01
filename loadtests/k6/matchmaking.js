@@ -3,18 +3,29 @@ import { check, sleep } from 'k6';
 import { matchmakingOptions, BASE_URL, TEST_USER } from './config.js';
 export const options = matchmakingOptions;
 
-function login(username) {
+function registerAndLogin() {
+    const headers = { 'Content-Type': 'application/json' };
+    const username = `mm_vu_${__VU}_${__ITER}`;
+    const password = TEST_USER.password;
+
+    http.post(
+        `${BASE_URL}/api/auth/register`,
+        JSON.stringify({ username, password }),
+        { headers }
+    );
+
     const res = http.post(
         `${BASE_URL}/api/auth/login`,
-        JSON.stringify({ username, password: TEST_USER.password }),
-        { headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ username, password }),
+        { headers }
     );
+
     if (res.status !== 200) return null;
     return res.json('accessToken');
 }
 
 export default function () {
-    const token = login(`loadtest_user_${__VU}`);
+    const token = registerAndLogin();
     if (!token) return;
 
     const headers = {
@@ -25,13 +36,18 @@ export default function () {
     // Join matchmaking queue
     const joinRes = http.post(
         `${BASE_URL}/api/game/online/queue`,
-        JSON.stringify({}),
+        JSON.stringify({ boardSize: 5 }),
         { headers }
     );
 
     check(joinRes, {
         'joined queue': (r) => r.status === 200 || r.status === 201,
     });
+
+    if (joinRes.status !== 201 && joinRes.status !== 200) {
+        sleep(1);
+        return;
+    }
 
     sleep(2);
 
@@ -40,9 +56,9 @@ export default function () {
     for (let i = 0; i < 5; i++) {
         const pollRes = http.get(`${BASE_URL}/api/game/online/queue/match`, { headers });
 
-        if (pollRes.status === 200 && pollRes.json('matchId')) {
+        if (pollRes.status === 200 && pollRes.json('matched') === true) {
             check(pollRes, {
-                'match found':       (r) => r.json('matchId') !== undefined,
+                'match found':        (r) => r.json('matchId') !== undefined,
                 'match has opponent': (r) => r.json('opponent') !== undefined,
             });
             matched = true;

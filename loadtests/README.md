@@ -20,10 +20,10 @@ They do not run automatically on push or PR — they must be triggered manually.
 docker-compose -f loadtests/docker-compose.loadtest.yml --profile auth up
 
 # AI match flows (create match, move, stats)
-docker-compose -f loadtests/docker-compose.loadtest.yml --profile game up
+docker-compose -f docker-compose.loadtest.yml --profile game up
 
 # Matchmaking queue flows
-docker-compose -f loadtests/docker-compose.loadtest.yml --profile matchmaking up
+docker-compose -f docker-compose.loadtest.yml --profile matchmaking up
 ```
 
 ### Artillery — Socket.IO sessions
