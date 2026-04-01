@@ -1,11 +1,13 @@
-// gamey/src/bot/neural_net.rs
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::num::NonZeroUsize;
+use lru::LruCache;
 use tract_onnx::prelude::*;
 use crate::{Coordinates, GameY, PlayerId};
 
 type OnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
-
-/// Debe coincidir con GRID_SIZE en Python (model.py)
 const GRID_SIZE: usize = 32;
 const NUM_CHANNELS: usize = 6;
 /// Máximo de celdas del triángulo de lado GRID_SIZE
@@ -13,22 +15,69 @@ const MAX_CELLS: usize = GRID_SIZE * (GRID_SIZE + 1) / 2; // 528
 
 pub struct NeuralNet {
     model: OnnxModel,
+    cache: Mutex<LruCache<u64, (Vec<f32>, f32)>>,
 }
 
 impl NeuralNet {
     pub fn load(path: &str) -> anyhow::Result<Arc<Self>> {
-        let model = tract_onnx::onnx()
+        let model = onnx()
             .model_for_path(path)?
             .into_optimized()?
             .into_runnable()?;
-        Ok(Arc::new(Self { model }))
+        Ok(Arc::new(Self {
+            model,
+            cache: Mutex::new(LruCache::new(NonZeroUsize::new(4096).unwrap())),
+        }))
     }
 
-    /// Evalúa una posición.
-    /// Devuelve (policy, value):
-    ///   policy — Vec<f32> de longitud total_cells(board_size), probabilidades por movimiento
-    ///   value  — f32 ∈ [-1, +1], positivo = bueno para el jugador actual
+    /// Evalúa una posición con caché integrada.
     pub fn evaluate(&self, board: &GameY) -> anyhow::Result<(Vec<f32>, f32)> {
+        let key = Self::board_hash(board);
+
+        // Intentar caché primero
+        {
+            let mut cache = self.cache.lock().map_err(|e| anyhow::anyhow!("Mutex error: {}", e))?;
+            if let Some(cached) = cache.get(&key) {
+                return Ok(cached.clone());
+            }
+        }
+
+        let result = self.evaluate_uncached(board)?;
+
+        // Guardar en caché
+        self.cache.lock().map_err(|e| anyhow::anyhow!("Mutex error: {}", e))?.put(key, result.clone());
+
+        Ok(result)
+    }
+
+    /// Función auxiliar para calcular probabilidades uniformes si falla la evaluación.
+    pub fn fallback_evaluation(board: &GameY) -> (Vec<f32>, f32) {
+        let n = board.available_cells().len().max(1);
+        (vec![1.0 / n as f32; board.total_cells() as usize], 0.0)
+    }
+
+    /// Evalúa un batch de posiciones, aprovechando la caché por cada una.
+    pub fn evaluate_batch(&self, boards: &[&GameY]) -> Vec<(Vec<f32>, f32)> {
+        boards
+            .iter()
+            .map(|b| {
+                // Usamos la nueva función de fallback
+                self.evaluate(b).unwrap_or_else(|_| Self::fallback_evaluation(b))
+            })
+            .collect()
+    }
+
+    /// Hash del estado del tablero para usar como clave de caché.
+    pub fn board_hash(board: &GameY) -> u64 {
+        let mut h = DefaultHasher::new();
+        // Hashear tamaño + disponibles + ocupación aproximada
+        board.board_size().hash(&mut h);
+        board.available_cells().hash(&mut h);
+        h.finish()
+    }
+
+    /// Evaluación real sin caché (uso interno).
+    fn evaluate_uncached(&self, board: &GameY) -> anyhow::Result<(Vec<f32>, f32)> {
         let (spatial_data, board_norm_val) = self.encode_board(board);
 
         // spatial: (1, 6, 32, 32)
@@ -81,8 +130,6 @@ impl NeuralNet {
     }
 
     /// Construye (spatial, board_norm) igual que encode_board() en Python.
-    /// spatial: Vec de longitud 6 * 32 * 32 con layout [canal][fila][col].
-    /// board_norm: board_size / GRID_SIZE.
     fn encode_board(&self, board: &GameY) -> (Vec<f32>, f32) {
         let board_size = board.board_size() as usize;
         let n          = board.total_cells() as usize;
@@ -135,7 +182,6 @@ mod tests {
 
     #[test]
     fn test_encode_board_spatial_length() {
-        // No necesita cargar el modelo
         let board = GameY::new(5);
         let dummy_net = make_dummy_net();
         let (spatial, _) = dummy_net.encode_board(&board);
@@ -157,9 +203,7 @@ mod tests {
         let board = GameY::new(5);
         let dummy_net = make_dummy_net();
         let (spatial, _) = dummy_net.encode_board(&board);
-        let n = board.total_cells() as usize;
         let per_channel = GRID_SIZE * GRID_SIZE;
-        // En tablero vacío, canal 0 (mío) y canal 1 (rival) deben ser 0
         for row in 0..5usize {
             for col in 0..=row {
                 let pos = row * GRID_SIZE + col;
@@ -168,7 +212,6 @@ mod tests {
                 assert_eq!(spatial[2 * per_channel + pos], 1.0, "canal vacío debe ser 1");
             }
         }
-        // Celdas fuera del triángulo deben ser 0 en todos los canales de ocupación
         assert_eq!(spatial[0 * per_channel + 0 * GRID_SIZE + 1], 0.0,
                    "celda fuera del triángulo debe ser 0");
     }
@@ -210,13 +253,19 @@ mod tests {
         assert!(result.is_ok(), "evaluate no debe fallar en tablero de lado 32");
     }
 
+    #[test]
+    fn test_cache_hit_returns_same_result() {
+        let net = NeuralNet::load("models/yovi_model.onnx").expect("Modelo no encontrado");
+        let board = GameY::new(5);
+        let (p1, v1) = net.evaluate(&board).expect("Primera llamada falló");
+        let (p2, v2) = net.evaluate(&board).expect("Segunda llamada (caché) falló");
+        assert_eq!(p1, p2, "La policy cacheada debe ser idéntica");
+        assert_eq!(v1, v2, "El value cacheado debe ser idéntico");
+    }
+
     // ── Helper ────────────────────────────────────────────────────────
 
-    /// Crea un NeuralNet sin modelo real para poder testear encode_board
-    /// sin necesitar el fichero .onnx.
     fn make_dummy_net() -> Arc<NeuralNet> {
-        // Usamos unsafe solo para construir la struct sin modelo.
-        // En tests de encoding esto es suficiente; no llamamos a evaluate().
         NeuralNet::load("models/yovi_model.onnx")
             .expect("Para tests de encoding necesitas el modelo. Si no tienes .onnx, usa los tests de encoding directos.")
     }
