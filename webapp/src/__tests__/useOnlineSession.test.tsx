@@ -114,4 +114,34 @@ describe('useOnlineSession', () => {
     const { result } = renderHook(() => useOnlineSession(null));
     expect(result.current.connectionStatus).toBe('RECONNECTING');
   });
+  it('sets error on session:error socket event', async () => {
+    const { result } = renderHook(() => useOnlineSession('m1'));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    act(() => {
+      handlers.get('session:error')?.({ code: 'NOT_YOUR_TURN', message: 'Wait your turn' });
+    });
+
+    expect(result.current.error?.message).toBe('Wait your turn');
+  });
+
+  it('playMove does nothing when there is a winner', async () => {
+    const { result } = renderHook(() => useOnlineSession('m1'));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    act(() => {
+      handlers.get('session:state')?.({
+        matchId: 'm1',
+        layout: 'B/..',
+        turn: 0,
+        version: 3,
+        timerEndsAt: Date.now() + 1000,
+        winner: 'B',
+      });
+    });
+
+    act(() => { result.current.playMove(1, 2); });
+
+    expect(socketMock.emit).not.toHaveBeenCalledWith('move:play', expect.anything());
+  });
 });
