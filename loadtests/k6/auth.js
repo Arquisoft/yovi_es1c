@@ -1,9 +1,10 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
-import { options, BASE_URL, TEST_USER } from './config.js';
+import { authOptions, BASE_URL, TEST_USER } from './config.js';
 
-export { options };
+export const options = authOptions;
+
 
 const registerDuration = new Trend('loadtest_auth_register_duration_ms', true);
 const loginDuration = new Trend('loadtest_auth_login_duration_ms', true);

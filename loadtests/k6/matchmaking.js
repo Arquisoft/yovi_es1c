@@ -1,8 +1,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { options, BASE_URL, TEST_USER } from './config.js';
-
-export { options };
+import { matchmakingOptions, BASE_URL, TEST_USER } from './config.js';
+export const options = matchmakingOptions;
 
 function login(username) {
     const res = http.post(
