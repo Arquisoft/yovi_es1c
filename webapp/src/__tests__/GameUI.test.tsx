@@ -274,16 +274,25 @@ describe('GameUI Component', () => {
 
     it('uses Bot as second player name in BOT mode', () => {
         renderWithConfig({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
-        // El segundo jugador del mock local es 'Bot' en BOT mode
         expect(screen.getByText(/Bot/i)).toBeInTheDocument();
     });
 
-    it('uses Jugador 2 as second player name in LOCAL_2P mode', () => {
+    it('shows "2 Jugadores" as mode label in LOCAL_2P mode', () => {
         vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
             state: { ...mockState, gameMode: 'LOCAL_2P' as const },
             actions: mockActions,
         });
         renderWithConfig({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
-        expect(screen.getByText(/Jugador 2/i)).toBeInTheDocument();
+        expect(screen.getByText('2 Jugadores')).toBeInTheDocument();
     });
+
+    it('does not show "Bot" label in LOCAL_2P mode', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: { ...mockState, gameMode: 'LOCAL_2P' as const },
+            actions: mockActions,
+        });
+        renderWithConfig({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
+        expect(screen.queryByText(/^Bot$/i)).not.toBeInTheDocument();
+    });
+
 });
