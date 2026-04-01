@@ -104,7 +104,7 @@ describe('MatchmakingService', () => {
     await service.runMatchmakingTick(20_000);
 
     expect(redis.eval).toHaveBeenCalled();
-    expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^session:online-/), expect.any(String));
+    expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^session:online:online-/), expect.any(String));
     expect(io.to).toHaveBeenCalledWith('user:1');
     expect(io.to).toHaveBeenCalledWith('user:2');
     expect(emit).toHaveBeenCalledWith('matchmaking:matched', expect.objectContaining({ revealAfterGame: false }));

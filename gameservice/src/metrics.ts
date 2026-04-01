@@ -88,3 +88,18 @@ export const turnTimeouts = new Counter({
     help: 'Timeouts de turno procesados',
     registers: [register],
 });
+
+export const authVerifyDuration = new Histogram({
+    name: 'gameservice_auth_verify_duration_seconds',
+    help: 'Duración de verificación de JWT contra auth service',
+    labelNames: ['result'] as const,
+    buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+    registers: [register],
+});
+
+export const authVerifyCacheEvents = new Counter({
+    name: 'gameservice_auth_verify_cache_events_total',
+    help: 'Eventos de caché de verificación JWT',
+    labelNames: ['event'] as const,
+    registers: [register],
+});

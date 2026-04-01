@@ -7,6 +7,8 @@ export type AuthRoute =
     | '/api/auth/register'
     | '/api/auth/login'
     | '/api/auth/refresh'
+    | '/api/auth/logout'
+    | '/api/auth/logout-all'
     | '/api/auth/verify';
 
 export type DbOperation =

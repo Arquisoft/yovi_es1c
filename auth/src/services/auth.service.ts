@@ -40,12 +40,16 @@ type AuthResponse = {
         id: number;
         username: string;
     };
+    session: {
+        sessionId: string;
+        deviceId: string;
+    };
 };
 
 export class AuthService {
     constructor(private repo: CredentialsRepository) {}
 
-    async register(username: string, password: string): Promise<AuthResponse> {
+    async register(username: string, password: string, deviceId = 'web', deviceName?: string): Promise<AuthResponse> {
         try {
             const endHash = startBcryptHashTimer();
             let passwordHash: string;
@@ -57,7 +61,7 @@ export class AuthService {
             }
 
             const userId = await this.repo.createUser(username, passwordHash);
-            const session = await this.issueSession(userId, username);
+            const session = await this.issueSession(userId, username, deviceId, deviceName);
 
             recordRegisterAttempt('success');
 
@@ -83,7 +87,7 @@ export class AuthService {
         }
     }
 
-    async login(username: string, password: string): Promise<AuthResponse> {
+    async login(username: string, password: string, deviceId = 'web', deviceName?: string): Promise<AuthResponse> {
         try {
             const user = await this.repo.findUserByUsername(username);
 
@@ -108,13 +112,15 @@ export class AuthService {
                 throw new BadCredentialsError();
             }
 
-            const revokedSessions = await this.repo.revokeAllUserSessions(user.id);
-            if (revokedSessions > 0) {
-                recordRefreshTokenRevocation('login_revoke_all', revokedSessions);
-                decrementActiveRefreshTokens(revokedSessions);
+            const activeSessions = await this.repo.countActiveSessions(user.id);
+            if (activeSessions >= 3) {
+                const revokedOldest = await this.repo.revokeOldestActiveSession(user.id);
+                if (revokedOldest > 0) {
+                    recordRefreshTokenRevocation('login_revoke_all', revokedOldest);
+                }
             }
 
-            const session = await this.issueSession(user.id, user.username);
+            const session = await this.issueSession(user.id, user.username, deviceId, deviceName);
 
             recordLoginAttempt('success');
             recordSimpleLoginAttempt('success');
@@ -137,7 +143,7 @@ export class AuthService {
         }
     }
 
-    async refresh(refreshToken?: string): Promise<{ accessToken: string; refreshToken: string }> {
+    async refresh(refreshToken?: string): Promise<{ accessToken: string; refreshToken: string; session: { sessionId: string } }> {
         try {
             if (!refreshToken) {
                 recordRefreshAttempt('missing_token');
@@ -189,6 +195,7 @@ export class AuthService {
 
             await this.repo.storeRefreshToken(
                 storedToken.user_id,
+                storedToken.session_id,
                 nextRefreshHash,
                 storedToken.family_id,
                 nextRefreshExpires
@@ -199,13 +206,16 @@ export class AuthService {
 
             const user = await this.repo.findUserById(storedToken.user_id);
             const usernameResolved = user?.username;
-            const accessToken = this.signAccessToken(storedToken.user_id, usernameResolved);
+            const accessToken = this.signAccessToken(storedToken.user_id, storedToken.session_id, usernameResolved);
 
             recordRefreshAttempt('success');
 
             return {
                 accessToken,
                 refreshToken: nextRefreshToken,
+                session: {
+                    sessionId: storedToken.session_id,
+                },
             };
         } catch (error) {
             if (error instanceof InvalidRefreshTokenError || error instanceof UnexpectedError) {
@@ -217,14 +227,26 @@ export class AuthService {
         }
     }
 
-    private async issueSession(userId: number, username: string) {
-        const accessToken = this.signAccessToken(userId, username);
+    async logout(sessionId?: string): Promise<void> {
+        if (!sessionId) return;
+        await this.repo.revokeSessionById(sessionId);
+    }
+
+    async logoutAll(userId: number): Promise<void> {
+        await this.repo.revokeAllUserSessions(userId);
+    }
+
+    private async issueSession(userId: number, username: string, deviceId: string, deviceName?: string) {
+        const sessionId = crypto.randomUUID();
+        await this.repo.createSession(sessionId, userId, deviceId, deviceName);
+
+        const accessToken = this.signAccessToken(userId, sessionId, username);
         const refreshToken = this.generateOpaqueToken();
         const refreshHash = this.hashRefreshToken(refreshToken);
         const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
         const familyId = crypto.randomUUID();
 
-        await this.repo.storeRefreshToken(userId, refreshHash, familyId, refreshExpiresAt);
+        await this.repo.storeRefreshToken(userId, sessionId, refreshHash, familyId, refreshExpiresAt);
 
         recordRefreshTokenIssued();
         incrementActiveRefreshTokens();
@@ -232,10 +254,14 @@ export class AuthService {
         return {
             accessToken,
             refreshToken,
+            session: {
+                sessionId,
+                deviceId,
+            },
         };
     }
 
-    private signAccessToken(userId: number, username?: string) {
+    private signAccessToken(userId: number, sessionId: string, username?: string) {
         const endSign = startJwtSignTimer();
 
         try {
@@ -243,6 +269,7 @@ export class AuthService {
             return jwt.sign(
                 {
                     ...(username ? { username } : {}),
+                    sid: sessionId,
                     tokenType: 'access',
                 },
                 process.env.JWT_SECRET!,

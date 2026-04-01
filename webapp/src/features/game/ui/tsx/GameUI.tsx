@@ -115,12 +115,15 @@ export default function GameUI() {
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
-    useEffect(() => {
-        if (config?.mode !== 'ONLINE') return;
-        if (onlineError?.code !== 'RECONNECT_EXPIRED') return;
-        globalThis.alert('La partida ya no está disponible');
-        navigate('/create-match');
-    }, [config?.mode, navigate, onlineError?.code]);
+  useEffect(() => {
+    if (config?.mode !== 'ONLINE') return;
+    if (!onlineError?.code) return;
+    if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
+      return;
+    }
+    globalThis.alert('La partida ya no está disponible');
+    navigate('/create-match');
+  }, [config?.mode, navigate, onlineError?.code]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;

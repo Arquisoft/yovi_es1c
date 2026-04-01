@@ -22,6 +22,8 @@ import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
 import OnlineMatchmakingPage from '../features/game/ui/tsx/OnlineMatchmakingPage.tsx';
 import StatsUI from '../features/stats/ui/StatsUI.tsx';
 import { useActiveSession } from '../features/game/hooks/useActiveSession';
+import { fetchWithAuth } from '../shared/api/fetchWithAuth';
+import { API_CONFIG } from '../config/api.config';
 
 function HomeScreen() {
   const { user } = useAuth();
@@ -85,8 +87,12 @@ function AppContent() {
     }
   }, [matchId]);
 
-  const handleReconnect = () => {
+  const handleReconnect = async () => {
     if (!matchId || !boardSize) return;
+    const response = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/online/sessions/${matchId}/reconnect`, {
+      method: 'POST',
+    });
+    if (!response.ok) return;
     navigate('/gamey', {
       state: {
         matchId,
@@ -97,9 +103,12 @@ function AppContent() {
     });
   };
 
-  const handleAbandon = () => {
+  const handleAbandon = async () => {
     if (!matchId) return;
-    localStorage.setItem(`abandoned:${matchId}`, 'true');
+    await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/online/sessions/${matchId}/abandon`, {
+      method: 'POST',
+    });
+    localStorage.removeItem(`abandoned:${matchId}`);
     setDismissedMatchId(matchId);
   };
 

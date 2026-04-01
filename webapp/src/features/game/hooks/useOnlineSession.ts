@@ -21,8 +21,17 @@ export interface OnlineSnapshotPayload {
 }
 
 interface SessionErrorPayload {
-  code: 'VERSION_CONFLICT' | 'NOT_YOUR_TURN' | 'INVALID_MOVE' | 'SESSION_NOT_FOUND' | 'RECONNECT_EXPIRED';
+  code:
+    | 'VERSION_CONFLICT'
+    | 'NOT_YOUR_TURN'
+    | 'INVALID_MOVE'
+    | 'SESSION_NOT_FOUND'
+    | 'RECONNECT_EXPIRED'
+    | 'SESSION_TERMINAL'
+    | 'UNAUTHORIZED'
+    | 'DUPLICATE_EVENT';
   message: string;
+  details?: unknown;
 }
 
 interface SessionStateSocketPayload {
@@ -62,6 +71,31 @@ export function useOnlineSession(matchId: string | null) {
       });
 
       if (!response.ok) {
+        let payload: Partial<SessionErrorPayload> | null = null;
+        try {
+          payload = (await response.json()) as Partial<SessionErrorPayload>;
+        } catch {
+          payload = null;
+        }
+
+        const code = payload?.code;
+        if (code) {
+          setSessionState(null);
+          setError({
+            code,
+            message: payload?.message ?? 'Online session request failed',
+            details: payload?.details,
+          });
+          return;
+        }
+
+        if (response.status === 404) {
+          setSessionState(null);
+          setError({ code: 'SESSION_NOT_FOUND', message: 'Session not found' });
+        } else if (response.status === 409) {
+          setSessionState(null);
+          setError({ code: 'SESSION_TERMINAL', message: 'Session is not active' });
+        }
         return;
       }
 
@@ -78,7 +112,7 @@ export function useOnlineSession(matchId: string | null) {
 
     const handleConnect = () => {
       setIsConnected(true);
-      onlineSocketClient.emit('match:join', { matchId });
+      onlineSocketClient.emit('match:join', { matchId, clientEventId: crypto.randomUUID() });
     };
 
     const handleDisconnect = () => {
@@ -152,6 +186,7 @@ export function useOnlineSession(matchId: string | null) {
       matchId: sessionState.matchId,
       move: { row, col },
       expectedVersion: sessionState.version,
+      clientEventId: crypto.randomUUID(),
     });
   };
 

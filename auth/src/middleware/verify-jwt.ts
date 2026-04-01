@@ -56,6 +56,7 @@ export function verifyToken(req: Request, res: Response) {
             valid: true,
             claims: {
                 sub: userId,
+                sid: decoded.sid,
                 username: decoded.username,
                 tokenType,
                 iat: decoded.iat,

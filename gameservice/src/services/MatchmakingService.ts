@@ -13,7 +13,7 @@ export interface RedisCommandClient {
   hGetAll(key: string): Promise<Record<string, string>>;
   del(key: string): Promise<number>;
   eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<number>;
-  set(key: string, value: string): Promise<string | null>;
+  set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<string | null>;
   get(key: string): Promise<string | null>;
 }
 
@@ -53,6 +53,7 @@ export class MatchmakingService {
   private readonly workerIntervalMs: number;
   private workerTimer: NodeJS.Timeout | null = null;
   private readonly pendingAssignments = new Map<number, OnlineMatchAssignment>();
+  private readonly assignmentTtlSec = Number(process.env.MM_ASSIGNMENT_TTL_SEC ?? 120);
 
   constructor(
     private readonly repository: MatchmakingRepository,
@@ -296,6 +297,8 @@ export class MatchmakingService {
         { userId: assignment.playerB.userId, username: assignment.playerB.username, symbol: 'R' },
       ],
       opponentType: 'HUMAN',
+      status: 'active',
+      closeReason: null,
       connection: {
         [assignment.playerA.userId]: 'CONNECTED',
         [assignment.playerB.userId]: 'CONNECTED',
@@ -308,7 +311,9 @@ export class MatchmakingService {
       messages: [],
     };
 
-    await redis.set(`session:${assignment.matchId}`, JSON.stringify(initial));
+    await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial));
+    await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId);
+    await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId);
   }
 
   private emitMatched(assignment: OnlineMatchAssignment): void {
@@ -333,8 +338,8 @@ export class MatchmakingService {
 
     if (this.deps.redis) {
       const raw = JSON.stringify(assignment);
-      await this.deps.redis.set(this.getAssignmentKey(assignment.playerA.userId), raw);
-      await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw);
+      await this.deps.redis.set(this.getAssignmentKey(assignment.playerA.userId), raw, { EX: this.assignmentTtlSec });
+      await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw, { EX: this.assignmentTtlSec });
       return;
     }
 

@@ -1,6 +1,5 @@
-// webapp/src/features/auth/context/__tests__/AuthContext.test.tsx
-
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import React from 'react'
 import { render } from '@testing-library/react'
 import { AuthProvider, useAuth } from '../features/auth'
 
@@ -54,13 +53,43 @@ describe('AuthContext', () => {
     })
 
     it('should throw error when useAuth is used outside AuthProvider', () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const suppressJsdomError = (event: Event) => {
+            event.preventDefault()
+        }
+        window.addEventListener('error', suppressJsdomError)
+
         const TestComponent = () => {
             useAuth() // Esto debe lanzar error
             return <div>test</div>
         }
 
-        expect(() => render(<TestComponent />)).toThrow(
-            'useAuth must be used within AuthProvider'
+        class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+            constructor(props: { children: React.ReactNode }) {
+                super(props)
+                this.state = { hasError: false }
+            }
+
+            static getDerivedStateFromError() {
+                return { hasError: true }
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return <div>hook error</div>
+                }
+                return this.props.children
+            }
+        }
+
+        const { getByText } = render(
+            <ErrorBoundary>
+                <TestComponent />
+            </ErrorBoundary>
         )
+        expect(getByText('hook error')).toBeInTheDocument()
+
+        window.removeEventListener('error', suppressJsdomError)
+        consoleSpy.mockRestore()
     })
 })

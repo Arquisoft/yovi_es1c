@@ -3,12 +3,20 @@ import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository
 import { OnlineChatMessage, OnlineSessionState } from '../types/online';
 import { TurnTimerService } from './TurnTimerService';
 import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
-export type MoveErrorCode = 'VERSION_CONFLICT' | 'NOT_YOUR_TURN' | 'INVALID_MOVE' | 'SESSION_NOT_FOUND' | 'RECONNECT_EXPIRED';
+export type MoveErrorCode =
+  | 'VERSION_CONFLICT'
+  | 'NOT_YOUR_TURN'
+  | 'INVALID_MOVE'
+  | 'SESSION_NOT_FOUND'
+  | 'RECONNECT_EXPIRED'
+  | 'SESSION_TERMINAL'
+  | 'UNAUTHORIZED'
+  | 'DUPLICATE_EVENT';
 
 export interface RedisSessionClient {
   get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<string | null>;
-  scan(cursor: number, options: { MATCH: string; COUNT: number }): Promise<{ cursor: number; keys: string[] }>;
+  set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<string | null>;
+  del(key: string): Promise<number>;
 }
 
 export interface SocketEmitter {
@@ -32,6 +40,10 @@ export class OnlineSessionError extends Error {
 }
 
 export class OnlineSessionService {
+  private readonly matchLocks = new Map<string, Promise<void>>();
+  private readonly dedupeTtlMs = 60_000;
+  private readonly dedupeTtlSec = Math.ceil(this.dedupeTtlMs / 1000);
+
   constructor(
       private readonly repository: OnlineSessionRepository,
       private readonly timerService: TurnTimerService,
@@ -59,6 +71,8 @@ export class OnlineSessionService {
         { ...players[1], symbol: 'R' },
       ],
       opponentType,
+      status: 'active',
+      closeReason: null,
       connection: {
         [players[0].userId]: 'CONNECTED',
         [players[1].userId]: 'CONNECTED',
@@ -121,63 +135,67 @@ export class OnlineSessionService {
   }
 
   async handleMove(matchId: string, userId: number, move: MoveCommand, expectedVersion: number): Promise<OnlineSessionState> {
-    const state = await this.getState(matchId);
-    if (!state) {
-      const error = new OnlineSessionError('SESSION_NOT_FOUND', 'Session not found');
-      onlineMoveErrors.inc({ code: error.code });
-      this.emitSessionError(matchId, userId, error);
-      throw error;
-    }
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) {
+        const error = new OnlineSessionError('SESSION_NOT_FOUND', 'Session not found');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
 
-    if (state.winner) {
-      const error = new OnlineSessionError('INVALID_MOVE', 'Session already finished');
-      onlineMoveErrors.inc({ code: error.code });
-      this.emitSessionError(matchId, userId, error);
-      throw error;
-    }
+      if (this.isTerminal(state)) {
+        const error = new OnlineSessionError('SESSION_TERMINAL', 'Session already finished');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
 
-    if (expectedVersion !== state.version) {
-      const error = new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch');
-      onlineMoveErrors.inc({ code: error.code });
-      this.emitSessionError(matchId, userId, error);
-      throw error;
-    }
+      if (expectedVersion !== state.version) {
+        const error = new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
 
-    const currentPlayer = state.players[state.turn];
-    if (currentPlayer.userId !== userId) {
-      const error = new OnlineSessionError('NOT_YOUR_TURN', 'Not your turn');
-      onlineMoveErrors.inc({ code: error.code });
-      this.emitSessionError(matchId, userId, error);
-      throw error;
-    }
+      const currentPlayer = state.players[state.turn];
+      if (currentPlayer.userId !== userId) {
+        const error = new OnlineSessionError('NOT_YOUR_TURN', 'Not your turn');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
 
-    if (!this.isMoveValid(state, move)) {
-      const error = new OnlineSessionError('INVALID_MOVE', 'Invalid move for current board state');
-      onlineMoveErrors.inc({ code: error.code });
-      this.emitSessionError(matchId, userId, error);
-      throw error;
-    }
+      if (!this.isMoveValid(state, move)) {
+        const error = new OnlineSessionError('INVALID_MOVE', 'Invalid move for current board state');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
 
-    const nextLayout = this.setCell(state.layout, move.row, move.col, currentPlayer.symbol);
-    const winner = this.resolveWinner(nextLayout, state.size);
-    const nextState: OnlineSessionState = {
-      ...state,
-      layout: nextLayout,
-      turn: winner ? state.turn : (state.turn === 0 ? 1 : 0),
-      version: state.version + 1,
-      timerEndsAt: winner ? state.timerEndsAt : this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
-      winner,
-    };
+      const nextLayout = this.setCell(state.layout, move.row, move.col, currentPlayer.symbol);
+      const winner = this.resolveWinner(nextLayout, state.size);
+      const nextState: OnlineSessionState = {
+        ...state,
+        layout: nextLayout,
+        turn: winner ? state.turn : (state.turn === 0 ? 1 : 0),
+        version: state.version + 1,
+        timerEndsAt: winner ? state.timerEndsAt : this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
+        winner,
+        status: winner ? 'finished' : 'active',
+        closeReason: winner ? 'winner' : null,
+      };
 
-    await this.saveState(nextState);
-    onlineMoves.inc();
+      await this.saveState(nextState);
+      onlineMoves.inc();
 
-    if (winner) {
-      onlineSessionEvents.inc({ event: 'finished' });
-    }
+      if (winner) {
+        onlineSessionEvents.inc({ event: 'finished' });
+      }
 
-    this.emitSessionState(nextState);
-    return nextState;
+      this.emitSessionState(nextState);
+      return nextState;
+    });
   }
 
   async playMove(matchId: string, userId: number, row: number, col: number, expectedVersion: number): Promise<OnlineSessionState> {
@@ -185,55 +203,77 @@ export class OnlineSessionService {
   }
 
   async markDisconnected(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
-    const state = await this.getState(matchId);
-    if (!state) return null;
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) return null;
+      if (this.isTerminal(state)) return state;
+      if (!state.players.some((player) => player.userId === userId)) return state;
 
-    state.connection[userId] = 'DISCONNECTED';
-    state.reconnectDeadline[userId] = now + this.reconnectGraceSec * 1000;
-    await this.saveState(state);
-    reconnectEvents.inc({ event: 'disconnected' });
+      state.connection[userId] = 'DISCONNECTED';
+      state.reconnectDeadline[userId] = now + this.reconnectGraceSec * 1000;
+      state.status = 'waiting_reconnect';
+      state.version += 1;
+      await this.saveState(state);
+      reconnectEvents.inc({ event: 'disconnected' });
 
-    return state;
+      return state;
+    });
   }
 
   async reconnect(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
-    const state = await this.getState(matchId);
-    if (!state) return null;
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) return null;
+      if (!state.players.some((player) => player.userId === userId)) {
+        throw new OnlineSessionError('UNAUTHORIZED', 'User is not part of this session');
+      }
+      if (this.isTerminal(state)) {
+        throw new OnlineSessionError('SESSION_TERMINAL', 'Session already finished');
+      }
 
-    const deadline = state.reconnectDeadline[userId];
-    if (deadline !== null && deadline <= now) {
-      const error = new OnlineSessionError('RECONNECT_EXPIRED', 'Reconnect grace period has expired');
-      reconnectEvents.inc({ event: 'expired' });
-      this.emitSessionError(matchId, userId, error);
-      throw error;
-    }
+      const deadline = state.reconnectDeadline[userId];
+      if (deadline !== null && deadline <= now) {
+        const error = new OnlineSessionError('RECONNECT_EXPIRED', 'Reconnect grace period has expired');
+        reconnectEvents.inc({ event: 'expired' });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
 
-    state.connection[userId] = 'CONNECTED';
-    state.reconnectDeadline[userId] = null;
-    await this.saveState(state);
-    reconnectEvents.inc({ event: 'reconnected' });
+      state.connection[userId] = 'CONNECTED';
+      state.reconnectDeadline[userId] = null;
+      state.status = 'active';
+      state.version += 1;
+      await this.saveState(state);
+      reconnectEvents.inc({ event: 'reconnected' });
 
-    return state;
+      return state;
+    });
   }
 
 
   async expireGrace(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
-    const state = await this.getState(matchId);
-    if (!state) return null;
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) return null;
+      if (this.isTerminal(state)) return state;
 
-    const deadline = state.reconnectDeadline[userId];
-    if (deadline && deadline <= now) {
-      state.connection[userId] = 'DISCONNECTED';
-      state.winner = state.players[0].userId === userId ? 'R' : 'B';
-      await this.saveState(state);
+      const deadline = state.reconnectDeadline[userId];
+      if (deadline && deadline <= now) {
+        state.connection[userId] = 'DISCONNECTED';
+        state.winner = state.players[0].userId === userId ? 'R' : 'B';
+        state.status = 'expired';
+        state.closeReason = 'expired';
+        state.version += 1;
+        await this.saveState(state);
 
-      reconnectEvents.inc({ event: 'expired_forfeit' });
-      onlineSessionEvents.inc({ event: 'finished' });
+        reconnectEvents.inc({ event: 'expired_forfeit' });
+        onlineSessionEvents.inc({ event: 'finished' });
 
-      this.emitSessionState(state);
-    }
+        this.emitSessionState(state);
+      }
 
-    return state;
+      return state;
+    });
   }
 
 
@@ -243,24 +283,14 @@ export class OnlineSessionService {
 
   async getActiveSessionForUser(userId: number): Promise<{ matchId: string; boardSize: number } | null> {
     if (this.deps.redis) {
-      let cursor = 0;
-      do {
-        const scanResult = await this.deps.redis.scan(cursor, {
-          MATCH: 'session:*',
-          COUNT: 100,
-        });
-        cursor = scanResult.cursor;
-        for (const key of scanResult.keys) {
-          const raw = await this.deps.redis.get(key);
-          if (!raw) continue;
-          const session = JSON.parse(raw) as OnlineSessionState;
-          if (session.winner !== null) continue;
-          if (session.players.some((player) => player.userId === userId)) {
-            return { matchId: session.matchId, boardSize: session.size };
-          }
-        }
-      } while (cursor !== 0);
-      return null;
+      const activeMatchId = await this.deps.redis.get(this.userActiveKey(userId));
+      if (!activeMatchId) return null;
+      const activeSession = await this.getState(activeMatchId);
+      if (!activeSession || this.isTerminal(activeSession) || !activeSession.players.some((player) => player.userId === userId)) {
+        await this.deps.redis.del(this.userActiveKey(userId));
+        return null;
+      }
+      return { matchId: activeSession.matchId, boardSize: activeSession.size };
     }
 
     const sessions = await this.repository.getAll();
@@ -273,7 +303,7 @@ export class OnlineSessionService {
     if (this.deps.redis) {
       const raw = await this.deps.redis.get(this.sessionKey(matchId));
       if (!raw) return null;
-      return JSON.parse(raw) as OnlineSessionState;
+      return this.parseOnlineSession(raw);
     }
 
     return this.repository.get(matchId);
@@ -282,6 +312,13 @@ export class OnlineSessionService {
   private async saveState(state: OnlineSessionState): Promise<void> {
     if (this.deps.redis) {
       await this.deps.redis.set(this.sessionKey(state.matchId), JSON.stringify(state));
+      for (const player of state.players) {
+        if (this.isTerminal(state)) {
+          await this.deps.redis.del(this.userActiveKey(player.userId));
+        } else {
+          await this.deps.redis.set(this.userActiveKey(player.userId), state.matchId);
+        }
+      }
       return;
     }
 
@@ -456,6 +493,90 @@ export class OnlineSessionService {
   }
 
   private sessionKey(matchId: string): string {
-    return `session:${matchId}`;
+    return `session:online:${matchId}`;
+  }
+
+  private userActiveKey(userId: number): string {
+    return `session:user-active:${userId}`;
+  }
+
+  private isTerminal(state: OnlineSessionState): boolean {
+    return state.status === 'finished'
+      || state.status === 'abandoned'
+      || state.status === 'expired'
+      || state.status === 'cancelled';
+  }
+
+  async abandon(matchId: string, userId: number): Promise<OnlineSessionState | null> {
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) return null;
+      if (!state.players.some((player) => player.userId === userId)) {
+        throw new OnlineSessionError('UNAUTHORIZED', 'User is not part of this session');
+      }
+      if (this.isTerminal(state)) {
+        return state;
+      }
+
+      state.status = 'abandoned';
+      state.closeReason = 'abandoned';
+      state.winner = state.players.find((player) => player.userId !== userId)?.symbol ?? 'DRAW';
+      state.version += 1;
+      await this.saveState(state);
+      this.emitSessionState(state);
+      return state;
+    });
+  }
+
+  async ensureNotDuplicateEvent(matchId: string, userId: number, clientEventId?: string): Promise<void> {
+    if (!clientEventId) return;
+    if (!this.deps.redis) return;
+    const key = this.clientEventKey(matchId, userId, clientEventId);
+    const lock = await this.deps.redis.set(key, '1', { EX: this.dedupeTtlSec, NX: true });
+    if (lock !== 'OK') {
+      throw new OnlineSessionError('DUPLICATE_EVENT', 'Duplicate client event');
+    }
+  }
+
+  private clientEventKey(matchId: string, userId: number, clientEventId: string): string {
+    return `session:dedupe:${matchId}:${userId}:${clientEventId}`;
+  }
+
+  private parseOnlineSession(raw: string): OnlineSessionState | null {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!this.isOnlineSessionState(parsed)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private isOnlineSessionState(value: unknown): value is OnlineSessionState {
+    if (!value || typeof value !== 'object') return false;
+    const state = value as Partial<OnlineSessionState>;
+    return typeof state.matchId === 'string'
+      && typeof state.size === 'number'
+      && Array.isArray(state.players)
+      && typeof state.status === 'string';
+  }
+
+  private async withMatchLock<T>(matchId: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.matchLocks.get(matchId) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.matchLocks.set(matchId, previous.then(() => current));
+
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      release?.();
+      if (this.matchLocks.get(matchId) === current) {
+        this.matchLocks.delete(matchId);
+      }
+    }
   }
 }

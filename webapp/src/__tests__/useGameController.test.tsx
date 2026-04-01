@@ -227,6 +227,43 @@ describe("useGameController", () => {
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
+    it("falls back from expert to hard when expert returns 5xx", async () => {
+        fetchMock
+            .mockResolvedValueOnce(new Response("gamey unavailable", { status: 503 }))
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+                    status: 200,
+                    headers: {"Content-Type": "application/json"},
+                })
+            );
+
+        const {result} = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => expect(result.current.state.loading).toBe(false));
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/choose/expert');
+        expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/choose/hard');
+    });
+
+    it("returns timeout message when gamey call aborts", async () => {
+        const timeoutError = new Error('aborted');
+        timeoutError.name = 'AbortError';
+        fetchMock.mockRejectedValue(timeoutError);
+
+        const {result} = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => expect(result.current.state.loading).toBe(false));
+        expect(result.current.state.error).toBe('Timeout comunicando con gamey');
+    });
+
     it("handles fetch rejection", async () => {
         fetchMock.mockRejectedValueOnce(new Error("Network issue"));
 

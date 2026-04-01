@@ -1,4 +1,3 @@
-// config.js
 export const BASE_URL = __ENV.TARGET_URL || 'http://localhost';
 
 export const TEST_USER = {

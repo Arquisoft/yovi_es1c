@@ -51,10 +51,11 @@ describe('useOnlineSession', () => {
       result.current.playMove(0, 0);
     });
 
-    expect(socketMock.emit).toHaveBeenCalledWith('move:play', {
+    expect(socketMock.emit).toHaveBeenNthCalledWith(2, 'move:play', {
       matchId: 'm1',
       move: { row: 0, col: 0 },
       expectedVersion: 2,
+      clientEventId: expect.any(String),
     });
   });
 

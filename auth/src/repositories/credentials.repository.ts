@@ -4,9 +4,19 @@ import { startDbOperationTimer, type DbOperation } from '../metrics.js';
 export type RefreshTokenRecord = {
     id: number;
     user_id: number;
+    session_id: string;
     token_hash: string;
     family_id: string;
     expires_at: string;
+    revoked_at: string | null;
+};
+
+export type SessionRecord = {
+    id: string;
+    user_id: number;
+    device_id: string;
+    device_name: string | null;
+    created_at: string;
     revoked_at: string | null;
 };
 
@@ -74,12 +84,110 @@ export class CredentialsRepository {
         }));
     }
 
-    async storeRefreshToken(userId: number, tokenHash: string, familyId: string, expiresAt: string): Promise<void> {
+    async createSession(sessionId: string, userId: number, deviceId: string, deviceName?: string): Promise<void> {
         return this.withDbMetrics('store_refresh_token', () => new Promise((resolve, reject) => {
             this.db.run(
-                `INSERT INTO refresh_tokens (user_id, token_hash, family_id, expires_at)
+                `INSERT INTO sessions (id, user_id, device_id, device_name)
                  VALUES (?, ?, ?, ?)`,
-                [userId, tokenHash, familyId, expiresAt],
+                [sessionId, userId, deviceId, deviceName ?? null],
+                (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                }
+            );
+        }));
+    }
+
+    async countActiveSessions(userId: number): Promise<number> {
+        return this.withDbMetrics('count_active_refresh_tokens', () => new Promise((resolve, reject) => {
+            this.db.get(
+                `SELECT COUNT(*) AS total
+                 FROM sessions
+                 WHERE user_id = ?
+                   AND revoked_at IS NULL`,
+                [userId],
+                (err, row: any) => {
+                    if (err) reject(err);
+                    else resolve(Number(row?.total ?? 0));
+                }
+            );
+        }));
+    }
+
+    async revokeOldestActiveSession(userId: number): Promise<number> {
+        return this.withDbMetrics('revoke_all_user_sessions', () => new Promise((resolve, reject) => {
+            this.db.serialize(() => {
+                const db = this.db;
+                this.db.get(
+                    `SELECT id
+                     FROM sessions
+                     WHERE user_id = ?
+                       AND revoked_at IS NULL
+                     ORDER BY datetime(created_at) ASC
+                     LIMIT 1`,
+                    [userId],
+                    (selectErr, row: any) => {
+                        if (selectErr) {
+                            reject(selectErr);
+                            return;
+                        }
+
+                        const sessionId = row?.id;
+                        if (!sessionId) {
+                            resolve(0);
+                            return;
+                        }
+
+                        this.db.run(
+                            `UPDATE sessions
+                             SET revoked_at = CURRENT_TIMESTAMP
+                             WHERE id = ? AND revoked_at IS NULL`,
+                            [sessionId],
+                            function(this: SqlRunContext, updateErr: Error | null) {
+                                if (updateErr) {
+                                    reject(updateErr);
+                                    return;
+                                }
+
+                                const changed = this.changes ?? 0;
+                                if (changed === 0) {
+                                    resolve(0);
+                                    return;
+                                }
+
+                                db.run(
+                                    `UPDATE refresh_tokens
+                                     SET revoked_at = CURRENT_TIMESTAMP
+                                     WHERE session_id = ? AND revoked_at IS NULL`,
+                                    [sessionId],
+                                    function(this: SqlRunContext, revokeTokenErr: Error | null) {
+                                        if (revokeTokenErr) {
+                                            reject(revokeTokenErr);
+                                            return;
+                                        }
+                                        resolve(this.changes ?? 0);
+                                    }
+                                );
+                            }
+                        );
+                    }
+                );
+            });
+        }));
+    }
+
+    async storeRefreshToken(
+        userId: number,
+        sessionId: string,
+        tokenHash: string,
+        familyId: string,
+        expiresAt: string
+    ): Promise<void> {
+        return this.withDbMetrics('store_refresh_token', () => new Promise((resolve, reject) => {
+            this.db.run(
+                `INSERT INTO refresh_tokens (user_id, session_id, token_hash, family_id, expires_at)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [userId, sessionId, tokenHash, familyId, expiresAt],
                 (err) => {
                     if (err) reject(err);
                     else resolve();
@@ -92,6 +200,7 @@ export class CredentialsRepository {
         return this.withDbMetrics('find_refresh_token_by_hash', () => new Promise((resolve, reject) => {
             this.db.get(
                 `SELECT id, user_id, token_hash, family_id, expires_at, revoked_at
+                 , session_id
                  FROM refresh_tokens
                  WHERE token_hash = ?`,
                 [tokenHash],
@@ -133,16 +242,61 @@ export class CredentialsRepository {
 
     async revokeAllUserSessions(userId: number): Promise<number> {
         return this.withDbMetrics('revoke_all_user_sessions', () => new Promise((resolve, reject) => {
-            this.db.run(
-                `UPDATE refresh_tokens
-                 SET revoked_at = CURRENT_TIMESTAMP
-                 WHERE user_id = ? AND revoked_at IS NULL`,
-                [userId],
-                function(this: SqlRunContext, err: Error | null) {
-                    if (err) reject(err);
-                    else resolve(this.changes ?? 0);
-                }
-            );
+            this.db.serialize(() => {
+                this.db.run(
+                    `UPDATE sessions
+                     SET revoked_at = CURRENT_TIMESTAMP
+                     WHERE user_id = ? AND revoked_at IS NULL`,
+                    [userId],
+                    (sessionErr) => {
+                        if (sessionErr) {
+                            reject(sessionErr);
+                            return;
+                        }
+
+                        this.db.run(
+                            `UPDATE refresh_tokens
+                             SET revoked_at = CURRENT_TIMESTAMP
+                             WHERE user_id = ? AND revoked_at IS NULL`,
+                            [userId],
+                            function(this: SqlRunContext, tokenErr: Error | null) {
+                                if (tokenErr) reject(tokenErr);
+                                else resolve(this.changes ?? 0);
+                            }
+                        );
+                    }
+                );
+            });
+        }));
+    }
+
+    async revokeSessionById(sessionId: string): Promise<number> {
+        return this.withDbMetrics('revoke_all_user_sessions', () => new Promise((resolve, reject) => {
+            this.db.serialize(() => {
+                this.db.run(
+                    `UPDATE sessions
+                     SET revoked_at = CURRENT_TIMESTAMP
+                     WHERE id = ? AND revoked_at IS NULL`,
+                    [sessionId],
+                    (sessionErr) => {
+                        if (sessionErr) {
+                            reject(sessionErr);
+                            return;
+                        }
+
+                        this.db.run(
+                            `UPDATE refresh_tokens
+                             SET revoked_at = CURRENT_TIMESTAMP
+                             WHERE session_id = ? AND revoked_at IS NULL`,
+                            [sessionId],
+                            function(this: SqlRunContext, tokenErr: Error | null) {
+                                if (tokenErr) reject(tokenErr);
+                                else resolve(this.changes ?? 0);
+                            }
+                        );
+                    }
+                );
+            });
         }));
     }
 

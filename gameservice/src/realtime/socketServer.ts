@@ -8,16 +8,7 @@ import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository
 import { TurnTimerService as TurnTimerSvc } from '../services/TurnTimerService';
 import { MovePayload } from '../types/online';
 import { activeSocketConnections } from '../metrics';
-interface AuthClaims {
-  sub: string;
-  username?: string;
-}
-
-interface AuthResult {
-  valid: boolean;
-  claims?: AuthClaims;
-}
-
+import { AuthVerifyClient } from '../services/AuthVerifyClient';
 interface AuthenticatedUser {
   userId: number;
   username: string;
@@ -29,11 +20,13 @@ interface QueueJoinPayload {
 
 interface MatchJoinPayload {
   matchId: string;
+  clientEventId?: string;
 }
 
 interface ChatMessagePayload {
   matchId: string;
   text: string;
+  clientEventId?: string;
 }
 
 interface SocketData {
@@ -67,9 +60,8 @@ interface RedisClientLike {
   hGetAll(key: string): Promise<Record<string, string>>;
   del(key: string): Promise<number>;
   eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<number>;
-  set(key: string, value: string): Promise<string | null>;
+  set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<string | null>;
   get(key: string): Promise<string | null>;
-  scan(cursor: number, options: { MATCH: string; COUNT: number }): Promise<{ cursor: number; keys: string[] }>;
 }
 
 interface SocketIoConstructor {
@@ -226,6 +218,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
         'match:join',
         safeAsync<MatchJoinPayload | undefined>(socket, async (payload) => {
           if (!payload) return;
+          await sessionService.ensureNotDuplicateEvent(payload.matchId, user.userId, payload.clientEventId);
 
           const state = await sessionService.reconnect(payload.matchId, user.userId);
           if (!state) {
@@ -258,6 +251,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
         'move:play',
         safeAsync<MovePayload | undefined>(socket, async (payload) => {
           if (!payload) return;
+          await sessionService.ensureNotDuplicateEvent(payload.matchId, user.userId, payload.clientEventId);
           await sessionService.handleMove(
               payload.matchId,
               user.userId,
@@ -288,7 +282,17 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
         'chat:message',
         safeAsync<ChatMessagePayload | undefined>(socket, async (payload) => {
           if (!payload) return;
+          await sessionService.ensureNotDuplicateEvent(payload.matchId, user.userId, payload.clientEventId);
           await sessionService.addChatMessage(payload.matchId, user.userId, user.username, payload.text);
+        }),
+    );
+
+    socket.on(
+        'session:abandon',
+        safeAsync<{ matchId: string; clientEventId?: string } | undefined>(socket, async (payload) => {
+          if (!payload) return;
+          await sessionService.ensureNotDuplicateEvent(payload.matchId, user.userId, payload.clientEventId);
+          await sessionService.abandon(payload.matchId, user.userId);
         }),
     );
 
@@ -329,9 +333,8 @@ function createRedisBridge(client: RedisClientLike): RedisCommandClient & RedisS
     hGetAll: (key) => client.hGetAll(key),
     del: (key) => client.del(key),
     eval: (script, options) => client.eval(script, options),
-    set: (key, value) => client.set(key, value),
+    set: (key, value, options) => client.set(key, value, options),
     get: (key) => client.get(key),
-    scan: (cursor, options) => client.scan(cursor, options),
   };
 }
 
@@ -341,24 +344,22 @@ async function verifySocketToken(token: string): Promise<AuthenticatedUser | nul
     throw new Error('AUTH_SERVICE_URL is not configured');
   }
 
-  const response = await fetch(`${authServiceUrl}/api/auth/verify`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const claims = await getSocketVerifyClient(authServiceUrl).verifyToken(token);
+  if (!claims?.sub) return null;
 
-  if (!response.ok) return null;
-
-  const payload = (await response.json()) as AuthResult;
-  if (!payload.valid || !payload.claims?.sub) return null;
-
-  const userId = Number(payload.claims.sub);
+  const userId = Number(claims.sub);
   if (!Number.isFinite(userId)) return null;
 
   return {
     userId,
-    username: payload.claims.username ?? `user-${payload.claims.sub}`,
+    username: claims.username ?? `user-${claims.sub}`,
   };
+}
+
+let socketVerifyClient: AuthVerifyClient | null = null;
+function getSocketVerifyClient(authServiceUrl: string): AuthVerifyClient {
+  if (!socketVerifyClient) {
+    socketVerifyClient = new AuthVerifyClient(authServiceUrl);
+  }
+  return socketVerifyClient;
 }
