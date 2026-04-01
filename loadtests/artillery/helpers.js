@@ -1,9 +1,14 @@
 const https = require('https');
 const http = require('http');
+
 const tokenCache = {};
 
 async function getAuthToken(context, events, done) {
-    const uid = context._uid;
+    if (!context.vars.__uid) {
+        context.vars.__uid = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+    const uid = context.vars.__uid;
+
     const baseUrl = process.env.TARGET_URL || 'http://localhost';
     const password = process.env.LOADTEST_PASSWORD || 'loadtest_pass_123';
 
@@ -12,67 +17,57 @@ async function getAuthToken(context, events, done) {
         return done();
     }
 
-    const username = `artillery_vu_${uid || Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const url = new URL(`${baseUrl}/api/auth`);
-    const lib = url.protocol === 'https:' ? https : http;
-    const baseOptions = {
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'https:' ? 443 : 80),
-        headers: { 'Content-Type': 'application/json' },
-    };
+    const username = `artillery_vu_${uid}`;
 
-    // 1. Registrar
-    const registerBody = JSON.stringify({ username, password });
-    await new Promise((resolve) => {
-        const req = lib.request(
-            {
-                ...baseOptions,
-                path: `${url.pathname}/register`,
+    function httpRequest(url, path, body) {
+        const parsed = new URL(url);
+        const lib = parsed.protocol === 'https:' ? https : http;
+        const bodyStr = JSON.stringify(body);
+        return new Promise((resolve, reject) => {
+            const req = lib.request({
+                hostname: parsed.hostname,
+                port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+                path,
                 method: 'POST',
-                headers: { ...baseOptions.headers, 'Content-Length': Buffer.byteLength(registerBody) },
-            },
-            (res) => { res.resume(); res.on('end', resolve); }
-        );
-        req.on('error', resolve);
-        req.write(registerBody);
-        req.end();
-    });
-
-    // 2. Login
-    const loginBody = JSON.stringify({ username, password });
-    const loginPath = new URL(`${baseUrl}/api/auth/login`);
-
-    const token = await new Promise((resolve, reject) => {
-        const req = lib.request(
-            {
-                ...baseOptions,
-                hostname: loginPath.hostname,
-                port: loginPath.port || (loginPath.protocol === 'https:' ? 443 : 80),
-                path: loginPath.pathname,
-                method: 'POST',
-                headers: { ...baseOptions.headers, 'Content-Length': Buffer.byteLength(loginBody) },
-            },
-            (res) => {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(bodyStr),
+                },
+            }, (res) => {
                 let data = '';
                 res.on('data', (chunk) => (data += chunk));
                 res.on('end', () => {
-                    try { resolve(JSON.parse(data).accessToken || null); }
-                    catch { resolve(null); }
+                    try { resolve(JSON.parse(data)); }
+                    catch { resolve({}); }
                 });
-            }
-        );
-        req.on('error', reject);
-        req.write(loginBody);
-        req.end();
-    });
-
-    if (!token) {
-        events.emit('error', 'getAuthToken: login failed, no token received');
-        return done(new Error('Missing token'));
+            });
+            req.on('error', reject);
+            req.write(bodyStr);
+            req.end();
+        });
     }
 
-    tokenCache[uid] = token;
-    context.vars.token = token;
+    try {
+        // Register (ignorar errores si ya existe)
+        await httpRequest(baseUrl, '/api/auth/register', { username, password }).catch(() => {});
+
+        // Login
+        const loginRes = await httpRequest(baseUrl, '/api/auth/login', { username, password });
+        const token = loginRes?.accessToken || null;
+
+        if (!token) {
+            events.emit('error', `AUTH_FAILED: no token for ${username}`);
+            context.vars.token = null;
+            return done();
+        }
+
+        tokenCache[uid] = token;
+        context.vars.token = token;
+    } catch (err) {
+        events.emit('error', `AUTH_ERROR: ${err.message}`);
+        context.vars.token = null;
+    }
+
     return done();
 }
 

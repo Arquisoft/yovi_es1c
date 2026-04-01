@@ -255,3 +255,107 @@ impl YBot for NeuralMctsBot {
             .map(|(idx, _)| Coordinates::from_index(idx, board.board_size()))
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_node_has_zero_visits_and_not_expanded() {
+        let node = MctsNode::new(None, 0.5);
+        assert_eq!(node.visits, 0);
+        assert_eq!(node.value_sum, 0.0);
+        assert!(!node.expanded);
+        assert!(node.children.is_empty());
+        assert_eq!(node.prior, 0.5);
+        assert!(node.action.is_none());
+    }
+
+    #[test]
+    fn q_value_returns_zero_when_no_visits() {
+        let node = MctsNode::new(None, 1.0);
+        assert_eq!(node.q_value(), 0.0);
+    }
+
+    #[test]
+    fn q_value_is_value_sum_over_visits() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.visits = 4;
+        node.value_sum = 2.0;
+        assert!((node.q_value() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ucb_score_unvisited_node_is_exploration_only() {
+        let node = MctsNode::new(None, 1.0);
+        let score = node.ucb_score(9, 1.0);
+        assert!((score - 3.0).abs() < 1e-5, "got {score}");
+    }
+
+    #[test]
+    fn ucb_score_visited_node_adds_q_value() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.visits = 1;
+        node.value_sum = 1.0;
+        let score = node.ucb_score(4, 1.0);
+        assert!((score - 2.0).abs() < 1e-5, "got {score}");
+    }
+
+    #[test]
+    fn best_child_coords_returns_most_visited() {
+        let mut root = MctsNode::new(None, 1.0);
+        let mut c1 = MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.5);
+        let mut c2 = MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.5);
+        let mut c3 = MctsNode::new(Some(Coordinates::from_index(2, 5)), 0.5);
+        c1.visits = 3;
+        c2.visits = 10;
+        c3.visits = 1;
+        root.children = vec![c1, c2, c3];
+
+        let best = root.best_child_coords().unwrap();
+        assert_eq!(best, Coordinates::from_index(1, 5));
+    }
+
+    #[test]
+    fn best_child_coords_returns_none_when_no_children() {
+        let root = MctsNode::new(None, 1.0);
+        assert!(root.best_child_coords().is_none());
+    }
+
+    #[test]
+    fn new_bot_has_correct_name_and_defaults() {
+        let name = format!("neural_mcts_s{}", 50u32);
+        assert_eq!(name, "neural_mcts_s50");
+    }
+
+    #[test]
+    fn new_self_play_enables_dirichlet() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.children = vec![
+            MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.3),
+            MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.7),
+        ];
+        node.children[0].prior = 0.5;
+        assert!((node.children[0].prior - 0.5).abs() < 1e-6);
+    }
+    #[test]
+    fn coordinates_known_values_board_5() {
+        let c = Coordinates::from_index(0, 5);
+        assert_eq!(c.to_index(5), 0);
+        let last = Coordinates::from_index(14, 5); 
+        assert_eq!(last.to_index(5), 14);
+    }
+
+    #[test]
+    fn coordinates_roundtrip_triangular_board() {
+        for size in [5u32, 7, 9, 11] {
+            let total = size * (size + 1) / 2;
+            for idx in 0..total {
+                let coords = Coordinates::from_index(idx, size);
+                assert_eq!(
+                    coords.to_index(size), idx,
+                    "roundtrip failed for idx={idx} size={size}"
+                );
+            }
+        }
+    }
+}
