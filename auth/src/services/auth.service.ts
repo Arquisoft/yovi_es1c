@@ -12,10 +12,12 @@ import {
     decrementActiveRefreshTokens,
     incrementActiveRefreshTokens,
     recordLoginAttempt,
+    recordSimpleLoginAttempt,
     recordRefreshAttempt,
     recordRefreshTokenIssued,
     recordRefreshTokenRevocation,
     recordRegisterAttempt,
+    recordTokensIssued,
     startBcryptCompareTimer,
     startBcryptHashTimer,
     startJwtSignTimer,
@@ -87,6 +89,7 @@ export class AuthService {
 
             if (!user) {
                 recordLoginAttempt('bad_credentials');
+                recordSimpleLoginAttempt('failure');
                 throw new BadCredentialsError();
             }
 
@@ -101,6 +104,7 @@ export class AuthService {
 
             if (!isPasswordValid) {
                 recordLoginAttempt('bad_credentials');
+                recordSimpleLoginAttempt('failure');
                 throw new BadCredentialsError();
             }
 
@@ -113,6 +117,7 @@ export class AuthService {
             const session = await this.issueSession(user.id, user.username);
 
             recordLoginAttempt('success');
+            recordSimpleLoginAttempt('success');
 
             return {
                 ...session,
@@ -127,6 +132,7 @@ export class AuthService {
             }
 
             recordLoginAttempt('unexpected_error');
+            recordSimpleLoginAttempt('failure');
             throw new UnexpectedError();
         }
     }
@@ -233,6 +239,7 @@ export class AuthService {
         const endSign = startJwtSignTimer();
 
         try {
+            recordTokensIssued();
             return jwt.sign(
                 {
                     ...(username ? { username } : {}),

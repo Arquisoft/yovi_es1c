@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { recordVerifyAttempt, startJwtVerifyTimer } from '../metrics.js';
+import { recordTokenVerification, recordVerifyAttempt, startJwtVerifyTimer } from '../metrics.js';
 
 const UNAUTHORIZED_RESPONSE = { valid: false };
 
@@ -24,6 +24,7 @@ export function verifyToken(req: Request, res: Response) {
 
     if (!token) {
         recordVerifyAttempt('missing_token');
+        recordTokenVerification('invalid');
         return res.status(401).json(UNAUTHORIZED_RESPONSE);
     }
 
@@ -31,6 +32,7 @@ export function verifyToken(req: Request, res: Response) {
 
     if (!jwtSecret) {
         recordVerifyAttempt('missing_secret');
+        recordTokenVerification('invalid');
         return res.status(401).json(UNAUTHORIZED_RESPONSE);
     }
 
@@ -43,10 +45,12 @@ export function verifyToken(req: Request, res: Response) {
 
         if (!userId || tokenType !== 'access') {
             recordVerifyAttempt('wrong_token_type');
+            recordTokenVerification('invalid');
             return res.status(401).json(UNAUTHORIZED_RESPONSE);
         }
 
         recordVerifyAttempt('success');
+        recordTokenVerification('valid');
 
         return res.status(200).json({
             valid: true,
@@ -58,8 +62,11 @@ export function verifyToken(req: Request, res: Response) {
                 exp: decoded.exp,
             },
         });
-    } catch {
+    } catch (error) {
+        const isExpired = error instanceof jwt.TokenExpiredError;
+
         recordVerifyAttempt('invalid_token');
+        recordTokenVerification(isExpired ? 'expired' : 'invalid');
         return res.status(401).json(UNAUTHORIZED_RESPONSE);
     } finally {
         endVerify();

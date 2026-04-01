@@ -77,6 +77,26 @@ export const authLoginAttemptsTotal = new Counter({
     registers: [metricsRegistry],
 });
 
+export const loginAttempts = new Counter({
+    name: 'auth_login_attempts_simple_total',
+    help: 'Login attempts grouped by success or failure',
+    labelNames: ['result'] as const,
+    registers: [metricsRegistry],
+});
+
+export const tokensIssued = new Counter({
+    name: 'auth_tokens_issued_total',
+    help: 'Total tokens issued by the auth service',
+    registers: [metricsRegistry],
+});
+
+export const tokenVerifications = new Counter({
+    name: 'auth_token_verifications_total',
+    help: 'Token verification attempts grouped by validity',
+    labelNames: ['result'] as const,
+    registers: [metricsRegistry],
+});
+
 export const authRefreshAttemptsTotal = new Counter({
     name: 'auth_refresh_attempts_total',
     help: 'Refresh attempts by result',
@@ -171,12 +191,20 @@ export function recordLoginAttempt(result: LoginResult) {
     authLoginAttemptsTotal.inc({ result });
 }
 
+export function recordSimpleLoginAttempt(result: 'success' | 'failure') {
+    loginAttempts.inc({ result });
+}
+
 export function recordRefreshAttempt(result: RefreshResult) {
     authRefreshAttemptsTotal.inc({ result });
 }
 
 export function recordVerifyAttempt(result: VerifyResult) {
     authVerifyAttemptsTotal.inc({ result });
+}
+
+export function recordTokenVerification(result: 'valid' | 'invalid' | 'expired') {
+    tokenVerifications.inc({ result });
 }
 
 export function recordAuthError(type: string) {
@@ -209,6 +237,11 @@ export function startDbOperationTimer(operation: DbOperation) {
 
 export function recordRefreshTokenIssued(count = 1) {
     authRefreshTokensIssuedTotal.inc(count);
+    tokensIssued.inc(count);
+}
+
+export function recordTokensIssued(count = 1) {
+    tokensIssued.inc(count);
 }
 
 export function recordRefreshTokenRevocation(reason: RefreshRevocationReason, count = 1) {

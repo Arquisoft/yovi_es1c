@@ -13,3 +13,7 @@ scrape_configs:
   - job_name: 'auth-service'
     static_configs:
       - targets: ['auth:3001']
+
+  - job_name: 'gamey-service'
+    static_configs:
+      - targets: ['gamey:4000']
