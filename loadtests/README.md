@@ -30,10 +30,10 @@ docker-compose -f docker-compose.loadtest.yml --profile matchmaking up
 
 ```bash
 # Online session full turn cycle
-docker-compose -f loadtests/docker-compose.loadtest.yml --profile online up
+docker-compose -f docker-compose.loadtest.yml --profile online up
 
 # Turn timeout + bot fallback simulation
-docker-compose -f loadtests/docker-compose.loadtest.yml --profile timeout up
+docker-compose -f docker-compose.loadtest.yml --profile timeout up
 ```
 
 ## Viewing results in Grafana

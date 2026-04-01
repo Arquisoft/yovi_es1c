@@ -1,14 +1,13 @@
 config:
   target: "{{ $env.TARGET_URL }}"
   phases:
-    - duration: 60
-      arrivalRate: 5
-      name: "Warm up"
+    - duration: 10
+      arrivalCount: 40
+      name: "Initial burst"
     - duration: 120
-      arrivalRate: 20
+      arrivalRate: 5
       name: "Sustained load"
-    - duration: 30
-      arrivalRate: 0
+    - pause: 35
       name: "Cool down"
   engines:
     socketio-v3:
@@ -35,12 +34,14 @@ scenarios:
           capture:
             json: "$.matchId"
             as: "matchId"
+          timeout: 35
 
       - emit:
           - "match:join"
           - matchId: "{{ matchId }}"
         response:
           on: "session:state"
+          timeout: 10
 
       - think: 1
 
