@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderWithProviders, setupAuthenticatedUser, clearAuth, screen } from './test-utils';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import * as useGameControllerModule from '../features/game/hooks/useGameController';
 import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from '../features/game/index.ts';
@@ -220,5 +220,70 @@ describe('GameUI Component', () => {
         } as any);
         renderWithConfig({ boardSize: 8, mode: 'ONLINE', difficulty: 'easy', matchId: 'm3' });
         expect(screen.getByText(/Ganador/i)).toBeInTheDocument();
+    });
+    it('shows fallback component NoConfigFallback when no state is provided', () => {
+        renderWithProviders(
+            <MemoryRouter initialEntries={['/gamey']}>
+                <Routes><Route path="/gamey" element={<GameUI />} /></Routes>
+            </MemoryRouter>,
+            { withRouter: false },
+        );
+        // El componente NoConfigFallback renderiza un botón de navegación
+        expect(screen.getByRole('button')).toBeInTheDocument();
+        expect(screen.getByText(/No se encontró la configuración de la partida/i)).toBeInTheDocument();
+    });
+
+    it('calls onNavigate when NoConfigFallback button is clicked', () => {
+        renderWithProviders(
+            <MemoryRouter initialEntries={['/gamey']}>
+                <Routes><Route path="/gamey" element={<GameUI />} /></Routes>
+            </MemoryRouter>,
+            { withRouter: false },
+        );
+        fireEvent.click(screen.getByRole('button'));
+        // navega hacia atrás / a /create-match
+        expect(screen.queryByText(/No se encontró/i)).not.toBeInTheDocument();
+    });
+
+    it('navigates to /create-match and alerts on terminal online error', async () => {
+        const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+        vi.mocked(useOnlineSession).mockReturnValue({
+            sessionState: null,
+            error: { code: 'RECONNECT_EXPIRED', message: 'expired' },
+            connectionStatus: 'DISCONNECTED',
+            playMove: vi.fn(),
+        } as any);
+        renderWithConfig({ boardSize: 8, mode: 'ONLINE', difficulty: 'easy', matchId: 'm5' });
+        await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('La partida ya no está disponible'));
+        alertSpy.mockRestore();
+    });
+
+    it('does NOT navigate on non-terminal online error', async () => {
+        const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+        vi.mocked(useOnlineSession).mockReturnValue({
+            sessionState: null,
+            error: { code: 'NOT_YOUR_TURN', message: 'Wait' },
+            connectionStatus: 'CONNECTED',
+            playMove: vi.fn(),
+        } as any);
+        renderWithConfig({ boardSize: 8, mode: 'ONLINE', difficulty: 'easy', matchId: 'm6' });
+        await waitFor(() => {}, { timeout: 200 });
+        expect(alertSpy).not.toHaveBeenCalled();
+        alertSpy.mockRestore();
+    });
+
+    it('uses Bot as second player name in BOT mode', () => {
+        renderWithConfig({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+        // El segundo jugador del mock local es 'Bot' en BOT mode
+        expect(screen.getByText(/Bot/i)).toBeInTheDocument();
+    });
+
+    it('uses Jugador 2 as second player name in LOCAL_2P mode', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: { ...mockState, gameMode: 'LOCAL_2P' as const },
+            actions: mockActions,
+        });
+        renderWithConfig({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
+        expect(screen.getByText(/Jugador 2/i)).toBeInTheDocument();
     });
 });
