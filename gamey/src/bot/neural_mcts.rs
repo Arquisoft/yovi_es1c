@@ -341,7 +341,7 @@ mod tests {
     fn coordinates_known_values_board_5() {
         let c = Coordinates::from_index(0, 5);
         assert_eq!(c.to_index(5), 0);
-        let last = Coordinates::from_index(14, 5); 
+        let last = Coordinates::from_index(14, 5);
         assert_eq!(last.to_index(5), 14);
     }
 
@@ -357,5 +357,65 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn mcts_node_expansion_sets_expanded_flag() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.expanded = true;
+        node.children = vec![
+            MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.5),
+            MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.5),
+        ];
+        assert!(node.expanded);
+        assert_eq!(node.children.len(), 2);
+    }
+
+    #[test]
+    fn ucb_score_zero_parent_visits_does_not_nan() {
+        let node = MctsNode::new(None, 0.5);
+        let score = node.ucb_score(0, std::f32::consts::SQRT_2);
+        // sqrt(0) = 0 → exploration = 0, q = 0 → score = 0
+        assert_eq!(score, 0.0);
+        assert!(!score.is_nan());
+    }
+
+    #[test]
+    fn ucb_score_high_prior_beats_low_prior_when_unvisited() {
+        let high = MctsNode::new(None, 0.9);
+        let low  = MctsNode::new(None, 0.1);
+        assert!(high.ucb_score(100, 1.0) > low.ucb_score(100, 1.0));
+    }
+
+    #[test]
+    fn q_value_negative_value_sum() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.visits = 2;
+        node.value_sum = -1.0;
+        assert!((node.q_value() - (-0.5)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn best_child_coords_tie_returns_one_of_them() {
+        let mut root = MctsNode::new(None, 1.0);
+        let mut c1 = MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.5);
+        let mut c2 = MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.5);
+        c1.visits = 5;
+        c2.visits = 5;
+        root.children = vec![c1, c2];
+        let best = root.best_child_coords().unwrap();
+        assert_eq!(best, Coordinates::from_index(1, 5));
+    }
+
+    #[test]
+    fn mcts_node_action_none_is_root_convention() {
+        let root = MctsNode::new(None, 1.0);
+        assert!(root.action.is_none(), "root node should have no action");
+    }
+
+    #[test]
+    fn mcts_node_debug_format_works() {
+        let node = MctsNode::new(Some(Coordinates::from_index(3, 5)), 0.7);
+        let s = format!("{:?}", node);
+        assert!(s.contains("MctsNode"));
     }
 }

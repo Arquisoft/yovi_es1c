@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { fireEvent } from '@testing-library/react';
 import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import * as useGameControllerModule from '../features/game/hooks/useGameController';
+import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from '../features/game/index.ts';
 
 vi.mock('../features/game/hooks/useGameController');
 vi.mock('../features/game/hooks/useOnlineSession', () => ({ useOnlineSession: vi.fn() }));
@@ -120,5 +121,64 @@ describe('GameUI Component', () => {
         expect(screen.getByText('Chat')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'BoardMock' }));
         expect(playMove).toHaveBeenCalledWith(0, 0);
+    });
+
+    describe('resolveCurrentTurnLabel', () => {
+        const players = [
+            { username: 'Alice' },
+            { username: 'Bob' },
+        ];
+
+        it('online turn=0 → primer jugador', () => {
+            expect(resolveCurrentTurnLabel(true, 0, players, 'ONLINE')).toBe('Alice');
+        });
+        it('online turn=1 → segundo jugador', () => {
+            expect(resolveCurrentTurnLabel(true, 1, players, 'ONLINE')).toBe('Bob');
+        });
+        it('online sin jugadores → fallback', () => {
+            expect(resolveCurrentTurnLabel(true, 0, [], 'ONLINE')).toBe('Jugador 1');
+            expect(resolveCurrentTurnLabel(true, 1, [], 'ONLINE')).toBe('Jugador 2');
+        });
+        it('local BOT turn=0 → Jugador 1', () => {
+            expect(resolveCurrentTurnLabel(false, 0, players, 'BOT')).toBe('Jugador 1');
+        });
+        it('local BOT turn=1 → Bot', () => {
+            expect(resolveCurrentTurnLabel(false, 1, players, 'BOT')).toBe('Bot');
+        });
+        it('local LOCAL_2P turn=1 → Jugador 2', () => {
+            expect(resolveCurrentTurnLabel(false, 1, players, 'LOCAL_2P')).toBe('Jugador 2');
+        });
+    });
+
+    describe('resolveWinnerLabel', () => {
+        const players = [{ username: 'Alice' }, { username: 'Bob' }];
+
+        it('B → primer jugador', () => {
+            expect(resolveWinnerLabel('B', players)).toBe('Alice');
+        });
+        it('R → segundo jugador', () => {
+            expect(resolveWinnerLabel('R', players)).toBe('Bob');
+        });
+        it('DRAW → Empate', () => {
+            expect(resolveWinnerLabel('DRAW', players)).toBe('Empate');
+        });
+        it('null → null', () => {
+            expect(resolveWinnerLabel(null, players)).toBeNull();
+        });
+        it('B sin jugadores → fallback', () => {
+            expect(resolveWinnerLabel('B', [])).toBe('Jugador 1');
+        });
+    });
+
+    describe('resolveGameOverText', () => {
+        it('null → mensaje genérico', () => {
+            expect(resolveGameOverText(null)).toBe('¡Partida terminada!');
+        });
+        it('Empate → mensaje empate', () => {
+            expect(resolveGameOverText('Empate')).toBe('¡Partida terminada en empate!');
+        });
+        it('nombre → mensaje ganador', () => {
+            expect(resolveGameOverText('Alice')).toBe('¡Ganador: Alice!');
+        });
     });
 });
