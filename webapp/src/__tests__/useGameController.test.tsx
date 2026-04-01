@@ -694,4 +694,69 @@ describe("useGameController", () => {
             expect(result.current.state.error).toBe("Respuesta inválida del bot.");
         });
     });
+    it("handles 401 bot error", async () => {
+        fetchMock.mockResolvedValueOnce(new Response("", { status: 401 }));
+        const { result } = renderHook(() => useGameController());
+        await act(async () => { await result.current.actions.handleCellClick(0, 0); });
+        await waitFor(() => {
+            expect(result.current.state.error).toBe("No estás autenticado. Por favor inicia sesión.");
+            expect(result.current.state.loading).toBe(false);
+        });
+    });
+
+    it("handles 400 bot error", async () => {
+        fetchMock.mockResolvedValueOnce(new Response("", { status: 400 }));
+        const { result } = renderHook(() => useGameController());
+        await act(async () => { await result.current.actions.handleCellClick(0, 0); });
+        await waitFor(() => {
+            expect(result.current.state.error).toBe("Movimiento inválido enviado al servidor.");
+        });
+    });
+
+    it("handles unknown error status with text body", async () => {
+        fetchMock.mockResolvedValueOnce(new Response("server exploded", { status: 500 }));
+        const { result } = renderHook(() => useGameController());
+        await act(async () => { await result.current.actions.handleCellClick(0, 0); });
+        await waitFor(() => {
+            expect(result.current.state.error).toContain("Error del bot:");
+        });
+    });
+
+    it("newGame resets state", () => {
+        const { result } = renderHook(() => useGameController());
+        act(() => { result.current.actions.changeSize(2); });
+        act(() => { result.current.actions.newGame(); });
+        expect(result.current.state.gameOver).toBe(false);
+        expect(result.current.state.error).toBe(null);
+        expect(result.current.state.message).toBe("Click a cell to play");
+    });
+
+    it("changeSize updates board size and clears error", () => {
+        const { result } = renderHook(() => useGameController());
+        act(() => { result.current.actions.changeSize(3); });
+        expect(result.current.state.gameState.size).toBe(3);
+        expect(result.current.state.error).toBe(null);
+    });
+
+    it("isBoardFull is false on empty board", () => {
+        const { result } = renderHook(() => useGameController(4));
+        expect(result.current.state.isBoardFull).toBe(false);
+    });
+
+    it("bot network error reverts state and sets error message", async () => {
+        fetchMock.mockRejectedValueOnce(new Error("Network failure"));
+        const { result } = renderHook(() => useGameController());
+        await act(async () => { await result.current.actions.handleCellClick(0, 0); });
+        await waitFor(() => {
+            expect(result.current.state.error).toBe("Network failure");
+            expect(result.current.state.loading).toBe(false);
+        });
+    });
+
+    it("selectMode switches to LOCAL_2P and resets", () => {
+        const { result } = renderHook(() => useGameController());
+        act(() => { result.current.actions.selectMode("LOCAL_2P"); });
+        expect(result.current.state.gameMode).toBe("LOCAL_2P");
+        expect(result.current.state.gameOver).toBe(false);
+    });
 });

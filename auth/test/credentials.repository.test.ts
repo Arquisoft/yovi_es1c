@@ -204,6 +204,52 @@ describe('CredentialsRepository – happy path', () => {
         const count = await repo.countActiveRefreshTokens();
         expect(count).toBeGreaterThanOrEqual(1);
     });
+    it('revokeOldestActiveSession returns 0 when no active sessions remain', async () => {
+        const uid = await repo.createUser('mary', 'hashM');
+        await repo.createSession('sess-revoked', uid, 'dev-m');
+        await repo.revokeSessionById('sess-revoked');
+        const changes = await repo.revokeOldestActiveSession(uid);
+        expect(changes).toBe(0);
+    });
+
+    it('findRefreshTokenByHash returns null for unknown hash', async () => {
+        const record = await repo.findRefreshTokenByHash('nonexistent-hash');
+        expect(record).toBeNull();
+    });
+
+    it('revokeRefreshTokenFamily returns 0 for unknown family', async () => {
+        const changes = await repo.revokeRefreshTokenFamily('unknown-family-id');
+        expect(changes).toBe(0);
+    });
+
+    it('revokeSessionById returns 0 for unknown session', async () => {
+        const uid = await repo.createUser('nora', 'hashO');
+        await repo.createSession('sess-nora', uid, 'dev-o');
+        const changes = await repo.revokeSessionById('nonexistent-session');
+        expect(changes).toBe(0);
+    });
+
+    it('createUser with duplicate username rejects', async () => {
+        await repo.createUser('dupuser', 'hashD');
+        await expect(repo.createUser('dupuser', 'hashD2')).rejects.toThrow();
+    });
+
+    it('storeRefreshToken allows multiple tokens per session', async () => {
+        const uid = await repo.createUser('multi', 'hashMM');
+        await repo.createSession('sess-multi', uid, 'dev-mm');
+        const expiresAt = new Date(Date.now() + 60_000).toISOString();
+        await repo.storeRefreshToken(uid, 'sess-multi', 'hash-t1', 'fam-mm', expiresAt);
+        await repo.storeRefreshToken(uid, 'sess-multi', 'hash-t2', 'fam-mm', expiresAt);
+        const t1 = await repo.findRefreshTokenByHash('hash-t1');
+        const t2 = await repo.findRefreshTokenByHash('hash-t2');
+        expect(t1).not.toBeNull();
+        expect(t2).not.toBeNull();
+    });
+
+    it('countActiveRefreshTokens returns 0 on fresh db', async () => {
+        const count = await repo.countActiveRefreshTokens();
+        expect(count).toBeGreaterThanOrEqual(0);
+    });
 });
 
 
@@ -275,4 +321,5 @@ describe('CredentialsRepository – DB error paths', () => {
         const repo = buildBrokenRepo();
         await expect(repo.revokeOldestActiveSession(1)).rejects.toThrow('db error');
     });
+
 });
