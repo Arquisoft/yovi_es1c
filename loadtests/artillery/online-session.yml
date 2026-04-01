@@ -11,33 +11,42 @@ config:
       arrivalRate: 0
       name: "Cool down"
   engines:
-    socketio-v3: {}
-  processor: "./helpers.js"       # ← carga el helper
+    socketio-v3:
+      path: "/api/game/socket.io"
+      transports:
+        - websocket
+  processor: "./helpers.js"
 
 scenarios:
-  - name: "Online session — full turn cycle"
+  - name: "Online session — matchmaking, join and chat"
     engine: socketio-v3
-    beforeScenario: "getAuthToken"  # ← obtiene JWT antes de cada usuario
     flow:
+      - function: "getAuthToken"
+      - connect:
+          auth:
+            token: "{{ token }}"
       - think: 1
 
       - emit:
-          channel: "joinSession"
-          data:
-            matchId: "loadtest-match-{{ $randomNumber(1, 500) }}"
-          acknowledge:
-            match: "sessionJoined"
-
-      - think: 2
+          - "queue:join"
+          - boardSize: 5
+        response:
+          on: "matchmaking:matched"
+          capture:
+            json: "$.matchId"
+            as: "matchId"
 
       - emit:
-          channel: "move"
-          data:
-            matchId: "loadtest-match-{{ $randomNumber(1, 500) }}"
-            position: "0,0"
-            token: "{{ token }}"    # ← inyecta el JWT en el evento
+          - "match:join"
+          - matchId: "{{ matchId }}"
+        response:
+          on: "session:state"
+
+      - think: 1
+
+      - emit:
+          - "chat:message"
+          - matchId: "{{ matchId }}"
+            text: "loadtest hello"
 
       - think: 3
-
-      - emit:
-          channel: "disconnect"

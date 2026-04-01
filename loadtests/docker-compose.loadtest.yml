@@ -47,11 +47,14 @@ services:
       - matchmaking
 
   artillery-online:
-    image: artilleryio/artillery:latest
+    build:
+      context: ./artillery
     env_file:
       - .env
     volumes:
       - ./artillery:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
     command: run /scripts/online-session.yml
     networks:
       - yovi_net
@@ -59,11 +62,14 @@ services:
       - online
 
   artillery-timeout:
-    image: artilleryio/artillery:latest
+    build:
+      context: ./artillery
     env_file:
       - .env
     volumes:
       - ./artillery:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
     command: run /scripts/turn-timeout.yml
     networks:
       - yovi_net
