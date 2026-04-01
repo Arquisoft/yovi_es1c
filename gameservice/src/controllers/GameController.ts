@@ -4,8 +4,9 @@ import { StatsService } from "../services/StatsService";
 import { InvalidMoveError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
 import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId } from "../validation/game.schemas";
 import { MatchmakingService } from "../services/MatchmakingService";
-import { OnlineSessionService } from "../services/OnlineSessionService";
+import { OnlineSessionError, OnlineSessionService } from "../services/OnlineSessionService";
 import { validateQueueJoin } from "../validation/online.schemas";
+import { apiError } from "../errors/error-catalog";
 
 export function createGameController(
     matchService: MatchService,
@@ -15,11 +16,29 @@ export function createGameController(
 ) {
   const router = Router();
 
+  const handleOnlineError = (res: Response, error: OnlineSessionError) => {
+    if (error.code === 'SESSION_NOT_FOUND') {
+      return res.status(404).json(apiError(error.code, error.message));
+    }
+    if (
+      error.code === 'VERSION_CONFLICT'
+      || error.code === 'RECONNECT_EXPIRED'
+      || error.code === 'SESSION_TERMINAL'
+      || error.code === 'DUPLICATE_EVENT'
+    ) {
+      return res.status(409).json(apiError(error.code, error.message));
+    }
+    if (error.code === 'UNAUTHORIZED' || error.code === 'NOT_YOUR_TURN') {
+      return res.status(403).json(apiError(error.code, error.message));
+    }
+    return res.status(400).json(apiError(error.code, error.message));
+  };
+
   router.post("/matches", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.userId ? Number(req.userId) : undefined;
       if (!userId) {
-        return res.status(401).json({ error: 'Invalid user ID in token' });
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Invalid user ID in token'));
       }
 
       const validated = validateCreateMatch(req.body);
@@ -87,7 +106,7 @@ export function createGameController(
   router.post('/online/queue', async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!matchmakingService || !req.userId || !req.username) {
-        return res.status(503).json({ error: 'Online matchmaking not available' });
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online matchmaking not available'));
       }
       const payload = validateQueueJoin(req.body);
       const queued = await matchmakingService.joinQueue({
@@ -106,7 +125,7 @@ export function createGameController(
     try {
       res.setHeader('Cache-Control', 'no-store');
       if (!matchmakingService || !onlineSessionService || !req.userId || !req.username) {
-        return res.status(503).json({ error: 'Online matchmaking not available' });
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online matchmaking not available'));
       }
 
       const userId = Number(req.userId);
@@ -148,7 +167,7 @@ export function createGameController(
   router.delete('/online/queue', async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!matchmakingService || !req.userId) {
-        return res.status(503).json({ error: 'Online matchmaking not available' });
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online matchmaking not available'));
       }
       await matchmakingService.cancelQueue(Number(req.userId));
       res.status(204).send();
@@ -161,16 +180,23 @@ export function createGameController(
     try {
       res.setHeader('Cache-Control', 'no-store');
       if (!onlineSessionService) {
-        return res.status(503).json({ error: 'Online sessions not available' });
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
       }
       if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
       }
       const active = await onlineSessionService.getActiveSessionForUser(Number(req.userId));
       if (!active) {
         return res.status(204).send();
       }
-      return res.status(200).json(active);
+      const snapshot = typeof (onlineSessionService as any).getSnapshot === 'function'
+        ? await onlineSessionService.getSnapshot(active.matchId)
+        : null;
+      return res.status(200).json({
+        ...active,
+        status: snapshot?.status ?? 'active',
+        reconnectDeadline: snapshot?.reconnectDeadline?.[Number(req.userId)] ?? null,
+      });
     } catch (error) {
       next(error);
     }
@@ -180,12 +206,12 @@ export function createGameController(
     try {
       res.setHeader('Cache-Control', 'no-store');
       if (!onlineSessionService) {
-        return res.status(503).json({ error: 'Online sessions not available' });
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
       }
       const matchId = Array.isArray(req.params.matchId) ? req.params.matchId[0] : req.params.matchId;
       const state = await onlineSessionService.getSnapshot(matchId);
       if (!state) {
-        return res.status(404).json({ error: 'Online session not found' });
+        return res.status(404).json(apiError('SESSION_NOT_FOUND', 'Online session not found'));
       }
       res.json(state);
     } catch (error) {
@@ -197,7 +223,7 @@ export function createGameController(
     try {
       res.setHeader('Cache-Control', 'no-store');
       if (!onlineSessionService || !req.userId) {
-        return res.status(503).json({ error: 'Online sessions not available' });
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
       }
 
       const matchId = Array.isArray(req.params.matchId) ? req.params.matchId[0] : req.params.matchId;
@@ -205,12 +231,52 @@ export function createGameController(
       const expectedVersion = req.body?.expectedVersion;
 
       if (!move || typeof move.row !== 'number' || typeof move.col !== 'number' || typeof expectedVersion !== 'number') {
-        return res.status(400).json({ error: 'Invalid move payload' });
+        return res.status(400).json(apiError('VALIDATION_ERROR', 'Invalid move payload'));
       }
 
       const updated = await onlineSessionService.handleMove(matchId, Number(req.userId), { row: move.row, col: move.col }, expectedVersion);
       return res.status(201).json(updated);
     } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
+  router.post('/online/sessions/:matchId/reconnect', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!onlineSessionService || !req.userId) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
+      }
+
+      const matchId = Array.isArray(req.params.matchId) ? req.params.matchId[0] : req.params.matchId;
+      const snapshot = await onlineSessionService.reconnect(matchId, Number(req.userId));
+      if (!snapshot) {
+        return res.status(404).json(apiError('SESSION_NOT_FOUND', 'Session not found'));
+      }
+      return res.status(200).json(snapshot);
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
+  router.post('/online/sessions/:matchId/abandon', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!onlineSessionService || !req.userId) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
+      }
+
+      const matchId = Array.isArray(req.params.matchId) ? req.params.matchId[0] : req.params.matchId;
+      await onlineSessionService.abandon(matchId, Number(req.userId));
+      return res.status(204).send();
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
       next(error);
     }
   });

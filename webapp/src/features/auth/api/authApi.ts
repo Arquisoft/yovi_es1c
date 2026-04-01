@@ -7,6 +7,10 @@ export interface AuthSessionResponse {
   accessToken: string
   refreshToken: string
   user: AuthUser
+  session?: {
+    sessionId: string
+    deviceId: string
+  }
 }
 
 export interface AuthErrorResponse {
@@ -16,6 +20,15 @@ export interface AuthErrorResponse {
 }
 
 const AUTH_BASE_URL = '/api/auth'
+const DEVICE_ID_KEY = 'auth_device_id'
+
+function getOrCreateDeviceId(): string {
+  const current = localStorage.getItem(DEVICE_ID_KEY)
+  if (current) return current
+  const generated = `web-${crypto.randomUUID()}`
+  localStorage.setItem(DEVICE_ID_KEY, generated)
+  return generated
+}
 
 async function postJson<TSuccess>(
   path: string,
@@ -52,14 +65,24 @@ export function registerUser(
   username: string,
   password: string,
 ): Promise<AuthSessionResponse> {
-  return postJson<AuthSessionResponse>('/register', { username, password })
+  return postJson<AuthSessionResponse>('/register', {
+    username,
+    password,
+    deviceId: getOrCreateDeviceId(),
+    deviceName: 'webapp',
+  })
 }
 
 export function loginUser(
   username: string,
   password: string,
 ): Promise<AuthSessionResponse> {
-  return postJson<AuthSessionResponse>('/login', { username, password })
+  return postJson<AuthSessionResponse>('/login', {
+    username,
+    password,
+    deviceId: getOrCreateDeviceId(),
+    deviceName: 'webapp',
+  })
 }
 
 export function refreshTokens(
@@ -68,3 +91,15 @@ export function refreshTokens(
   return postJson<AuthSessionResponse>('/refresh', { refreshToken })
 }
 
+export async function logoutSession(): Promise<void> {
+  await fetch(`${AUTH_BASE_URL}/logout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(localStorage.getItem('auth_token')
+        ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
+        : {}),
+    },
+    body: JSON.stringify({}),
+  })
+}

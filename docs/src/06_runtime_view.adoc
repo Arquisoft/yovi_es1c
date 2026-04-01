@@ -168,6 +168,7 @@ end
 *Notable Aspects:*
 
 - React Frontend coordinates the multi-step flow from the browser
+- For BOT/local flows, the frontend currently orchestrates part of the authoritative turn progression by applying local state before persistence (intentional current design tradeoff)
 - Game Server (Rust) is stateless and only computes moves based on YEN input, with no DB access
 - Game Service is the authoritative source of match state persistence in `game.db`
 - All updates are persisted atomically in `game.db`
