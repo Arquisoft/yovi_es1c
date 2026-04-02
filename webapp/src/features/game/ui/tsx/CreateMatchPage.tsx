@@ -169,7 +169,7 @@ export default function CreateMatchPage() {
                             label="Modo de juego"
                             onChange={(e) => setMode(e.target.value as CreateMatchMode)}
                         >
-                            {/}
+                            {}
                             <MenuItem value="BOT">VS BOT</MenuItem>
                             <MenuItem value="LOCAL_2P">2 JUGADORES (LOCAL)</MenuItem>
                             <MenuItem value="ONLINE">ONLINE</MenuItem>
