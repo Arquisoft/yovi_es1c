@@ -1,4 +1,5 @@
 use crate::{Coordinates, GameY, YEN, check_api_version, error::ErrorResponse, state::AppState};
+use crate::bot_server::metrics::{observe_inference_latency, start_inference_timer};
 use axum::{
     Json,
     extract::{Path, State},
@@ -75,7 +76,11 @@ pub async fn choose(
             )));
         }
     };
-    let coords = match bot.choose_move(&game_y) {
+    let inference_start = start_inference_timer();
+    let selected_move = bot.choose_move(&game_y);
+    observe_inference_latency(&params.bot_id, inference_start);
+
+    let coords = match selected_move {
         Some(coords) => coords,
         None => {
             // Handle the case where the bot has no valid moves

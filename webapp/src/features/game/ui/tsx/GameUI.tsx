@@ -21,6 +21,7 @@ import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
+import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from './gameUIHelpers.ts';
 
 type GameConfig = {
     matchId: string;
@@ -42,39 +43,6 @@ const modeLabel: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
     LOCAL_2P: '2 Jugadores',
     ONLINE: 'Online',
 };
-
-function resolveCurrentTurnLabel(
-    isOnline: boolean,
-    turn: number,
-    players: { username: string }[],
-    mode: 'BOT' | 'LOCAL_2P' | 'ONLINE',
-): string {
-    if (isOnline) {
-        return turn === 0
-            ? (players[0]?.username ?? 'Jugador 1')
-            : (players[1]?.username ?? 'Jugador 2');
-    }
-    if (turn !== 0) {
-        return mode === 'BOT' ? 'Bot' : 'Jugador 2';
-    }
-    return 'Jugador 1';
-}
-
-function resolveWinnerLabel(
-    winner: string | null,
-    players: { username: string }[],
-): string | null {
-    if (winner === 'B') return players[0]?.username ?? 'Jugador 1';
-    if (winner === 'R') return players[1]?.username ?? 'Jugador 2';
-    if (winner === 'DRAW') return 'Empate';
-    return null;
-}
-
-function resolveGameOverText(winnerLabel: string | null): string {
-    if (!winnerLabel) return '¡Partida terminada!';
-    if (winnerLabel === 'Empate') return '¡Partida terminada en empate!';
-    return `¡Ganador: ${winnerLabel}!`;
-}
 
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
     return (
@@ -115,12 +83,15 @@ export default function GameUI() {
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
-    useEffect(() => {
-        if (config?.mode !== 'ONLINE') return;
-        if (onlineError?.code !== 'RECONNECT_EXPIRED') return;
-        globalThis.alert('La partida ya no está disponible');
-        navigate('/create-match');
-    }, [config?.mode, navigate, onlineError?.code]);
+  useEffect(() => {
+    if (config?.mode !== 'ONLINE') return;
+    if (!onlineError?.code) return;
+    if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
+      return;
+    }
+    globalThis.alert('La partida ya no está disponible');
+    navigate('/create-match');
+  }, [config?.mode, navigate, onlineError?.code]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;

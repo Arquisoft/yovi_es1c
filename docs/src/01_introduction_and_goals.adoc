@@ -4,10 +4,9 @@ ifndef::imagesdir[:imagesdir: ../images]
 == Introduction and Goals
 YOVI is a web platform for playing the game Y, developed by Micrati.
 
-The system is designed for both human users and automated agents (bots). Its primary goal is to provide a smooth and engaging user experience when playing against an Artificial Intelligence (AI),
-with configurable board sizes and selectable difficulty levels.
+The system is designed for both human users and automated agents (bots). Its primary goals are to provide a smooth and engaging user experience when playing against an Artificial Intelligence (AI) with configurable board sizes and selectable difficulty levels, and to support real-time online multiplayer matches between human players through a matchmaking system.
 
-YOVI consists of a React-based web frontend (running in the browser), an Auth Service (managing authentication and credentials), a Users Service (managing user profile data), a Game Service (handling match persistence and statistics), and a Rust-based Game Server (handling game logic). All backend services communicate via REST APIs using JSON messages, with YEN notation for game states, and are accessible through a single Nginx API Gateway.
+YOVI consists of a React-based web frontend (running in the browser), an Auth Service (managing authentication and credentials), a Users Service (managing user profile data), a Game Service (handling match persistence, statistics, online matchmaking, and real-time sessions via Socket.IO), and a Rust-based Game Server (handling game logic and bot strategies). All backend services communicate via REST APIs using JSON messages, with YEN notation for game states, and are accessible through a single Nginx API Gateway.
 
 This section summarizes the most relevant functional requirements from an architectural perspective.
 
@@ -19,7 +18,11 @@ The following table summarizes the main use cases of the system:
 |===
 |Primary Actors|Use Case / Functionality|Description
 
-|Player|Play Game|The player accesses the web application in their browser and starts a new game of Y. The React frontend displays a board with configurable size. The player takes turns placing pieces on the board. After each player move, the frontend sends the current game state in YEN notation to the Game Server via Nginx. The AI responds with its move, which is applied to the board and shown to the player. The Game Service persists each move in `game.db`. The system manages turns and checks after each move if the game has ended. The process repeats until a victory or defeat condition occurs.
+|Player|Play Game vs AI|The player accesses the web application in their browser and starts a new game of Y against an AI bot. The React frontend displays a board with configurable size. The player takes turns placing pieces on the board. After each player move, the frontend sends the current game state in YEN notation to the Game Server via Nginx. The AI responds with its move, which is applied to the board and shown to the player. The Game Service persists each move in `game.db`. The system manages turns and checks after each move if the game has ended. The process repeats until a victory or defeat condition occurs.
+
+|Player|Online Multiplayer Match|A registered player joins the online matchmaking queue through the React frontend. The Game Service searches for another available player. When two players are matched, a real-time session is created and both players are connected via Socket.IO. Each player takes turns placing pieces; the board state is broadcast in real time to both clients after every move. If no opponent is found within the configured timeout (`MM_TIMEOUT_SEC`), the system assigns a bot as the opponent (bot fallback).
+
+|Player|Turn Timeout and Bot Fallback|During an online match, each player has a limited time to make their move (`TURN_TIMEOUT_SEC`). If a player does not move within the allowed time, the `TurnTimerService` triggers the `BotFallbackService`, which computes and applies a move automatically on the player's behalf, keeping the game progressing without interruption.
 
 |Player|Strategy Configuration|Before or during a game, the player selects a game strategy for the AI and an associated difficulty level through the React UI. The system stores this configuration in the Game Service and uses it whenever it requests the next move from the Game Server. The game state and selected strategy are sent to the Rust Game Server, which calculates the move accordingly.
 
@@ -51,6 +54,8 @@ The following table outlines the key quality attributes that are most important 
 |Usability|The web application should offer a clear and intuitive interface, enabling users to play games and consult information effortlessly.
 
 |Security|The system should protect backend services from direct external access, handle authentication properly, and ensure data integrity through controlled and isolated database access per service.
+
+|Real-time Responsiveness|Online multiplayer matches must propagate board state updates to all connected players with minimal latency, ensuring a seamless turn-based experience over WebSocket connections.
 |===
 
 === Stakeholders

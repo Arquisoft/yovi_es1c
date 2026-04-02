@@ -16,6 +16,7 @@ import { OnlineSessionRepository } from "./repositories/OnlineSessionRepository"
 import { OnlineSessionService } from "./services/OnlineSessionService";
 import { TurnTimerService } from "./services/TurnTimerService";
 import { attachSocketServer } from "./realtime/socketServer";
+import { register } from './metrics';
 
 process.on('unhandledRejection', (reason) => {
   console.error('[process] Unhandled Promise Rejection (service kept alive):', reason);
@@ -29,6 +30,13 @@ process.on('uncaughtException', (err) => {
 const app = express();
 app.use(cors());
 app.use(express.json());
+/**
+ * Endpoint expuesto para prometheus
+ */
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
 
 (async () => {
   const db = await initDB();

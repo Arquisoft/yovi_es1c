@@ -3,6 +3,7 @@ import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from './BotFallbackService';
 import { OnlineMatchAssignment, OnlineQueueEntry, OnlineSessionState } from '../types/online';
 import { StatsService } from './StatsService';
+import { matchmakingDuration, matchmakingEvents } from '../metrics';
 
 export interface RedisCommandClient {
   zAdd(key: string, members: { score: number; value: string }[]): Promise<number>;
@@ -12,7 +13,7 @@ export interface RedisCommandClient {
   hGetAll(key: string): Promise<Record<string, string>>;
   del(key: string): Promise<number>;
   eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<number>;
-  set(key: string, value: string): Promise<string | null>;
+  set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<string | null>;
   get(key: string): Promise<string | null>;
 }
 
@@ -52,6 +53,7 @@ export class MatchmakingService {
   private readonly workerIntervalMs: number;
   private workerTimer: NodeJS.Timeout | null = null;
   private readonly pendingAssignments = new Map<number, OnlineMatchAssignment>();
+  private readonly assignmentTtlSec = Number(process.env.MM_ASSIGNMENT_TTL_SEC ?? 120);
 
   constructor(
     private readonly repository: MatchmakingRepository,
@@ -79,15 +81,17 @@ export class MatchmakingService {
       await this.repository.enqueue(queueEntry);
     }
 
+    matchmakingEvents.inc({ event: 'queue', result: 'join' });
     return queueEntry;
   }
 
   async cancelQueue(userId: number): Promise<void> {
     if (this.deps.redis) {
       await this.removeFromRedisQueue(userId);
-      return;
+    } else {
+      await this.repository.cancel(userId);
     }
-    await this.repository.cancel(userId);
+    matchmakingEvents.inc({ event: 'queue', result: 'cancel' });
   }
 
   startWorker(): void {
@@ -132,20 +136,29 @@ export class MatchmakingService {
   }
 
   private async tryMatchCandidate(
-    self: OnlineQueueEntry,
-    allCandidates: OnlineQueueEntry[],
-    boardSize: number,
-    now: number,
+      self: OnlineQueueEntry,
+      allCandidates: OnlineQueueEntry[],
+      boardSize: number,
+      now: number,
   ): Promise<OnlineMatchAssignment | null> {
     const waitedSec = (now - self.joinedAt) / 1000;
     const skillRange = waitedSec >= 20 ? 2 : waitedSec >= 10 ? 1 : 0;
-    const rival = allCandidates.find((entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange);
+    const rival = allCandidates.find(
+        (entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange
+    );
 
     if (rival) {
       const claimed = this.deps.redis
-        ? await this.claimPairAtomicallyRedis(boardSize, self.userId, rival.userId)
-        : await this.repository.claimPair(self, rival);
-      if (!claimed) return null;
+          ? await this.claimPairAtomicallyRedis(boardSize, self.userId, rival.userId)
+          : await this.repository.claimPair(self, rival);
+
+      if (!claimed) {
+        matchmakingEvents.inc({ event: 'assignment', result: 'claim_conflict' });
+        return null;
+      }
+
+      matchmakingDuration.observe(waitedSec);
+      matchmakingEvents.inc({ event: 'assignment', result: 'human' });
 
       const assignment: OnlineMatchAssignment = {
         matchId: `online-${randomUUID()}`,
@@ -161,6 +174,9 @@ export class MatchmakingService {
 
     if (waitedSec >= this.timeoutSec) {
       await this.cancelQueue(self.userId);
+      matchmakingDuration.observe(waitedSec);
+      matchmakingEvents.inc({ event: 'assignment', result: 'bot_timeout' });
+
       return {
         matchId: `online-${randomUUID()}`,
         playerA: self,
@@ -281,6 +297,8 @@ export class MatchmakingService {
         { userId: assignment.playerB.userId, username: assignment.playerB.username, symbol: 'R' },
       ],
       opponentType: 'HUMAN',
+      status: 'active',
+      closeReason: null,
       connection: {
         [assignment.playerA.userId]: 'CONNECTED',
         [assignment.playerB.userId]: 'CONNECTED',
@@ -293,7 +311,9 @@ export class MatchmakingService {
       messages: [],
     };
 
-    await redis.set(`session:${assignment.matchId}`, JSON.stringify(initial));
+    await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial));
+    await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId);
+    await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId);
   }
 
   private emitMatched(assignment: OnlineMatchAssignment): void {
@@ -318,8 +338,8 @@ export class MatchmakingService {
 
     if (this.deps.redis) {
       const raw = JSON.stringify(assignment);
-      await this.deps.redis.set(this.getAssignmentKey(assignment.playerA.userId), raw);
-      await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw);
+      await this.deps.redis.set(this.getAssignmentKey(assignment.playerA.userId), raw, { EX: this.assignmentTtlSec });
+      await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw, { EX: this.assignmentTtlSec });
       return;
     }
 

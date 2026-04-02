@@ -1,35 +1,30 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  title: User Service API
+  title: Users Service API
   version: 1.0.0
-  description: API for managing users
+  description: |
+    Current HTTP surface exposed by the TypeScript users microservice behind the gateway.
+    This service is still minimal and does not expose the historical `/createuser` route.
+servers:
+  - url: /api/users
 paths:
-  /createuser:
-    post:
-      summary: Creates a new user
-      description: Creates a new user with the given username.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - username
-              properties:
-                username:
-                  type: string
-                  example: "testuser"
+  /:
+    get:
+      summary: Service health/info endpoint
       responses:
         '200':
-          description: User created successfully
+          description: Service is running
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Hello testuser! welcome to the course!"
-        '400':
-          description: Error creating user
+                type: string
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        '200':
+          description: Metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string

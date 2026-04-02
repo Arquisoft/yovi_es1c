@@ -1,0 +1,45 @@
+config:
+  target: "{{ $env.TARGET_URL }}"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Simulate inactive players"
+  engines:
+    socketio-v3:
+      path: "/api/game/socket.io"
+      transports:
+        - websocket
+  processor: "./helpers.js"
+
+scenarios:
+  - name: "Player joins a session and lets the turn expire"
+    engine: socketio-v3
+    flow:
+      - function: "getAuthToken"
+      - connect:
+          auth:
+            token: "{{ token }}"
+
+      - emit:
+          - "queue:join"
+          - boardSize: 5
+        response:
+          on: "matchmaking:matched"
+          capture:
+            json: "$.matchId"
+            as: "matchId"
+
+      - emit:
+          - "match:join"
+          - matchId: "{{ matchId }}"
+        response:
+          on: "session:state"
+
+      - think: 26
+
+      - emit:
+          - "turn:timeout"
+          - matchId: "{{ matchId }}"
+            version: 0
+
+      - think: 2

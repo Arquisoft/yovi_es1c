@@ -24,6 +24,7 @@ pub mod error;
 pub mod state;
 pub mod version;
 pub mod bot_alias_resolver;
+pub mod metrics;
 
 use std::collections::HashMap;
 use axum::response::IntoResponse;
@@ -51,6 +52,7 @@ pub fn create_router(state: AppState) -> axum::Router {
 
     axum::Router::new()
         .route("/status", axum::routing::get(status))
+        .route("/metrics", axum::routing::get(metrics::metrics_handler))
         .route(
             "/{api_version}/ybot/choose/{bot_id}",
             axum::routing::post(choose::choose),
@@ -239,6 +241,4 @@ mod tests {
         let _ = state;
     }
 }
-
-
 
