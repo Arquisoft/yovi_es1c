@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  k6-auth:
+    image: grafana/k6:latest
+    env_file:
+      - .env
+    volumes:
+      - ./k6:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+    command: run --out experimental-prometheus-rw /scripts/auth.js
+    networks:
+      - yovi_net
+    profiles:
+      - auth
+
+  k6-game:
+    image: grafana/k6:latest
+    env_file:
+      - .env
+    volumes:
+      - ./k6:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+    command: run --out experimental-prometheus-rw /scripts/game.js
+    networks:
+      - yovi_net
+    profiles:
+      - game
+
+  k6-matchmaking:
+    image: grafana/k6:latest
+    env_file:
+      - .env
+    volumes:
+      - ./k6:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+    command: run --out experimental-prometheus-rw /scripts/matchmaking.js
+    networks:
+      - yovi_net
+    profiles:
+      - matchmaking
+
+  artillery-online:
+    build:
+      context: ./artillery
+    env_file:
+      - .env
+    volumes:
+      - ./artillery:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
+    command: run /scripts/online-session.yml
+    networks:
+      - yovi_net
+    profiles:
+      - online
+
+  artillery-timeout:
+    build:
+      context: ./artillery
+    env_file:
+      - .env
+    volumes:
+      - ./artillery:/scripts
+    environment:
+      - TARGET_URL=http://nginx:80
+    command: run /scripts/turn-timeout.yml
+    networks:
+      - yovi_net
+    profiles:
+      - timeout
+
+networks:
+  yovi_net:
+    external: true
+    name: yovi_es1c_monitor-net

@@ -94,4 +94,81 @@ describe('Auth HTTP contracts', () => {
         expect(replay.status).toBe(401);
         expect(replay.body.error).toBe('invalid_refresh_token');
     });
+
+    it('allows login in device A and B, and logout only revokes one session', async () => {
+        const username = `devices-${Date.now()}`;
+        const password = 'password123';
+
+        await request.post('/api/auth/register').send({ username, password, deviceId: 'A' });
+
+        const loginA = await request.post('/api/auth/login').send({ username, password, deviceId: 'A' });
+        const loginB = await request.post('/api/auth/login').send({ username, password, deviceId: 'B' });
+
+        expect(loginA.status).toBe(200);
+        expect(loginB.status).toBe(200);
+        expect(loginA.body.session.sessionId).not.toBe(loginB.body.session.sessionId);
+
+        const logoutA = await request
+            .post('/api/auth/logout')
+            .set('Authorization', `Bearer ${loginA.body.accessToken}`)
+            .send({});
+
+        expect(logoutA.status).toBe(204);
+
+        const refreshA = await request.post('/api/auth/refresh').send({ refreshToken: loginA.body.refreshToken });
+        const refreshB = await request.post('/api/auth/refresh').send({ refreshToken: loginB.body.refreshToken });
+
+        expect(refreshA.status).toBe(401);
+        expect(refreshA.body.error).toBe('invalid_refresh_token');
+        expect(refreshB.status).toBe(200);
+    });
+
+    it('logout and logout-all endpoints are idempotent', async () => {
+        const username = `logout-${Date.now()}`;
+        const password = 'password123';
+        const login = await request.post('/api/auth/register').send({ username, password, deviceId: 'A' });
+
+        const one = await request
+            .post('/api/auth/logout')
+            .set('Authorization', `Bearer ${login.body.accessToken}`)
+            .send({});
+        const two = await request
+            .post('/api/auth/logout')
+            .set('Authorization', `Bearer ${login.body.accessToken}`)
+            .send({});
+
+        expect(one.status).toBe(204);
+        expect(two.status).toBe(204);
+
+        const allOne = await request
+            .post('/api/auth/logout-all')
+            .set('Authorization', `Bearer ${login.body.accessToken}`)
+            .send({});
+        const allTwo = await request
+            .post('/api/auth/logout-all')
+            .set('Authorization', `Bearer ${login.body.accessToken}`)
+            .send({});
+
+        expect(allOne.status).toBe(204);
+        expect(allTwo.status).toBe(204);
+    });
+
+    it('keeps at most 3 active sessions per user', async () => {
+        const username = `limit-${Date.now()}`;
+        const password = 'password123';
+        await request.post('/api/auth/register').send({ username, password, deviceId: 'D0' });
+
+        const sessions = [];
+        for (const device of ['D1', 'D2', 'D3', 'D4']) {
+            const login = await request.post('/api/auth/login').send({ username, password, deviceId: device });
+            expect(login.status).toBe(200);
+            sessions.push(login.body);
+        }
+
+        const refreshOldest = await request.post('/api/auth/refresh').send({ refreshToken: sessions[0].refreshToken });
+        const refreshLatest = await request.post('/api/auth/refresh').send({ refreshToken: sessions[3].refreshToken });
+
+        expect(refreshOldest.status).toBe(401);
+        expect(refreshLatest.status).toBe(200);
+    });
 });

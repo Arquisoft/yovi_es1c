@@ -87,6 +87,8 @@ a| • System status
 * **Match**: A game session between two players (human or bot)
 * **Strategy**: Game difficulty level and bot behavior configuration
 * **Anonymous Play**: Unregistered users can play but their scores are not persisted
+* **Online Session**: A real-time multiplayer match between two human players managed via Socket.IO
+* **Matchmaking Queue**: Redis-backed queue that pairs available players before creating an online session
 
 === Technical Context
 
@@ -164,6 +166,7 @@ end note
 note right of gameserviceserver
   **Game Data Layer**
   Matches, moves, stats
+  Online matchmaking & sessions
   game.db
 end note
 
@@ -206,11 +209,13 @@ a| • User profile retrieval and updates
 • User search operations
 
 | **Nginx → Game Service**
-| HTTP, REST API
-| 3002 (HTTP)
+| HTTP, REST API + WebSocket (Socket.IO)
+| 3002 (HTTP / WS)
 a| • Match creation and persistence
 • Move history storage
 • Statistics retrieval
+• Online matchmaking queue management
+• Real-time online session updates via Socket.IO
 
 | **Nginx → Game Server**
 | HTTP, REST API
@@ -219,6 +224,13 @@ a| • Bot move computation
 • Move validation
 • Win condition checking
 • YEN format game logic
+
+| **Game Service → Redis**
+| Redis protocol
+| 6379 (internal)
+a| • Matchmaking queue persistence
+• Online session state storage
+• Socket.IO adapter for multi-instance pub/sub
 
 | **Auth Service → auth.db**
 | SQLite native (embedded)
@@ -241,12 +253,13 @@ a| • Match state persistence
 • Statistics aggregation
 
 | **React Frontend (in Browser) → Nginx**
-| HTTP, REST API, AJAX
-| 80 (HTTP)
+| HTTP, REST API, AJAX, WebSocket
+| 80 (HTTP / WS)
 a| • API calls to all backend services
 • Game state updates
 • User authentication
 • Statistics queries
+• Real-time Socket.IO connection for online matches
 |===
 
 ==== Key API Endpoints
@@ -270,6 +283,15 @@ a| • API calls to all backend services
 * `GET /api/game/matches/{id}` - Retrieve match state
 * `POST /api/game/matches/{id}/moves` - Persist a move and updated YEN state
 * `GET /api/game/stats/{userId}` - Retrieve player statistics and match history
+
+**Online Matchmaking and Sessions (via Nginx → Game Service):**
+
+* `POST /api/game/online/queue` - Join the matchmaking queue
+* `GET /api/game/online/queue/match` - Poll to check if the player has been matched
+* `DELETE /api/game/online/queue` - Cancel matchmaking
+* `GET /api/game/online/sessions/active` - Get the current active online session for the authenticated user
+* `GET /api/game/online/sessions/:matchId` - Get the state of a specific online session
+* `POST /api/game/online/sessions/:matchId/moves` - Submit a move in an online session
 
 **Game Logic (via Nginx → Game Server):**
 
@@ -312,8 +334,9 @@ a| • API calls to all backend services
 
 ==== Deployment Considerations
 
-* **Containerization**: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server) are containerized using Docker for consistent deployment
+* **Containerization**: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis) are containerized using Docker for consistent deployment
 * **Databases**: Three independent SQLite files (`auth.db`, `users.db`, `game.db`), each stored as a separate volume mount in its respective service container
+* **Real-time State**: Online session state and the matchmaking queue are stored in Redis, which runs as an independent container and is accessible only to the Game Service
 * **Fault Isolation**: A failure or overload in one database does not affect the others; authentication, profile, and game data are independently available
 * **Scalability**: Game Server is stateless and can be horizontally scaled behind Nginx load balancer; each Node.js service can also be scaled independently
 * **Security**: Nginx handles CORS, rate limiting, and request validation; no backend service is directly accessible from outside

@@ -1,0 +1,156 @@
+openapi: 3.0.3
+info:
+  title: YOVI Game Service API
+  version: 1.0.0
+  description: HTTP contract for game, matchmaking and online session endpoints behind the gateway `/api/game`.
+servers:
+  - url: /api/game
+paths:
+  /online/queue:
+    post:
+      summary: Join matchmaking queue
+      responses:
+        '201':
+          description: Queued
+        '503':
+          description: Matchmaking unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Cancel matchmaking queue
+      responses:
+        '204':
+          description: Queue cancelled
+  /online/queue/match:
+    get:
+      summary: Poll for match assignment
+      responses:
+        '200':
+          description: Match status
+        '503':
+          description: Matchmaking unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /online/sessions/active:
+    get:
+      summary: Get active online session for authenticated user
+      responses:
+        '200':
+          description: Active session exists
+        '204':
+          description: No active session
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /online/sessions/{matchId}:
+    get:
+      summary: Get session snapshot
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Snapshot
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /online/sessions/{matchId}/moves:
+    post:
+      summary: Submit move
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Move applied
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Not authorized for this move
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version/session conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /online/sessions/{matchId}/reconnect:
+    post:
+      summary: Reconnect to a paused session
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reconnected
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Reconnect expired/session terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /online/sessions/{matchId}/abandon:
+    post:
+      summary: Abandon session (idempotent)
+      parameters:
+        - in: path
+          name: matchId
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Session abandoned
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable domain error code.
+          example: SESSION_NOT_FOUND
+        message:
+          type: string
+          example: Online session not found
+        details:
+          nullable: true

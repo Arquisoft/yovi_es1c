@@ -1,6 +1,7 @@
 import { AuthService } from '../services/auth.service.js';
 import { CredentialsRepository } from '../repositories/credentials.repository.js';
 import { initAuthDatabase } from '../db/init-auth-db.js';
+import { setActiveRefreshTokens } from '../metrics.js';
 
 const DEFAULT_AUTH_DB_PATH = '/app/auth/data/auth.db';
 
@@ -20,7 +21,11 @@ export async function initializeAuthContext(): Promise<void> {
     const dbPath = getAuthDbPath();
     await initAuthDatabase(dbPath);
 
-    authService = new AuthService(new CredentialsRepository(dbPath));
+    const repo = new CredentialsRepository(dbPath);
+    const activeRefreshTokens = await repo.countActiveRefreshTokens();
+
+    setActiveRefreshTokens(activeRefreshTokens);
+    authService = new AuthService(repo);
 }
 
 export function getAuthService(): AuthService {

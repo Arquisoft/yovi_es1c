@@ -14,6 +14,7 @@ export default defineConfig({
       exclude: [
         'dist/**',
         'node_modules/**',
+        'src/repositories/**',
         'src/index.ts'
       ],
       reportsDirectory: 'coverage',

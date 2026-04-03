@@ -1,73 +1,74 @@
-# React + TypeScript + Vite
+# Webapp
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The YOVI frontend application, built as a single-page application (SPA) with **React**, **Vite**, and **TypeScript**.
 
-Currently, two official plugins are available:
+In production, static assets are served by the Nginx API Gateway. In development, the Vite dev server is available at `http://localhost:5173`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Responsibilities
 
-## React Compiler
+- Renders the game board and manages the client-side game flow.
+- Handles user authentication (login, registration, token refresh) via the Auth Service.
+- Communicates with backend services through the Nginx API Gateway.
+- Establishes a **Socket.IO** connection to the Game Service for real-time online match updates.
+- Displays player statistics and match history.
+- Provides an interface for external bots to interact with the system API.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Internal Structure
+```
+src/
+├── main.tsx # Application entry point
+├── app/ # Root app component and router setup
+├── features/
+│ ├── auth/ # Login and registration pages and logic
+│ ├── game/ # Game board, turn flow, and match management
+│ ├── stats/ # Player statistics and match history
+│ └── botApi/ # External bot API interface
+├── components/ # Shared reusable UI components
+├── shared/ # Shared utilities, hooks, and TypeScript types
+├── config/ # App-level configuration (API URLs, constants)
+└── assets/ # Static assets (images, icons)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Environment Variables (Build-time)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Configured via Vite build args in `docker-compose.yml`:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Variable | Description |
+|---|---|
+| `VITE_API_URL` | Base URL for the Users Service API (e.g. `/api/users`) |
+| `VITE_GAMEY_API_URL` | Base URL for the Gamey API (e.g. `/api/gamey`) |
+
+## Running
+
+### With Docker (recommended)
+
+From the project root:
+
+```bash
+docker-compose up --build
 ```
+
+The application is served at `http://localhost` via Nginx.
+
+### Locally
+
+```bash
+npm install
+npm run dev
+```
+
+The development server will be available at `http://localhost:5173`.
+
+> When running locally without Docker, make sure the `users` service is also running. Use `npm run start:all` to start both concurrently.
+
+## Available Scripts
+
+- `npm run dev`: Start the Vite development server.
+- `npm run build`: Compile TypeScript and generate the production bundle.
+- `npm run preview`: Preview the production build locally.
+- `npm run lint`: Run ESLint.
+- `npm test`: Run unit tests with Vitest.
+- `npm run test:coverage`: Run unit tests with coverage report.
+- `npm run test:watch`: Run tests in watch mode.
+- `npm run test:e2e`: Run end-to-end tests with Cucumber + Playwright (requires all services running).
+- `npm run start:all`: Start the webapp and users service concurrently (shortcut for local E2E testing).

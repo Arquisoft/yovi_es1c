@@ -1,0 +1,73 @@
+import { useEffect, useState } from 'react';
+import { API_CONFIG } from '../../../config/api.config';
+import { fetchWithAuth } from '../../../shared/api/fetchWithAuth';
+import { useAuth } from '../../auth/context/useAuth';
+
+interface ActiveSessionResponse {
+  matchId: string;
+  boardSize: number;
+  status?: string;
+  reconnectDeadline?: number | null;
+}
+
+export function useActiveSession() {
+  const { token } = useAuth();
+  const [matchId, setMatchId] = useState<string | null>(null);
+  const [boardSize, setBoardSize] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!token) {
+      setMatchId(null);
+      setBoardSize(null);
+      setLoading(false);
+      setError(null);
+      setStatus(null);
+      return;
+    }
+
+    const fetchActiveSession = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/online/sessions/active`, {
+          method: 'GET',
+        });
+
+        if (!isMounted) return;
+
+        if (response.status === 204) {
+          setMatchId(null);
+          setBoardSize(null);
+          setStatus(null);
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error('No se pudo comprobar la sesión activa');
+        }
+
+        const data = (await response.json()) as ActiveSessionResponse;
+        if (!isMounted) return;
+        setMatchId(data.matchId);
+        setBoardSize(data.boardSize);
+        setStatus(data.status ?? null);
+      } catch (err) {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Error de red');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    void fetchActiveSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  return { matchId, boardSize, loading, error, status };
+}

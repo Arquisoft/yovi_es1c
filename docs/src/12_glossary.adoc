@@ -7,21 +7,17 @@ ifndef::imagesdir[:imagesdir: ../images]
 |===
 |Term |Definition
 
-
 |*API Gateway*
-|Architectural component that serves as the single public entry point, routing client requests to backend services and managing cross-cutting concerns
+|Architectural component that serves as the single public entry point, routing client requests to backend services and managing cross-cutting concerns such as CORS, rate limiting, and WebSocket proxying
 
 |*Nginx*
 |Web server and reverse proxy used to implement the API Gateway pattern in this system
 
 |*Anonymous Play*
-|Game mode where unregistered users can play without persisting their statistics or match history
+|Game mode where unregistered users can play against the AI without persisting their statistics or match history
 
 |*Arc42*
 |Architecture documentation template followed in this project for structural consistency
-
-|*BFF (Backend for Frontend)*
-|Architectural pattern where the Web App Server orchestrates calls to multiple backend services (Users Service and Game Server)
 
 |*Barycentric Coordinates*
 |Coordinate system (x, y, z) used to represent positions on the hexagonal game board
@@ -32,6 +28,9 @@ ifndef::imagesdir[:imagesdir: ../images]
 |*Bot Client*
 |External automated agent that plays through the system's Bot API
 
+|*Bot Fallback*
+|Mechanism triggered by `BotFallbackService` when a player does not respond within the allowed turn time (`TURN_TIMEOUT_SEC`) or when no human opponent is found during matchmaking (`MM_TIMEOUT_SEC`). The Game Service calls the Rust Game Server to compute and apply a move automatically on the inactive player's behalf.
+
 |*CORS (Cross-Origin Resource Sharing)*
 |HTTP-header based mechanism that allows a server to indicate which origins are permitted to access its resources from a browser
 
@@ -39,46 +38,61 @@ ifndef::imagesdir[:imagesdir: ../images]
 |Containerization platform used for packaging and deploying all system services
 
 |*Game Server*
-|Rust-based microservice responsible for core game logic, move validation, and bot AI strategies
+|Rust-based microservice responsible for core game logic, move validation, and bot AI strategies. Completely stateless and has no database access.
+
+|*Game Service*
+|Node.js microservice responsible for match persistence, move history, player statistics, online matchmaking, and real-time session management via Socket.IO. Single point of access to `game.db` and Redis.
 
 |*Match*
 |Game session between two players (human or bot) with a specific board size and strategy configuration
 
+|*Matchmaking*
+|Process by which the Game Service pairs two human players waiting in the Redis-backed queue to start an online session. If no opponent is found within `MM_TIMEOUT_SEC`, a bot is assigned as the opponent.
+
 |*Microservices*
-|Distributed architecture pattern where the system is decomposed into independent services (Frontend, Web App Server, Users Service, Game Server)
+|Distributed architecture pattern where the system is decomposed into independent services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server), each owning its own data store
 
 |*Move/Movement*
 |Player action placing a piece at specific coordinates on the board
 
+|*Online Session*
+|A real-time multiplayer match between two human players (or a human and a bot fallback), managed by the Game Service via Socket.IO. Session state is stored in Redis for low-latency access during play.
+
 |*PlantUML*
 |Tool used for generating architectural diagrams throughout the documentation
 
+|*Redis*
+|In-memory data store used exclusively by the Game Service to persist the matchmaking queue and active online session snapshots, and to act as the pub/sub adapter for Socket.IO
+
 |*Registered Player*
-|User with an account who can access match history, statistics, and personalized features
+|User with an account who can access match history, statistics, and online multiplayer features
 
 |*Reverse Proxy*
 |Server (Nginx) that forwards client requests to appropriate backend services and returns responses
 
+|*Socket.IO*
+|Library providing WebSocket-based bidirectional communication between the React Frontend and the Game Service. Used to broadcast real-time board state updates, turn notifications, timeout events, and game-over signals to all players in an online session.
+
 |*SQLite*
-|Embedded relational database used for persisting users, matches, and statistics
+|Embedded relational database used for durable persistence of credentials (`auth.db`), user profiles (`users.db`), and match data (`game.db`)
 
 |*Stateless Service*
-|Service that does not maintain persistent state between requests (e.g., Game Server)
+|Service that does not maintain persistent state between requests (e.g., Game Server). All state is passed in each request or stored externally.
 
 |*Strategy*
-|AI difficulty level and bot behavior configuration (e.g., random, heuristic)
+|AI difficulty level and bot behavior configuration (e.g., random, heuristic, neural network)
+
+|*Turn Timeout*
+|Maximum time (`TURN_TIMEOUT_SEC`) a player has to submit a move during an online session. If the timer expires, `TurnTimerService` fires and `BotFallbackService` plays automatically on the player's behalf.
 
 |*Upstream*
 |Nginx configuration directive defining a group of backend servers that can handle requests (e.g., users_backend, gamey_backend)
 
 |*Users Service*
-|Node.js microservice that acts as the single point of access to the database, managing authentication, user accounts, match persistence, and statistics
+|Node.js microservice responsible for managing user profile data. Single point of access to `users.db`.
 
 |*WAL (Write-Ahead Logging)*
-|SQLite mode that enables concurrent reads during writes, improving database performance
-
-|*Web App Server*
-|Node.js/Express/TypeScript service implementing the BFF pattern, orchestrating requests between Frontend, Users Service, and Game Server
+|SQLite mode that enables concurrent reads during writes, improving database performance under load
 
 |*Win Checker*
 |Algorithm that detects Y-shaped winning connections on the board to determine game outcome
@@ -87,5 +101,8 @@ ifndef::imagesdir[:imagesdir: ../images]
 |Rust trait/interface defining the contract for bot strategy implementations
 
 |*YEN (Y-Encoded Notation)*
-|Domain-specific format for representing board positions and moves in the Y game, used for inter-service communication
+|Domain-specific format for representing board positions and moves in the Y game, used for inter-service communication between the React Frontend, Game Service, and Game Server
+
+|*YGN (Y Game Notation)*
+|Alternative notation format supported by the Game Server for recording complete game sequences, used for match replay and history export
 |===

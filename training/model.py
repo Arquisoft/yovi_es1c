@@ -1,6 +1,16 @@
+# training/model.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# ─────────────────────────────────────────────
+#  Constantes globales
+# ─────────────────────────────────────────────
+
+GRID_SIZE = 32          # lado del tablero máximo soportado
+MAX_CELLS = GRID_SIZE * (GRID_SIZE + 1) // 2  # 528 = total_cells(32)
+NUM_CHANNELS = 6        # canales de entrada por celda
+# Input ONNX: (batch, 6, GRID_SIZE, GRID_SIZE) → un mapa 2D por canal
 
 
 def total_cells(board_size: int) -> int:
@@ -9,152 +19,228 @@ def total_cells(board_size: int) -> int:
 
 def encode_board(board_state: list[int], board_size: int, current_player: int) -> torch.Tensor:
     """
-    Codifica el estado del tablero como un vector de floats.
-    board_state: lista de longitud total_cells(board_size) donde cada elemento es: 0=vacío, 1=jugador0, 2=jugador1
-    current_player: 0 o 1 (el jugador que mueve ahora)
+    Codifica el estado del tablero como tensor 2D de shape (6, GRID_SIZE, GRID_SIZE).
+    El triángulo de lado board_size se mapea a la esquina superior-izquierda de la
+    matriz GRID_SIZE×GRID_SIZE (fila i, columna j con j <= i).
+    Las celdas fuera del triángulo quedan a 0.0 (padding implícito).
 
-    Devuelve un tensor de tamaño 3 * total_cells + 1
+    Canales:
+      0 — piezas del jugador actual
+      1 — piezas del rival
+      2 — celdas vacías
+      3 — distancia baricéntrica al borde A (x normalizada)
+      4 — distancia baricéntrica al borde B (y normalizada)
+      5 — distancia baricéntrica al borde C (z normalizada)
+
+    El escalar board_norm (board_size / GRID_SIZE) se devuelve aparte.
     """
-    n = total_cells(board_size)
+    n        = total_cells(board_size)
     opponent = 1 - current_player
+    divisor  = max(1, board_size - 1)
 
-    canal_mio    = [1.0 if board_state[i] == current_player + 1 else 0.0 for i in range(n)]
-    canal_rival  = [1.0 if board_state[i] == opponent + 1      else 0.0 for i in range(n)]
-    canal_vacio  = [1.0 if board_state[i] == 0                 else 0.0 for i in range(n)]
-    board_norm   = [board_size / 13.0]
+    # (6, GRID_SIZE, GRID_SIZE) — empezamos a cero (el padding queda a 0)
+    grid = torch.zeros(NUM_CHANNELS, GRID_SIZE, GRID_SIZE, dtype=torch.float32)
 
-    return torch.tensor(canal_mio + canal_rival + canal_vacio + board_norm, dtype=torch.float32)
+    cell_idx = 0
+    for row in range(board_size):
+        for col in range(row + 1):
+            v = board_state[cell_idx]
+
+            if v == current_player + 1:
+                grid[0, row, col] = 1.0
+            elif v == opponent + 1:
+                grid[1, row, col] = 1.0
+            else:
+                grid[2, row, col] = 1.0
+
+            # Coordenadas baricéntricas normalizadas
+            x = (board_size - 1 - row) / divisor
+            y = col / divisor
+            z = (row - col) / divisor
+            grid[3, row, col] = x
+            grid[4, row, col] = y
+            grid[5, row, col] = z
+
+            cell_idx += 1
+
+    board_norm = board_size / GRID_SIZE
+    return grid, board_norm  # (6, 32, 32), float
+
+
+# ─────────────────────────────────────────────
+#  Arquitectura convolucional
+# ─────────────────────────────────────────────
+
+class ConvResidualBlock(nn.Module):
+    """Bloque Residual 2D con convoluciones 3×3."""
+    def __init__(self, channels: int):
+        super().__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = out + residual
+        return F.relu(out)
 
 
 class PolicyValueNet(nn.Module):
-    """
-    Red neuronal fully-connected para el juego Y.
-    Agnóstica al tamaño del tablero.
-    Input:  3 * total_cells(board_size) + 1 floats
-    Output: (policy: Tensor[max_cells], value: Tensor[1])
-    """
+    # Expuesto para que train.py y self_play.py lo usen sin hardcodear
+    MAX_CELLS  = MAX_CELLS   # 528
+    GRID_SIZE  = GRID_SIZE   # 32
 
-    MAX_CELLS = total_cells(13)
-
-    def __init__(self, hidden_size: int = 256):
+    def __init__(self, channels: int = 64, num_res_blocks: int = 6):
         super().__init__()
-        input_size = 3 * self.MAX_CELLS + 1
 
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.bn2 = nn.BatchNorm1d(hidden_size)
-        self.fc3 = nn.Linear(hidden_size, 128)
+        # ── Cuerpo convolucional ──────────────────────────────────────
+        # Entrada: (batch, 7, GRID_SIZE, GRID_SIZE)
+        #   6 canales de tablero  +  1 canal board_norm (broadcast a toda la grid)
+        self.stem = nn.Sequential(
+            nn.Conv2d(NUM_CHANNELS + 1, channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(),
+        )
 
-        self.policy_head = nn.Linear(128, self.MAX_CELLS)
+        self.res_blocks = nn.ModuleList(
+            [ConvResidualBlock(channels) for _ in range(num_res_blocks)]
+        )
 
-        self.value_head = nn.Linear(128, 1)
+        # ── Cabeza de política ────────────────────────────────────────
+        # 1×1 conv → aplanar → MAX_CELLS logits
+        self.policy_conv = nn.Sequential(
+            nn.Conv2d(channels, 2, kernel_size=1, bias=False),
+            nn.BatchNorm2d(2),
+            nn.ReLU(),
+        )
+        self.policy_fc = nn.Linear(2 * GRID_SIZE * GRID_SIZE, MAX_CELLS)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # ── Cabeza de valor ───────────────────────────────────────────
+        # Global avg pool → FC → tanh
+        self.value_conv = nn.Sequential(
+            nn.Conv2d(channels, 1, kernel_size=1, bias=False),
+            nn.BatchNorm2d(1),
+            nn.ReLU(),
+        )
+        self.value_fc = nn.Sequential(
+            nn.Linear(GRID_SIZE * GRID_SIZE, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
+    def forward(
+            self,
+            spatial: torch.Tensor,    # (batch, 6, GRID_SIZE, GRID_SIZE)
+            board_norm: torch.Tensor, # (batch, 1)  — escalar por muestra
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        x: Tensor de shape (batch_size, input_size)
-           Las posiciones > 3*total_cells(board_size) deben estar a 0
-           para tableros más pequeños que el máximo.
-
         Devuelve:
-          policy: Tensor (batch_size, MAX_CELLS) — log_softmax sobre movimientos válidos
-          value:  Tensor (batch_size, 1)         — tanh en [-1, +1]
+          policy — (batch, MAX_CELLS)  log_softmax
+          value  — (batch, 1)          tanh ∈ [-1, 1]
         """
+        batch = spatial.shape[0]
 
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
-        x = F.relu(self.fc3(x))
+        # Expandimos board_norm a un canal completo y lo concatenamos
+        bn_channel = board_norm.view(batch, 1, 1, 1).expand(batch, 1, GRID_SIZE, GRID_SIZE)
+        x = torch.cat([spatial, bn_channel], dim=1)  # (batch, 7, 32, 32)
 
-        policy = F.log_softmax(self.policy_head(x), dim=-1)
-        value  = torch.tanh(self.value_head(x))
+        x = self.stem(x)
+        for block in self.res_blocks:
+            x = block(x)
+
+        # Policy head
+        p = self.policy_conv(x)                    # (batch, 2, 32, 32)
+        p = p.view(batch, -1)                      # (batch, 2*32*32)
+        policy = F.log_softmax(self.policy_fc(p), dim=-1)  # (batch, MAX_CELLS)
+
+        # Value head
+        v = self.value_conv(x)                     # (batch, 1, 32, 32)
+        v = v.view(batch, -1)                      # (batch, 32*32)
+        value = torch.tanh(self.value_fc(v))       # (batch, 1)
 
         return policy, value
 
-    def predict(self, board_state: list[int], board_size: int, current_player: int) -> tuple[list[float], float]:
+    def predict(
+            self,
+            board_state: list[int],
+            board_size: int,
+            current_player: int,
+    ) -> tuple[list[float], float]:
         """
-        Interfaz de alto nivel para usar desde el self-play.
-        Devuelve (policy: list[float], value: float) para una sola posición.
+        Interfaz de alto nivel para self_play.py.
+        Devuelve (policy: list[float] de longitud total_cells(board_size), value: float).
         """
         self.eval()
         with torch.no_grad():
-            encoded = encode_board(board_state, board_size, current_player)
-            padded  = self._pad_input(encoded, board_size)
-            output_policy, output_value = self.forward(padded.unsqueeze(0))
+            grid, bn = encode_board(board_state, board_size, current_player)
+            spatial    = grid.unsqueeze(0)                          # (1, 6, 32, 32)
+            board_norm = torch.tensor([[bn]], dtype=torch.float32)  # (1, 1)
 
-            n = total_cells(board_size)
-            policy = output_policy[0, :n].exp().tolist()
-            value  = output_value[0, 0].item()
+            log_policy, val = self.forward(spatial, board_norm)
+
+            n      = total_cells(board_size)
+            policy = log_policy[0, :n].exp().tolist()
+            value  = val[0, 0].item()
 
         return policy, value
-
-    def _pad_input(self, encoded: torch.Tensor, board_size: int) -> torch.Tensor:
-        """
-        Padea el vector de entrada hasta el tamaño fijo esperado por la red.
-        Los canales de celdas inexistentes se rellenan con 0.
-        """
-        n          = total_cells(board_size)
-        max_n      = self.MAX_CELLS
-        input_size = 3 * max_n + 1
-
-        padded = torch.zeros(input_size)
-        padded[0:n]              = encoded[0:n]
-        padded[max_n:max_n+n]    = encoded[n:2*n]
-        padded[2*max_n:2*max_n+n]= encoded[2*n:3*n]
-        padded[3*max_n]          = encoded[3*n]
-
-        return padded
 
     def save(self, path: str):
         torch.save(self.state_dict(), path)
 
     @classmethod
-    def load(cls, path: str, hidden_size: int = 256) -> "PolicyValueNet":
-        model = cls(hidden_size)
-        model.load_state_dict(torch.load(path, map_location="cpu"))
+    def load(cls, path: str, channels: int = 64, num_res_blocks: int = 6) -> "PolicyValueNet":
+        model = cls(channels, num_res_blocks)
+        model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
         model.eval()
         return model
 
     def export_onnx(self, path: str):
-        """Exporta el modelo a formato ONNX para usarlo desde Rust con tract."""
+        """
+        Exporta el modelo a ONNX con DOS inputs:
+          - 'spatial'    : (batch, 6, 32, 32)  — canales del tablero
+          - 'board_norm' : (batch, 1)           — escalar de tamaño normalizado
+
+        Rust (neural_net.rs) debe construir exactamente estos dos tensores.
+        El encoding 2D está definido en encode_board() de este mismo fichero.
+        """
         self.eval()
-        input_size = 3 * self.MAX_CELLS + 1
-        dummy = torch.zeros(1, input_size)
+        dummy_spatial    = torch.zeros(1, NUM_CHANNELS, GRID_SIZE, GRID_SIZE)
+        dummy_board_norm = torch.zeros(1, 1)
+
         torch.onnx.export(
             self,
-            dummy,
+            (dummy_spatial, dummy_board_norm),
             path,
-            input_names=["board_state"],
+            input_names=["spatial", "board_norm"],
             output_names=["policy", "value"],
-            dynamic_axes={"board_state": {0: "batch_size"}},
+            dynamic_axes={
+                "spatial":    {0: "batch_size"},
+                "board_norm": {0: "batch_size"},
+            },
             opset_version=17,
         )
         print(f"Modelo exportado a {path}")
+        print(f"  spatial    : (batch, {NUM_CHANNELS}, {GRID_SIZE}, {GRID_SIZE})")
+        print(f"  board_norm : (batch, 1)")
+        print(f"  policy     : (batch, {MAX_CELLS})")
+        print(f"  value      : (batch, 1)")
 
-def pad_encoded_input(encoded: torch.Tensor, board_size: int) -> torch.Tensor:
-    """
-    Padea el vector de entrada hasta el tamaño fijo esperado por la red (274).
-        Función libre para poder usarla sin instanciar PolicyValueNet.
-        """
-    n          = total_cells(board_size)
-    max_n      = PolicyValueNet.MAX_CELLS
-    input_size = 3 * max_n + 1
-    padded = torch.zeros(input_size)
-    padded[0:n]               = encoded[0:n]
-    padded[max_n:max_n+n]     = encoded[n:2*n]
-    padded[2*max_n:2*max_n+n] = encoded[2*n:3*n]
-    padded[3*max_n]           = encoded[3*n]
-    return padded
 
+# ─────────────────────────────────────────────
+#  Smoke test
+# ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Smoke test
     model = PolicyValueNet()
-    print(f"Parámetros totales: {sum(p.numel() for p in model.parameters()):,}")
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Parámetros totales: {total_params:,}")
 
-    # Test con tablero de tamaño 5 (15 celdas)
     board_state = [0] * total_cells(5)
-    board_state[0] = 1  # jugador 0 en celda 0
-    board_state[3] = 2  # jugador 1 en celda 3
+    board_state[0] = 1
+    board_state[3] = 2
 
     policy, value = model.predict(board_state, board_size=5, current_player=0)
     print(f"Policy (15 movs): {[f'{p:.3f}' for p in policy]}")

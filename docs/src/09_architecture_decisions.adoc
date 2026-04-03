@@ -3,7 +3,7 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-design-decisions]]
 == Architecture Decisions
 
-=== ADR 1: Microservices architecture
+=== ADR 1: Microservices Architecture
 * **Context:** The platform is expected to scale with increasing user demand, evolve over time with new features or game modes, and support parallel development by multiple team members. High availability and maintainability are important non-functional requirements.
 * **Status:** Accepted by the teacher and development team.
 * **Possible alternatives:**
@@ -13,15 +13,15 @@ Although it would have simplified the development at first, this solution presen
 ** **Game Server (Rust)** handling core game rules, move validation, and bot strategies
 ** **Auth Service (Node.js + Express + TypeScript)** managing user authentication, registration, and JWT token lifecycle, with exclusive access to `auth.db`
 ** **Users Service (Node.js + Express + TypeScript)** managing user profile data, with exclusive access to `users.db`
-** **Game Service (Node.js + Express + TypeScript)** managing match persistence, move history, and statistics, with exclusive access to `game.db`
+** **Game Service (Node.js + Express + TypeScript)** managing match persistence, move history, statistics, online matchmaking, and real-time sessions, with exclusive access to `game.db` and Redis
 ** **React Frontend (Vite + TypeScript)** for user interaction, running entirely in the browser and coordinating API calls to backend services
-** **Nginx API Gateway** routing requests and handling cross-cutting concerns (CORS, rate limiting, security)
-** Each service owns its own database, ensuring fault isolation at the data layer +
+** **Nginx API Gateway** routing requests and handling cross-cutting concerns (CORS, rate limiting, WebSocket proxying, security)
+** Each service owns its own data store, ensuring fault isolation at the data layer +
 This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.
 * **Pros:**
 ** Clear separation of concerns between game logic, data persistence, and user interface
 ** Enables independent development and deployment of all services
-** Each database is isolated per domain, ensuring fault isolation
+** Each data store is isolated per domain, ensuring fault isolation
 ** Nginx provides security isolation for backend services
 * **Cons:**
 ** Increased architectural complexity compared to a single monolithic backend
@@ -46,7 +46,7 @@ This approach allows each component to evolve independently while using the most
 * **Status:** Accepted by the teacher and development team.
 * **Possible alternatives:**
 ** There were no possible alternatives because this was an imposed constraint, given by the course's teachers.
-* **Decision:** We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
+* **Decision:** We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis, Prometheus, Grafana) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
 * **Pros:**
 ** Provides consistent environments across development, testing, and deployment
 ** Simplifies setup and onboarding by reducing manual configuration
@@ -82,14 +82,14 @@ This approach allows each component to evolve independently while using the most
 * **Decision:** We decided to use Nginx as a reverse proxy and API Gateway. Nginx will be the only component with a publicly exposed port (80). It will route requests based on URL paths:
 ** `/api/auth/*` → Auth Service (port 3001, internal)
 ** `/api/users/*` → Users Service (port 3000, internal)
-** `/api/game/*` → Game Service (port 3002, internal)
+** `/api/game/*` → Game Service (port 3002, internal), including WebSocket upgrade for Socket.IO
 ** `/api/gamey/*` → Game Server (port 4000, internal)
 ** `/*` → React Frontend static files
-Nginx will also handle CORS headers, rate limiting, and request logging.
+Nginx will also handle CORS headers, rate limiting, WebSocket proxying, and request logging.
 * **Pros:**
 ** Single public entry point enhances security (defense in depth)
 ** Backend services are isolated on internal Docker network
-** Centralized handling of CORS, rate limiting, and logging
+** Centralized handling of CORS, rate limiting, WebSocket proxying, and logging
 ** High performance and battle-tested in production environments
 ** Simple configuration and widely known by the development community
 * **Cons:**
@@ -116,3 +116,27 @@ Each database is mounted as an independent Docker volume, and no service has acc
 ** Queries that previously joined data across domains (e.g., linking statistics to a user profile) now require inter-service HTTP calls, adding latency and complexity
 ** Three services to maintain instead of one, increasing development and operational overhead
 ** Cross-service consistency (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level
+
+=== ADR 7: Redis and Socket.IO for Online Matchmaking and Real-time Sessions
+* **Context:** Adding online human-vs-human matches required two capabilities that the existing architecture could not provide efficiently: (1) a low-latency shared queue to pair players waiting for an opponent, and (2) a real-time bidirectional communication channel to propagate board state updates to both players instantly after each move. Polling a REST endpoint for both purposes would introduce unacceptable latency and unnecessary load on `game.db`.
+* **Status:** Proposed by the development team.
+* **Possible alternatives:**
+** **REST polling only (no Redis, no WebSocket):** Both matchmaking and move synchronisation would be handled by clients polling REST endpoints against `game.db`. Simple to implement, but introduces high latency for move propagation, increased database load, and a poor real-time user experience.
+** **Long polling / Server-Sent Events (SSE):** A lighter alternative to WebSocket for server-to-client push. Would reduce polling overhead but does not support bidirectional communication natively, complicating turn submission and event acknowledgment.
+** **In-memory matchmaking queue (no Redis):** A plain Node.js in-memory queue instead of Redis. Simpler to set up, but the queue is lost on service restart and does not support multiple Game Service instances sharing the same queue state.
+* **Decision:** We decided to introduce **Redis** as an ephemeral in-memory store and **Socket.IO** as the real-time communication layer, both exclusively used by the Game Service:
+** **Redis** stores the matchmaking queue entries and active online session snapshots (board state, current turn, player list). It also acts as the `@socket.io/redis-adapter` pub/sub backend, ensuring Socket.IO events are delivered correctly even if multiple Game Service instances are running.
+** **Socket.IO** provides a WebSocket-based bidirectional channel between the React Frontend and the Game Service. After each move, the Game Service broadcasts the updated board state to all players in the session. Turn timeout events and bot fallback notifications are also delivered via Socket.IO.
+** Redis runs as a separate Docker container (port 6379, internal only) with no host volume, as its data is fully ephemeral.
+** Nginx proxies the Socket.IO WebSocket connection transparently under `/api/game/socket.io/`.
+* **Pros:**
+** Low-latency real-time updates: board state changes are pushed to clients instantly via WebSocket instead of requiring polling
+** Redis decouples matchmaking queue state from `game.db`, avoiding write contention under high concurrency
+** The `@socket.io/redis-adapter` enables horizontal scaling of the Game Service without losing session events
+** Turn timeout and bot fallback logic integrates naturally with Socket.IO event emission
+** Redis failure only affects online matchmaking and active sessions; AI matches, authentication, and statistics remain fully operational
+* **Cons:**
+** Adds two new components (Redis and Socket.IO) to the architecture, increasing operational complexity
+** Online session state is ephemeral: a Redis restart causes active online sessions to be lost (ongoing match state cannot be recovered without additional persistence logic)
+** Nginx must be configured to handle WebSocket upgrades correctly for the Socket.IO path
+** Debugging real-time event flows is more complex than tracing synchronous REST calls

@@ -4,6 +4,7 @@ import styles from './Nav.module.css';
 import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
 import { useAuth } from '../../features/auth';
+import { logoutSession } from '../../features/auth/api/authApi';
 
 export default function Nav() {
   const { user, logout } = useAuth();
@@ -13,7 +14,8 @@ export default function Nav() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logoutSession();
     logout();
     navigate('/login');
   };
