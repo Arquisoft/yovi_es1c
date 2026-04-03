@@ -3,9 +3,191 @@ info:
   title: YOVI Game Service API
   version: 1.0.0
   description: HTTP contract for game, matchmaking and online session endpoints behind the gateway `/api/game`.
+
 servers:
   - url: /api/game
+
+security:
+  - bearerAuth: []
+
 paths:
+
+  /matches:
+    post:
+      summary: Create a new match
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              boardSize: 8
+              difficulty: MEDIUM
+      responses:
+        '201':
+          description: Match created
+          content:
+            application/json:
+              example:
+                matchId: 123
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /matches/{id}:
+    get:
+      summary: Get match by id (owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Match data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchDto'
+              example:
+                id: 123
+                user_id: 1
+                boardSize: 8
+                difficulty: MEDIUM
+                status: ONGOING
+        '403':
+          description: Unauthorized match access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /matches/{id}/moves:
+    post:
+      summary: Add a move to a match
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveDto'
+            example:
+              position_yen: 4
+              player: USER
+              moveNumber: 1
+      responses:
+        '201':
+          description: Move added
+          content:
+            application/json:
+              example:
+                message: Move added
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Invalid move / match already finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /matches/{id}/finish:
+    post:
+      summary: Finish a match
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              winner: USER
+      responses:
+        '200':
+          description: Match finished
+          content:
+            application/json:
+              example:
+                message: Match finished
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Match already finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stats/{userId}:
+    get:
+      summary: Get user statistics
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsDto'
+              example:
+                user_id: 1
+                wins: 10
+                losses: 5
+                total_games: 15
+                win_rate: 0.66
+
   /online/queue:
     post:
       summary: Join matchmaking queue
@@ -23,6 +205,7 @@ paths:
       responses:
         '204':
           description: Queue cancelled
+
   /online/queue/match:
     get:
       summary: Poll for match assignment
@@ -35,6 +218,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /online/sessions/active:
     get:
       summary: Get active online session for authenticated user
@@ -49,6 +233,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /online/sessions/{matchId}:
     get:
       summary: Get session snapshot
@@ -67,6 +252,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /online/sessions/{matchId}/moves:
     post:
       summary: Submit move
@@ -103,6 +289,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /online/sessions/{matchId}/reconnect:
     post:
       summary: Reconnect to a paused session
@@ -127,6 +314,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /online/sessions/{matchId}/abandon:
     post:
       summary: Abandon session (idempotent)
@@ -139,18 +327,67 @@ paths:
       responses:
         '204':
           description: Session abandoned
+
 components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
+
     ErrorResponse:
       type: object
       required: [code, message]
       properties:
         code:
           type: string
-          description: Stable domain error code.
           example: SESSION_NOT_FOUND
         message:
           type: string
           example: Online session not found
         details:
           nullable: true
+
+    MatchDto:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        boardSize:
+          type: integer
+        difficulty:
+          type: string
+        status:
+          type: string
+          enum: [ONGOING, FINISHED]
+
+    MoveDto:
+      type: object
+      required: [position_yen, player, moveNumber]
+      properties:
+        position_yen:
+          type: integer
+        player:
+          type: string
+          enum: [USER, BOT]
+        moveNumber:
+          type: integer
+
+    StatsDto:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        total_games:
+          type: integer
+        win_rate:
+          type: number
