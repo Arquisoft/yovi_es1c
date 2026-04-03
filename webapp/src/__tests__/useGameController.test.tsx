@@ -3,7 +3,7 @@ import {act} from "react";
 import {useGameController} from "../features/game/hooks/useGameController";
 import {describe, it, expect, beforeEach, vi, afterEach} from "vitest";
 import * as fetchWithAuthModule from "../shared/api/fetchWithAuth";
-
+import * as yen from "../features/game/domain/yen";
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -758,5 +758,101 @@ describe("useGameController", () => {
         act(() => { result.current.actions.selectMode("LOCAL_2P"); });
         expect(result.current.state.gameMode).toBe("LOCAL_2P");
         expect(result.current.state.gameOver).toBe(false);
+    });
+
+    it("calls finishMatch with USER when player wins", async () => {
+        fetchMock
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                })
+            )
+            .mockResolvedValueOnce(new Response(null, { status: 200 })) // persistMove
+            .mockResolvedValueOnce(new Response(null, { status: 200 })); // finishMatch
+
+        const { result } = renderHook(() =>
+            useGameController(1, "BOT", undefined, "match-123")
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        const finishCall = fetchMock.mock.calls.find(([url]) =>
+            (url as string).includes("/matches/match-123/finish")
+        );
+
+        expect(finishCall).toBeTruthy();
+        expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
+            winner: "USER",
+        });
+    });
+
+    it("calls finishMatch with BOT when bot wins", async () => {
+        vi.spyOn(yen, "checkWinner")
+            .mockReturnValueOnce(false) // human move
+            .mockReturnValueOnce(true); // bot move wins
+
+        fetchMock.mockImplementation(async (url) => {
+            const urlString = String(url);
+
+            if (urlString.includes("/ybot/choose/")) {
+                return new Response(JSON.stringify({ coords: { x: 0, y: 1, z: 0 } }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                });
+            }
+
+            return new Response(null, { status: 200 });
+        });
+
+       const { result } = renderHook(() =>
+            useGameController(2, "BOT", undefined, "match-123")
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() =>
+            expect(
+                fetchMock.mock.calls.find(([url]) =>
+                    String(url).includes("/matches/match-123/finish")
+            )
+            ).toBeTruthy()
+        );
+
+        const finishCall = fetchMock.mock.calls.find(([url]) =>
+            String(url).includes("/matches/match-123/finish")
+        );
+
+        expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
+            winner: "BOT",
+        });
+    });
+
+    it("calls finishMatch with DRAW when board is full", async () => {
+        const yenModule = await import("../features/game/domain/yen");
+        vi.spyOn(yenModule, "checkWinner").mockReturnValue(false);
+
+        const { result } = renderHook(() =>
+            useGameController(1, "BOT", undefined, "match-123")
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        const finishCall = fetchMock.mock.calls.find(([url]) =>
+            (url as string).includes("/matches/match-123/finish")
+        );
+
+        expect(finishCall).toBeTruthy();
+        expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
+            winner: "DRAW",
+        });
+
+        vi.restoreAllMocks();
     });
 });
