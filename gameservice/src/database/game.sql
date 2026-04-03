@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS matches (
     difficulty TEXT NOT NULL,
     status TEXT DEFAULT 'ONGOING',
     winner TEXT,
+    mode TEXT DEFAULT 'BOT',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
