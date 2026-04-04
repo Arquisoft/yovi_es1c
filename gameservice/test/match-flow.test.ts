@@ -27,6 +27,7 @@ describe('Game match flow integration tests', () => {
 
     mockStatsService = {
       getStats: vi.fn(),
+      getFullStats: vi.fn(),
     } as unknown as StatsService;
 
     app.use((req, res, next) => {
@@ -95,15 +96,9 @@ describe('Game match flow integration tests', () => {
       }
 
       // Step 4: Get final stats
-      const mockStats = {
-        user_id: userId,
-        wins: 1,
-        losses: 0,
-        total_games: 1,
-        win_rate: 100,
-      };
+      const mockDto = { totalMatches: 1, wins: 1, losses: 0, matches: [] };
 
-      vi.spyOn(mockStatsService, 'getStats').mockResolvedValue(mockStats);
+      vi.spyOn(mockStatsService, 'getFullStats').mockResolvedValue(mockDto);
 
       const statsResponse = await request(app).get(`/api/game/stats/${userId}`);
 
@@ -148,7 +143,7 @@ describe('Game match flow integration tests', () => {
             });
 
         expect(response.status).toBe(201);
-        expect(mockMatchService.createMatch).toHaveBeenCalledWith(userId, 8, difficulty);
+        expect(mockMatchService.createMatch).toHaveBeenCalledWith(userId, 8, difficulty, 'BOT');
       }
     });
 
@@ -186,21 +181,15 @@ describe('Game match flow integration tests', () => {
     });
 
     it('should collect stats across multiple difficulties', async () => {
-      const userStats = {
-        user_id: userId,
-        wins: 3,
-        losses: 2,
-        total_games: 5,
-        win_rate: 60,
-      };
+      const mockDto = { totalMatches: 5, wins: 3, losses: 2, matches: [] };
 
-      vi.spyOn(mockStatsService, 'getStats').mockResolvedValue(userStats);
+      vi.spyOn(mockStatsService, 'getFullStats').mockResolvedValue(mockDto);
 
       const response = await request(app).get(`/api/game/stats/${userId}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual(userStats);
-      expect(response.body.total_games).toBe(5);
+      expect(response.body).toEqual(mockDto);
+      expect(response.body.totalMatches).toBe(5);
     });
   });
 
@@ -313,15 +302,9 @@ describe('Game match flow integration tests', () => {
     });
 
     it('should handle concurrent stats requests', async () => {
-      const mockStats = {
-        user_id: userId,
-        wins: 5,
-        losses: 3,
-        total_games: 8,
-        win_rate: 62.5,
-      };
+      const mockDto = { totalMatches: 8, wins: 5, losses: 3, matches: [] };
 
-      vi.spyOn(mockStatsService, 'getStats').mockResolvedValue(mockStats);
+      vi.spyOn(mockStatsService, 'getFullStats').mockResolvedValue(mockDto);
 
       const requests = Array.from({ length: 5 }, () =>
           request(app).get(`/api/game/stats/${userId}`)
@@ -331,10 +314,10 @@ describe('Game match flow integration tests', () => {
 
       responses.forEach((response: any) => {
         expect(response.status).toBe(200);
-        expect(response.body).toEqual(mockStats);
+        expect(response.body).toEqual(mockDto);
       });
 
-      expect(mockStatsService.getStats).toHaveBeenCalledTimes(5);
+      expect(mockStatsService.getFullStats).toHaveBeenCalledTimes(5);
     });
 
     it('should handle concurrent move additions', async () => {

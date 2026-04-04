@@ -96,8 +96,8 @@ export function createGameController(
   router.get("/stats/:userId", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = validateUserId(req.params.userId);
-      const stats = await statsService.getStats(userId);
-      res.json(stats || { user_id: userId, wins: 0, losses: 0, total_games: 0, win_rate: 0 });
+      const stats = await statsService.getFullStats(userId);
+      res.json(stats);
     } catch (error) {
       next(error);
     }

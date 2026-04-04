@@ -27,6 +27,7 @@ describe('GameController integration tests', () => {
 
     mockStatsService = {
       getStats: vi.fn(),
+      getFullStats: vi.fn(),
     } as unknown as StatsService;
 
     // Mock middleware to set userId
@@ -53,7 +54,7 @@ describe('GameController integration tests', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ matchId });
-      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium');
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
     });
 
     it('should validate boardSize', async () => {
@@ -108,7 +109,7 @@ describe('GameController integration tests', () => {
           });
 
       expect(response.status).toBe(201);
-      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium');
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
     });
 
     it('should reject request without required fields', async () => {
@@ -196,7 +197,7 @@ describe('GameController integration tests', () => {
         finishMatch: vi.fn(),
       } as unknown as MatchService;
 
-      localMockStatsService = { getStats: vi.fn() } as unknown as StatsService;
+      localMockStatsService = { getStats: vi.fn(), getFullStats: vi.fn() } as unknown as StatsService;
 
       app = express();
       app.use(express.json());
@@ -315,37 +316,34 @@ describe('GameController integration tests', () => {
   });
 
   describe('GET /api/game/stats/:userId', () => {
-    it('should retrieve user statistics', async () => {
-      const mockStats = {
-        user_id: 1,
+    it('should return StatsDto format for a user with matches', async () => {
+      const mockDto = {
+        totalMatches: 8,
         wins: 5,
         losses: 3,
-        total_games: 8,
-        win_rate: 62.5,
+        matches: [
+          { matchId: '1', createdAt: '2026-01-01T10:00:00', mode: 'BOT', status: 'win' },
+        ],
       };
 
-      vi.spyOn(mockStatsService, 'getStats').mockResolvedValue(mockStats);
+      vi.spyOn(mockStatsService, 'getFullStats').mockResolvedValue(mockDto);
 
       const response = await request(app).get('/api/game/stats/1');
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual(mockStats);
-      expect(mockStatsService.getStats).toHaveBeenCalledWith(1);
+      expect(response.body).toEqual(mockDto);
+      expect(mockStatsService.getFullStats).toHaveBeenCalledWith(1);
     });
 
-    it('should return default stats for user without history', async () => {
-      vi.spyOn(mockStatsService, 'getStats').mockResolvedValue(undefined);
+    it('should return zeroed StatsDto for user without matches', async () => {
+      const emptyDto = { totalMatches: 0, wins: 0, losses: 0, matches: [] };
+
+      vi.spyOn(mockStatsService, 'getFullStats').mockResolvedValue(emptyDto);
 
       const response = await request(app).get('/api/game/stats/999');
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        user_id: 999,
-        wins: 0,
-        losses: 0,
-        total_games: 0,
-        win_rate: 0,
-      });
+      expect(response.body).toEqual(emptyDto);
     });
 
     it('should validate userId parameter', async () => {
