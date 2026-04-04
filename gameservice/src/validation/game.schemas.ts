@@ -87,3 +87,22 @@ export function validateMatchId(matchId: unknown): number {
   }
   return id;
 }
+
+export interface FinishMatchRequest {
+  winner: string;
+}
+
+export function validateFinishMatch(data: unknown): FinishMatchRequest {
+  if (typeof data !== 'object' || data === null) {
+    throw new ValidationError('Request body must be an object');
+  }
+
+  const body = data as Record<string, unknown>;
+  const { winner } = body;
+
+  if (!['USER', 'BOT'].includes(String(winner))) {
+    throw new ValidationError('winner must be USER or BOT');
+  }
+
+  return { winner: String(winner) };
+}

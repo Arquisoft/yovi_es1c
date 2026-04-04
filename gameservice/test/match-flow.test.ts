@@ -22,7 +22,7 @@ describe('Game match flow integration tests', () => {
       createMatch: vi.fn(),
       getMatch: vi.fn(),
       addMove: vi.fn(),
-      finishMatch: vi.fn(),
+      finishMatch: vi.fn().mockResolvedValue(undefined),
     } as unknown as MatchService;
 
     mockStatsService = {
@@ -95,7 +95,17 @@ describe('Game match flow integration tests', () => {
         );
       }
 
-      // Step 4: Get final stats
+      // Step 4: Finish match
+      (mockMatchService.finishMatch as any).mockResolvedValue(undefined);
+
+      const finishResponse = await request(app)
+          .put(`/api/game/matches/${matchId}/finish`)
+          .send({ winner: 'USER' });
+
+      expect(finishResponse.status).toBe(200);
+      expect(mockMatchService.finishMatch).toHaveBeenCalledWith(matchId, 'USER');
+
+      // Step 5: Get final stats
       const mockDto = { totalMatches: 1, wins: 1, losses: 0, matches: [] };
 
       vi.spyOn(mockStatsService, 'getFullStats').mockResolvedValue(mockDto);

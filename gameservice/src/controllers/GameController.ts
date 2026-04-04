@@ -2,7 +2,7 @@ import { Router, NextFunction, Request, Response } from "express";
 import { MatchService } from "../services/MatchService";
 import { StatsService } from "../services/StatsService";
 import { InvalidMoveError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
-import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId } from "../validation/game.schemas";
+import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId, validateFinishMatch } from "../validation/game.schemas";
 import { MatchmakingService } from "../services/MatchmakingService";
 import { OnlineSessionError, OnlineSessionService } from "../services/OnlineSessionService";
 import { validateQueueJoin } from "../validation/online.schemas";
@@ -88,6 +88,27 @@ export function createGameController(
 
       await matchService.addMove(matchId, validated.position_yen, validated.player, validated.moveNumber);
       res.status(201).json({ message: "Move added" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.put("/matches/:id/finish", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const matchId = validateMatchId(req.params.id);
+      const validated = validateFinishMatch(req.body);
+
+      const match = await matchService.getMatch(matchId);
+      if (!match) {
+        throw new MatchNotFoundError();
+      }
+
+      if (match.user_id !== Number(req.userId)) {
+        throw new UnauthorizedMatchError();
+      }
+
+      await matchService.finishMatch(matchId, validated.winner);
+      res.status(200).json({ message: "Match finished" });
     } catch (error) {
       next(error);
     }
