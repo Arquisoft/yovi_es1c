@@ -6,7 +6,7 @@ import styles from './StatsUI.module.css';
 export default function StatsUI() {
   const userId = localStorage.getItem('userId') || '';
   const { state } = useStatsController(userId);
-  const { stats, loading, error, isMocked } = state;
+  const { stats, loading, error } = state;
 
   if (loading) {
     return (
@@ -53,9 +53,7 @@ export default function StatsUI() {
         </Typography>
         <Typography className={`${styles.subheader} crt-blink`}>monitor de rendimiento</Typography>
 
-        {isMocked && <Typography className={styles.mockWarning}>⚠️ Los datos mostrados son mockeados (simulados)</Typography>}
-
-        <Box className={styles.statGrid}>
+<Box className={styles.statGrid}>
           <StatCard title="Partidas jugadas" value={stats.totalMatches} />
           <StatCard title="Victorias" value={stats.wins} />
           <StatCard title="Derrotas" value={stats.losses} />
