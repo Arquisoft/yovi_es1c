@@ -1,17 +1,69 @@
+import { Request, Response } from 'express';
 import { UsersService } from '../services/users.service.js';
+import { UserRepository } from '../repositories/users.repository.js';
 
 export class UsersController {
-    constructor(private readonly usersService: UsersService) {}
+    constructor(
+        private readonly usersService: UsersService,
+        private readonly userRepository: UserRepository
+    ) {}
 
-    recordCreatedUser() {
-        this.usersService.onUserCreated();
+    async createProfile(req: Request, res: Response): Promise<void> {
+        const { username, avatar } = req.body;
+        if (!username) {
+            res.status(400).json({ error: 'username is required' });
+            return;
+        }
+        try {
+            const profile = await this.userRepository.createProfile(username, avatar);
+            this.usersService.onUserCreated();
+            res.status(201).json(profile);
+        } catch (err: any) {
+            if (err?.message?.includes('UNIQUE constraint failed')) {
+                res.status(409).json({ error: 'Username already exists' });
+            } else {
+                res.status(500).json({ error: 'Internal server error' });
+            }
+        }
     }
 
-    recordUpdatedProfile() {
+    async getProfile(req: Request, res: Response): Promise<void> {
+        const id = parseInt(req.params['id'] as string, 10);
+        if (isNaN(id)) {
+            res.status(400).json({ error: 'Invalid id' });
+            return;
+        }
+        const profile = await this.userRepository.getById(id);
+        if (!profile) {
+            res.status(404).json({ error: 'Profile not found' });
+            return;
+        }
+        res.json(profile);
+    }
+
+    async getProfileByUsername(req: Request, res: Response): Promise<void> {
+        const username = req.params['username'] as string;
+        const profile = await this.userRepository.getByUsername(username);
+        if (!profile) {
+            res.status(404).json({ error: 'Profile not found' });
+            return;
+        }
+        res.json(profile);
+    }
+
+    async updateProfile(req: Request, res: Response): Promise<void> {
+        const id = parseInt(req.params['id'] as string, 10);
+        if (isNaN(id)) {
+            res.status(400).json({ error: 'Invalid id' });
+            return;
+        }
+        const { avatar } = req.body;
+        const updated = await this.userRepository.updateProfile(id, { avatar });
+        if (!updated) {
+            res.status(404).json({ error: 'Profile not found' });
+            return;
+        }
         this.usersService.onProfileUpdated();
-    }
-
-    recordDeletedUser() {
-        this.usersService.onUserDeleted();
+        res.json(updated);
     }
 }
