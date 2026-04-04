@@ -26,7 +26,6 @@ SELECT
     user_id,
     SUM(CASE WHEN winner = 'USER' THEN 1 ELSE 0 END) as wins,
     SUM(CASE WHEN winner = 'BOT' THEN 1 ELSE 0 END) as losses,
-    SUM(CASE WHEN winner = 'DRAW' THEN 1 ELSE 0 END) as draws,
     COUNT(*) as total_games,
     ROUND(
         (SUM(CASE WHEN winner = 'USER' THEN 1 ELSE 0 END) * 100.0) /

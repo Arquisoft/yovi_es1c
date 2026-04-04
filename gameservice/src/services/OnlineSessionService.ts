@@ -345,10 +345,9 @@ export class OnlineSessionService {
     return rows.join('/');
   }
 
-  private resolveWinner(layout: string, size: number): 'B' | 'R' | 'DRAW' | null {
+  private resolveWinner(layout: string, size: number): 'B' | 'R' | null {
     if (this.checkWinner(layout, size, 'B')) return 'B';
     if (this.checkWinner(layout, size, 'R')) return 'R';
-    if (!layout.includes('.')) return 'DRAW';
     return null;
   }
 
@@ -520,7 +519,7 @@ export class OnlineSessionService {
 
       state.status = 'abandoned';
       state.closeReason = 'abandoned';
-      state.winner = state.players.find((player) => player.userId !== userId)?.symbol ?? 'DRAW';
+      state.winner = state.players.find((player) => player.userId !== userId)!.symbol;
       state.version += 1;
       await this.saveState(state);
       this.emitSessionState(state);
