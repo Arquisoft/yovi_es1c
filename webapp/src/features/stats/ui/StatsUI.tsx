@@ -1,10 +1,12 @@
 import { Box, Card, CardContent, Paper, Typography } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useStatsController } from '../hooks/useStatsController';
+import { useAuth } from '../../auth';
 import styles from './StatsUI.module.css';
 
 export default function StatsUI() {
-  const userId = localStorage.getItem('userId') || '';
+  const { user } = useAuth();
+  const userId = user?.id != null ? String(user.id) : '';
   const { state } = useStatsController(userId);
   const { stats, loading, error } = state;
 
@@ -34,11 +36,10 @@ export default function StatsUI() {
       field: 'createdAt',
       headerName: 'Fecha',
       flex: 1,
-      valueFormatter: (params: any) => {
-        const value = params.value;
+      valueFormatter: (value: any) => {
         if (!value) return 'N/A';
         const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+        return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
       },
     },
     { field: 'mode', headerName: 'Modo', flex: 1 },
