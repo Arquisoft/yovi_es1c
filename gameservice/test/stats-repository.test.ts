@@ -84,7 +84,7 @@ describe('StatsRepository.getMatchHistory', () => {
 
   it('does not include ONGOING matches', async () => {
     await insertMatch(db, 1, { status: 'FINISHED', winner: 'USER' });
-    await insertMatch(db, 1, { status: 'ONGOING', winner: null });
+    await insertMatch(db, 1, { status: 'ONGOING', winner: undefined });
 
     const result = await repo.getMatchHistory(1, 10);
 
