@@ -3,7 +3,10 @@ import { ValidationError } from "../errors/domain-errors.js";
 export interface CreateMatchRequest {
   boardSize: number;
   difficulty: string;
+  mode: string;
 }
+
+const VALID_MODES = ['BOT', 'ONLINE', 'LOCAL_2P'] as const;
 
 export interface AddMoveRequest {
   position_yen: string;
@@ -22,7 +25,7 @@ export function validateCreateMatch(data: unknown): CreateMatchRequest {
   }
 
   const body = data as Record<string, unknown>;
-  const { boardSize, difficulty } = body;
+  const { boardSize, difficulty, mode } = body;
 
   if (typeof boardSize !== 'number' || boardSize <= 0) {
     throw new ValidationError('boardSize must be a positive number');
@@ -30,11 +33,20 @@ export function validateCreateMatch(data: unknown): CreateMatchRequest {
 
   const normalizedDifficulty = String(difficulty).toLowerCase();
 
-  if (!['easy', 'medium', 'hard','expert'].includes(normalizedDifficulty)) {
+  if (!['easy', 'medium', 'hard', 'expert'].includes(normalizedDifficulty)) {
     throw new ValidationError('difficulty must be easy, medium, hard or expert');
   }
 
-  return { boardSize, difficulty: normalizedDifficulty };
+  if (mode !== undefined && typeof mode !== 'string') {
+    throw new ValidationError('mode must be a string');
+  }
+  const normalizedMode = mode === undefined ? 'BOT' : mode.toUpperCase();
+
+  if (!(VALID_MODES as readonly string[]).includes(normalizedMode)) {
+    throw new ValidationError('mode must be BOT, ONLINE or LOCAL_2P');
+  }
+
+  return { boardSize, difficulty: normalizedDifficulty, mode: normalizedMode };
 }
 
 export function validateAddMove(data: unknown): AddMoveRequest {
