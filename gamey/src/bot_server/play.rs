@@ -69,3 +69,103 @@ pub async fn play(
         position: new_yen,
     }))
 }
+
+fn count_pieces(layout: &str) -> usize {
+    layout
+        .chars()
+        .filter(|c| *c == 'B' || *c == 'R')
+        .count()
+}
+
+#[tokio::test]
+async fn play_adds_one_piece_to_board() {
+    use axum::extract::State;
+    use axum::Json;
+
+    // Arrange
+    let state = AppState::new_test(); // o como lo crees en tests
+
+    let input_yen = YEN::new(
+        3,
+        0,
+        vec!['B', 'R'],
+        "B/BR/.R.".to_string(),
+    );
+
+    let req = PlayRequest {
+        position: input_yen.clone(),
+        bot_id: None,
+    };
+
+    // Act
+    let response = play(
+        State(state),
+        axum::extract::Path("v1".to_string()),
+        Json(req),
+    )
+        .await
+        .expect("play should succeed");
+
+    let output = response.0;
+
+    // Assert
+    let input_cells = count_pieces(input_yen.layout());
+    let output_cells = count_pieces(output.position.layout());
+
+    assert_eq!(output.api_version, "v1");
+    assert_eq!(output_cells, input_cells + 1);
+}
+
+
+#[tokio::test]
+async fn play_fails_with_invalid_yen() {
+    let state = AppState::new_test();
+
+    let invalid_yen = YEN::new(
+        3,
+        0,
+        vec!['B', 'R'],
+        "INVALID".to_string(),
+    );
+
+    let req = PlayRequest {
+        position: invalid_yen,
+        bot_id: None,
+    };
+
+    let result = play(
+        State(state),
+        axum::extract::Path("v1".to_string()),
+        Json(req),
+    )
+        .await;
+
+    assert!(result.is_err());
+}
+
+
+#[tokio::test]
+async fn play_fails_with_unknown_bot() {
+    let state = AppState::new_test();
+
+    let yen = YEN::new(
+        3,
+        0,
+        vec!['B', 'R'],
+        "B/BR/.R.".to_string(),
+    );
+
+    let req = PlayRequest {
+        position: yen,
+        bot_id: Some("nonexistent".to_string()),
+    };
+
+    let result = play(
+        State(state),
+        axum::extract::Path("v1".to_string()),
+        Json(req),
+    )
+        .await;
+
+    assert!(result.is_err());
+}
