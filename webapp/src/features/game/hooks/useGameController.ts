@@ -156,7 +156,6 @@ export const useGameController = (
     const announceWinner = (label: string) => {
         setGameOver(true);
         setMessage(`¡Felicidades ${label}!`);
-        window.alert(`¡Felicidades ${label}!`);
     };
 
     const resetGame = (nextMode: GameMode) => {
