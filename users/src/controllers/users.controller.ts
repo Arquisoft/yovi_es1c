@@ -66,4 +66,16 @@ export class UsersController {
         this.usersService.onProfileUpdated();
         res.json(updated);
     }
+
+    recordCreatedUser(): void {
+        this.usersService.onUserCreated();
+    }
+
+    recordUpdatedProfile(): void {
+        this.usersService.onProfileUpdated();
+    }
+
+    recordDeletedUser(): void {
+        this.usersService.onUserDeleted();
+    }
 }
