@@ -122,6 +122,7 @@ describe('StatsService.getFullStats', () => {
 
       expect(result.matches[0].status).toBe('lose');
     });
+
   });
 
   describe('edge cases', () => {

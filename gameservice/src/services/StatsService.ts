@@ -9,7 +9,7 @@ function mapWinnerToStatus(winner: string | null): MatchDto['status'] {
 }
 
 export class StatsService {
-  constructor(private statsRepo: StatsRepository) {}
+  constructor(private readonly statsRepo: StatsRepository) {}
 
   async getStats(userId: number) {
     return this.statsRepo.getUserStats(userId);
