@@ -11,7 +11,6 @@ security:
   - bearerAuth: []
 
 paths:
-
   /matches:
     post:
       summary: Create a new match
@@ -24,6 +23,8 @@ paths:
             example:
               boardSize: 8
               difficulty: MEDIUM
+            schema:
+              $ref: '#/components/schemas/CreateMatchRequest'
       responses:
         '201':
           description: Match created
@@ -31,6 +32,18 @@ paths:
             application/json:
               example:
                 matchId: 123
+              schema:
+                type: object
+                properties:
+                  matchId:
+                    type: integer
+                    example: 42
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized
           content:
@@ -64,6 +77,13 @@ paths:
                 status: ONGOING
         '403':
           description: Unauthorized match access
+          description: Match found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+        '403':
+          description: Not the match owner
           content:
             application/json:
               schema:
@@ -96,6 +116,7 @@ paths:
               position_yen: 4
               player: USER
               moveNumber: 1
+              $ref: '#/components/schemas/AddMoveRequest'
       responses:
         '201':
           description: Move added
@@ -105,26 +126,36 @@ paths:
                 message: Move added
         '403':
           description: Unauthorized
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Validation error or match already finished
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Match not found
+        '403':
+          description: Not the match owner
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Invalid move / match already finished
+        '404':
+          description: Match not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
   /matches/{id}/finish:
-    post:
-      summary: Finish a match
+    put:
+      summary: Finish a match with a result
       security:
         - bearerAuth: []
       parameters:
@@ -139,6 +170,8 @@ paths:
           application/json:
             example:
               winner: USER
+            schema:
+              $ref: '#/components/schemas/FinishMatchRequest'
       responses:
         '200':
           description: Match finished
@@ -148,6 +181,19 @@ paths:
                 message: Match finished
         '403':
           description: Unauthorized
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Not the match owner
           content:
             application/json:
               schema:
@@ -164,10 +210,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
   /stats/{userId}:
     get:
-      summary: Get user statistics
+      summary: Get aggregated stats for a user
       parameters:
         - in: path
           name: userId
@@ -188,12 +233,40 @@ paths:
                 total_games: 15
                 win_rate: 0.66
 
+        '400':
+          description: Invalid userId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /online/queue:
     post:
       summary: Join matchmaking queue
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [boardSize]
+              properties:
+                boardSize:
+                  type: integer
+                  example: 11
       responses:
         '201':
           description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued:
+                    type: boolean
+                  joinedAt:
+                    type: integer
         '503':
           description: Matchmaking unavailable
           content:
@@ -202,6 +275,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Cancel matchmaking queue
+      security:
+        - bearerAuth: []
       responses:
         '204':
           description: Queue cancelled
@@ -209,9 +284,31 @@ paths:
   /online/queue/match:
     get:
       summary: Poll for match assignment
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Match status
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      matched:
+                        type: boolean
+                        example: false
+                  - type: object
+                    properties:
+                      matched:
+                        type: boolean
+                        example: true
+                      matchId:
+                        type: string
+                      opponent:
+                        type: string
+                      revealAfterGame:
+                        type: boolean
         '503':
           description: Matchmaking unavailable
           content:
@@ -222,6 +319,8 @@ paths:
   /online/sessions/active:
     get:
       summary: Get active online session for authenticated user
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Active session exists
@@ -237,6 +336,8 @@ paths:
   /online/sessions/{matchId}:
     get:
       summary: Get session snapshot
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: matchId
@@ -255,13 +356,33 @@ paths:
 
   /online/sessions/{matchId}/moves:
     post:
-      summary: Submit move
+      summary: Submit move in online session
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: matchId
           required: true
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [move, expectedVersion]
+              properties:
+                move:
+                  type: object
+                  required: [row, col]
+                  properties:
+                    row:
+                      type: integer
+                    col:
+                      type: integer
+                expectedVersion:
+                  type: integer
       responses:
         '201':
           description: Move applied
@@ -293,6 +414,8 @@ paths:
   /online/sessions/{matchId}/reconnect:
     post:
       summary: Reconnect to a paused session
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: matchId
@@ -318,6 +441,8 @@ paths:
   /online/sessions/{matchId}/abandon:
     post:
       summary: Abandon session (idempotent)
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: matchId
@@ -338,6 +463,93 @@ components:
 
   schemas:
 
+  schemas:
+    CreateMatchRequest:
+      type: object
+      required: [boardSize, difficulty]
+      properties:
+        boardSize:
+          type: integer
+          example: 11
+        difficulty:
+          type: string
+          enum: [easy, medium, hard, expert]
+          example: medium
+        mode:
+          type: string
+          enum: [BOT, ONLINE, LOCAL_2P]
+          default: BOT
+    AddMoveRequest:
+      type: object
+      required: [position_yen, player, moveNumber]
+      properties:
+        position_yen:
+          type: string
+          description: Move position in YEN notation
+          example: a1
+        player:
+          type: string
+          enum: [USER, BOT]
+        moveNumber:
+          type: integer
+          minimum: 1
+    FinishMatchRequest:
+      type: object
+      required: [winner]
+      properties:
+        winner:
+          type: string
+          enum: [USER, BOT]
+    Match:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        board_size:
+          type: integer
+        difficulty:
+          type: string
+        status:
+          type: string
+          enum: [ONGOING, FINISHED]
+        winner:
+          type: string
+          nullable: true
+          enum: [USER, BOT]
+        mode:
+          type: string
+          enum: [BOT, ONLINE, LOCAL_2P]
+        created_at:
+          type: string
+          format: date-time
+    MatchDto:
+      type: object
+      properties:
+        matchId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        mode:
+          type: string
+        status:
+          type: string
+          enum: [win, lose]
+    StatsDto:
+      type: object
+      properties:
+        totalMatches:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchDto'
     ErrorResponse:
       type: object
       required: [code, message]

@@ -4,6 +4,7 @@ import { OnlineSessionService, RedisSessionClient } from '../services/OnlineSess
 import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from '../services/BotFallbackService';
 import { StatsService } from '../services/StatsService';
+import { MatchService } from '../services/MatchService';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { TurnTimerService as TurnTimerSvc } from '../services/TurnTimerService';
 import { MovePayload } from '../types/online';
@@ -83,6 +84,7 @@ interface RealtimeServiceBundle {
 
 interface AttachSocketDeps {
   statsService: StatsService;
+  matchService: MatchService;
 }
 
 let ioSingleton: IoLike | null = null;
@@ -157,6 +159,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
       Number(process.env.TURN_TIMEOUT_SEC ?? 25),
       Number(process.env.RECONNECT_GRACE_SEC ?? 60),
       { redis: redisBridge, io },
+      deps.matchService,
   );
 
   matchmakingService.startWorker();

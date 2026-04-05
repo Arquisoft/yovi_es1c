@@ -121,6 +121,19 @@ export const useGameController = (
         }
     };
 
+    const persistFinish = async (winner: "USER" | "BOT") => {
+        if (!matchId) return;
+        try {
+            await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ winner }),
+            });
+        } catch (err) {
+            console.error("Finish error:", err);
+        }
+    };
+
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
@@ -159,7 +172,7 @@ export const useGameController = (
             persistMove(humanState, "USER");
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
                 announceWinner("Jugador 1");
-                finishMatch("USER");
+                persistFinish("USER");
                 return humanState;
             }
             if (!humanLayout.includes(".")) {
@@ -192,13 +205,13 @@ export const useGameController = (
         await persistMove(botState, "BOT");
         if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
             announceWinner("Jugador 2 (Bot)");
-            await finishMatch("BOT");
+            await persistFinish("BOT");
         } else if (!botLayout.includes(".")) {
             setGameOver(true);
             setMessage("Board full — game over");
             await finishMatch("DRAW");
         } else {
-            const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : '';
+            const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : "";
             setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno${fallbackInfo}`);
         }
         setBotFailureCount(0);

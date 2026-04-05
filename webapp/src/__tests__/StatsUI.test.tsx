@@ -68,4 +68,34 @@ describe("StatsUI Component", () => {
     expect(screen.getByText("6")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
   });
+
+  it("shows error message when error is set", () => {
+    vi.mocked(statsControllerModule.useStatsController).mockReturnValue({
+      state: {
+        stats: null,
+        loading: false,
+        error: "Error obteniendo estadísticas: 500",
+        isMocked: false,
+      },
+    } as any);
+
+    renderWithProviders(<StatsUI />);
+
+    expect(screen.getByText(/Error obteniendo estadísticas: 500/i)).toBeInTheDocument();
+  });
+
+  it("renders empty matches message when user has no matches", () => {
+    vi.mocked(statsControllerModule.useStatsController).mockReturnValue({
+      state: {
+        stats: { totalMatches: 0, wins: 0, losses: 0, matches: [] },
+        loading: false,
+        error: null,
+        isMocked: false,
+      },
+    } as any);
+
+    renderWithProviders(<StatsUI />);
+
+    expect(screen.getByText(/No hay partidas registradas/i)).toBeInTheDocument();
+  });
 });

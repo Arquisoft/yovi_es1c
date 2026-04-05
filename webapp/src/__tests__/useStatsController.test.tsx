@@ -31,7 +31,6 @@ describe("useStatsController", () => {
     expect(result.current.state.loading).toBe(true);
     expect(result.current.state.stats).toBe(null);
     expect(result.current.state.error).toBe(null);
-    expect(result.current.state.isMocked).toBe(false);
   });
 
   it("fetches stats successfully", async () => {
@@ -57,10 +56,10 @@ describe("useStatsController", () => {
 
     expect(fetchMock).toHaveBeenCalled();
     expect(result.current.state.stats).toEqual(apiStats);
-    expect(result.current.state.isMocked).toBe(false);
+    expect(result.current.state.error).toBe(null);
   });
 
-  it("uses mock data when API fails", async () => {
+  it("exposes error when API fails", async () => {
     fetchMock.mockRejectedValueOnce(new Error("Network error"));
 
     const { result } = renderHook(() => useStatsController("user-1"));
@@ -69,11 +68,11 @@ describe("useStatsController", () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    expect(result.current.state.stats?.totalMatches).toBe(12);
-    expect(result.current.state.isMocked).toBe(true);
+    expect(result.current.state.stats).toBe(null);
+    expect(result.current.state.error).toBe("Network error");
   });
 
-  it("uses mock data when API returns error status", async () => {
+  it("exposes error when API returns error status", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response("Server error", { status: 500 })
     );
@@ -84,8 +83,8 @@ describe("useStatsController", () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    expect(result.current.state.stats?.totalMatches).toBe(12);
-    expect(result.current.state.isMocked).toBe(true);
+    expect(result.current.state.stats).toBe(null);
+    expect(result.current.state.error).toContain("500");
   });
 
   it("calls API with Authorization header when jwt exists", async () => {
@@ -180,6 +179,18 @@ describe("useStatsController", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes 'Error desconocido' when a non-Error is thrown", async () => {
+    fetchMock.mockRejectedValueOnce("plain string rejection");
+
+    const { result } = renderHook(() => useStatsController("user-1"));
+
+    await waitFor(() => {
+      expect(result.current.state.loading).toBe(false);
+    });
+
+    expect(result.current.state.error).toBe("Error desconocido");
   });
 
 });

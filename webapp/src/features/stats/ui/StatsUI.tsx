@@ -1,12 +1,14 @@
 import { Box, Card, CardContent, Paper, Typography } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useStatsController } from '../hooks/useStatsController';
+import { useAuth } from '../../auth';
 import styles from './StatsUI.module.css';
 
 export default function StatsUI() {
-  const userId = localStorage.getItem('userId') || '';
+  const { user } = useAuth();
+  const userId = user?.id != null ? String(user.id) : '';
   const { state } = useStatsController(userId);
-  const { stats, loading, error, isMocked } = state;
+  const { stats, loading, error } = state;
 
   if (loading) {
     return (
@@ -34,11 +36,10 @@ export default function StatsUI() {
       field: 'createdAt',
       headerName: 'Fecha',
       flex: 1,
-      valueFormatter: (params: any) => {
-        const value = params.value;
+      valueFormatter: (value: any) => {
         if (!value) return 'N/A';
         const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+        return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
       },
     },
     { field: 'mode', headerName: 'Modo', flex: 1 },
@@ -53,9 +54,7 @@ export default function StatsUI() {
         </Typography>
         <Typography className={`${styles.subheader} crt-blink`}>monitor de rendimiento</Typography>
 
-        {isMocked && <Typography className={styles.mockWarning}>⚠️ Los datos mostrados son mockeados (simulados)</Typography>}
-
-        <Box className={styles.statGrid}>
+<Box className={styles.statGrid}>
           <StatCard title="Partidas jugadas" value={stats.totalMatches} />
           <StatCard title="Victorias" value={stats.wins} />
           <StatCard title="Derrotas" value={stats.losses} />

@@ -11,13 +11,13 @@ export interface SessionStatePayload {
     { userId: number; username: string; symbol: 'B' | 'R' },
     { userId: number; username: string; symbol: 'B' | 'R' }
   ];
-  winner: 'B' | 'R' | 'DRAW' | null;
+  winner: 'B' | 'R' | null;
   connectionStatus: ConnectionState;
   messages?: Array<{ userId: number; username: string; text: string; timestamp: number }>;
 }
 
 export interface SessionEndedPayload {
-  winner: 'B' | 'R' | 'DRAW' | null;
+  winner: 'B' | 'R' | null;
   reason: 'FORFEIT' | 'COMPLETED';
   opponentType: OpponentType;
   revealedOpponent?: { username: string };
