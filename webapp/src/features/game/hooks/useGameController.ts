@@ -88,6 +88,19 @@ export const useGameController = (
         setMessage("Click a cell to play");
     };
 
+    const finishMatch = async (winner: "USER" | "BOT" | "DRAW") => {
+        if (!matchId) return;
+        try {
+            await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ winner }),
+            });
+        } catch (err) {
+            console.error("Finish match error:", err);
+        }
+    };
+
     const persistMove = async (
         position: YenPositionDto,
         player: "USER" | "BOT"
@@ -108,6 +121,19 @@ export const useGameController = (
         }
     };
 
+    const persistFinish = async (winner: "USER" | "BOT") => {
+        if (!matchId) return;
+        try {
+            await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ winner }),
+            });
+        } catch (err) {
+            console.error("Finish error:", err);
+        }
+    };
+
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
@@ -125,10 +151,13 @@ export const useGameController = (
                 const nextState: YenPositionDto = { ...prev, layout: newLayout, turn: nextTurn };
                 persistMove(nextState, nextSymbol === prev.players[0] ? "USER" : "BOT");
                 if (checkWinner(newLayout, prev.size, nextSymbol)) {
+                    const winnerCode = nextSymbol === prev.players[0] ? "USER" : "BOT";
                     announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
+                    finishMatch(winnerCode);
                 } else if (!newLayout.includes(".")) {
                     setGameOver(true);
                     setMessage("Board full — game over");
+                    finishMatch("DRAW");
                 } else {
                     setMessage(`Turno: ${nextTurn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
                 }
@@ -143,12 +172,13 @@ export const useGameController = (
             persistMove(humanState, "USER");
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
                 announceWinner("Jugador 1");
-                persistMove(humanState, "USER");
+                persistFinish("USER");
                 return humanState;
             }
             if (!humanLayout.includes(".")) {
                 setGameOver(true);
                 setMessage("Board full — game over");
+                finishMatch("DRAW");
                 return humanState;
             }
             callBot(humanState);
@@ -175,13 +205,13 @@ export const useGameController = (
         await persistMove(botState, "BOT");
         if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
             announceWinner("Jugador 2 (Bot)");
-            await persistMove(botState, "BOT");
+            await persistFinish("BOT");
         } else if (!botLayout.includes(".")) {
             setGameOver(true);
             setMessage("Board full — game over");
-            await persistMove(botState, "BOT");
+            await finishMatch("DRAW");
         } else {
-            const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : '';
+            const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : "";
             setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno${fallbackInfo}`);
         }
         setBotFailureCount(0);

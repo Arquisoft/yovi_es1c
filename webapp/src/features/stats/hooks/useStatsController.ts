@@ -18,29 +18,14 @@ export type StatsDto = {
   matches: MatchDto[];
 };
 
-const MOCK_STATS: StatsDto = {
-  totalMatches: 12,
-  wins: 7,
-  losses: 5,
-  matches: [
-    { matchId: "1", createdAt: "2026-03-01", mode: "BOT", status: "win" },
-    { matchId: "2", createdAt: "2026-03-02", mode: "BOT", status: "lose" },
-    { matchId: "3", createdAt: "2026-03-03", mode: "LOCAL_2P", status: "win" },
-    { matchId: "4", createdAt: "2026-03-04", mode: "BOT", status: "lose" },
-    { matchId: "5", createdAt: "2026-03-05", mode: "LOCAL_2P", status: "win" },
-  ],
-};
-
 export const useStatsController = (userId: string) => {
   const [stats, setStats] = useState<StatsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMocked, setIsMocked] = useState(false);
 
   const fetchStats = async () => {
     setLoading(true);
     setError(null);
-    setIsMocked(false);
 
     try {
       const token = localStorage.getItem("jwt");
@@ -56,16 +41,9 @@ export const useStatsController = (userId: string) => {
       if (!res.ok) throw new Error(`Error obteniendo estadísticas: ${res.status}`);
 
       const apiData: StatsDto = await res.json();
-
       setStats(apiData);
     } catch (err) {
-      console.warn(
-        "No se pudo acceder a la API, usando datos mock:",
-        err instanceof Error ? err.message : err
-      );
-
-      setStats(MOCK_STATS);
-      setIsMocked(true);
+      setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
       setLoading(false);
     }
@@ -76,7 +54,7 @@ export const useStatsController = (userId: string) => {
   }, [userId]);
 
   return {
-    state: { stats, loading, error, isMocked },
+    state: { stats, loading, error },
     actions: { refresh: fetchStats },
   };
 };
