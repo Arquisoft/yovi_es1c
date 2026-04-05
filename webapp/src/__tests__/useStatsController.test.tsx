@@ -181,4 +181,16 @@ describe("useStatsController", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("exposes 'Error desconocido' when a non-Error is thrown", async () => {
+    fetchMock.mockRejectedValueOnce("plain string rejection");
+
+    const { result } = renderHook(() => useStatsController("user-1"));
+
+    await waitFor(() => {
+      expect(result.current.state.loading).toBe(false);
+    });
+
+    expect(result.current.state.error).toBe("Error desconocido");
+  });
+
 });

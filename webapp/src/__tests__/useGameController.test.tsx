@@ -759,4 +759,80 @@ describe("useGameController", () => {
         expect(result.current.state.gameMode).toBe("LOCAL_2P");
         expect(result.current.state.gameOver).toBe(false);
     });
+
+    it("persistFinish is called with USER when human wins with matchId", async () => {
+        // Size-3 board: B already at (2,0) and (2,1). Clicking (2,2) completes the win.
+        const initialYEN = {
+            size: 3,
+            turn: 0,
+            players: ["B", "R"] as [string, string],
+            layout: [".", "..", "BB."].join("/"),
+        };
+
+        vi.spyOn(fetchWithAuthModule, "fetchWithAuth").mockImplementation(async (url) => {
+            return new Response(JSON.stringify({ message: "ok" }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            });
+        });
+
+        const { result } = renderHook(() =>
+            useGameController(3, "BOT", initialYEN, "match-finish-test")
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(2, 2);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.gameOver).toBe(true);
+        });
+
+        const finishCall = (fetchWithAuthModule.fetchWithAuth as ReturnType<typeof vi.fn>).mock.calls.find(
+            ([url]: [string]) => url.includes("/finish")
+        );
+        expect(finishCall).toBeTruthy();
+        const body = JSON.parse(finishCall![1].body);
+        expect(body.winner).toBe("USER");
+    });
+
+    it("persistFinish is called with BOT when bot wins with matchId", async () => {
+        // Size-3 board: R already at (2,1) and (2,2). Bot plays (2,0) = {x:0,y:0,z:2} to win.
+        const initialYEN = {
+            size: 3,
+            turn: 0,
+            players: ["B", "R"] as [string, string],
+            layout: [".", "..", ".RR"].join("/"),
+        };
+
+        vi.spyOn(fetchWithAuthModule, "fetchWithAuth").mockImplementation(async (url) => {
+            const urlStr = String(url);
+            if (urlStr.includes("/ybot/")) {
+                return new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 2 } }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                });
+            }
+            return new Response(JSON.stringify({ message: "ok" }), { status: 200 });
+        });
+
+        const { result } = renderHook(() =>
+            useGameController(3, "BOT", initialYEN, "match-bot-wins")
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(0, 0);
+        });
+
+        await waitFor(() => {
+            expect(result.current.state.gameOver).toBe(true);
+        });
+
+        const finishCall = (fetchWithAuthModule.fetchWithAuth as ReturnType<typeof vi.fn>).mock.calls.find(
+            ([url]: [string]) => url.includes("/finish")
+        );
+        expect(finishCall).toBeTruthy();
+        const body = JSON.parse(finishCall![1].body);
+        expect(body.winner).toBe("BOT");
+    });
 });
