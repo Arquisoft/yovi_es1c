@@ -509,6 +509,11 @@ impl GameY {
             PlayerId::new(0)
         }
     }
+
+    pub fn play_coords(&mut self, coords: Coordinates) -> Result<()> {
+        let player = self.next_player().ok_or(GameYError::GameAlreadyFinished)?;
+        self.add_move(Movement::Placement { player, coords })
+    }
 }
 
 fn indent(str: &mut String, level: u32) {
