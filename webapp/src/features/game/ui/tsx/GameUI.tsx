@@ -226,15 +226,36 @@ export default function GameUI() {
                         )}
                     </Stack>
 
-                    {isOnline ? (
-                        <Button variant="outlined" onClick={() => navigate('/create-match')} className={styles.restartButton} sx={{ mt: 'auto' }}>
-                            Volver
-                        </Button>
-                    ) : (
-                        <Button variant="outlined" onClick={actions.newGame} className={styles.restartButton} sx={{ mt: 'auto' }}>
-                            Reiniciar partida
-                        </Button>
-                    )}
+                    <Stack spacing={2} sx={{ mt: 'auto', pt: 2 }}>
+                        {isOnline ? (
+                            <Button
+                                variant="outlined"
+                                onClick={() => navigate('/create-match')}
+                                className={styles.restartButton}
+                            >
+                                Volver
+                            </Button>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="outlined"
+                                    onClick={actions.newGame}
+                                    className={styles.restartButton}
+                                >
+                                    Reiniciar partida
+                                </Button>
+
+                                {}
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    onClick={() => navigate('/create-match')}
+                                >
+                                    Nueva Partida
+                                </Button>
+                            </>
+                        )}
+                    </Stack>
                 </Box>
 
                 <Box

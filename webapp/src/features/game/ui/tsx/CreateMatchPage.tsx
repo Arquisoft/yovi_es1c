@@ -11,6 +11,7 @@ import {
     Select,
     Stack,
     Typography,
+    Slider,
 } from '@mui/material';
 import { useAuth } from '../../../auth';
 import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
@@ -80,7 +81,7 @@ export default function CreateMatchPage() {
 
     if (!token) {
         return (
-            <Box sx={{ textAlign: 'center', mt: 4 }}>
+            <Box sx={{ textAlign: 'center', mt: '58px', pt: 4 }}>
                 <Typography variant="h5" color="error">
                     ACCESO DENEGADO: Debes iniciar sesión para crear una partida
                 </Typography>
@@ -145,20 +146,33 @@ export default function CreateMatchPage() {
                 )}
 
                 <Stack spacing={3}>
-                    <FormControl fullWidth>
-                        <InputLabel id="board-size-label">Tamaño del tablero</InputLabel>
-                        <Select
-                            labelId="board-size-label"
-                            id="board-size"
+                    <Box sx={{ px: 1 }}>
+                        <Typography id="board-size-slider" gutterBottom color="primary" variant="subtitle2">
+                            TAMAÑO DEL TABLERO: {boardSize} x {boardSize}
+                        </Typography>
+                        <Slider
+                            aria-labelledby="board-size-slider"
                             value={boardSize}
-                            label="Tamaño del tablero"
-                            onChange={(e) => setBoardSize(Number(e.target.value))}
-                        >
-                            <MenuItem value={8}>8 x 8</MenuItem>
-                            <MenuItem value={16}>16 x 16</MenuItem>
-                            <MenuItem value={32}>32 x 32</MenuItem>
-                        </Select>
-                    </FormControl>
+                            onChange={(_, newValue) => setBoardSize(newValue as number)}
+                            min={8}
+                            max={32}
+                            step={1}
+                            valueLabelDisplay="auto"
+                            marks={[
+                                { value: 8, label: '8' },
+                                { value: 16, label: '16' },
+                                { value: 24, label: '24' },
+                                { value: 32, label: '32' },
+                            ]}
+                            sx={{
+                                mt: 1,
+                                '& .MuiSlider-markLabel': {
+                                    color: 'text.secondary',
+                                    fontSize: '0.8rem'
+                                }
+                            }}
+                        />
+                    </Box>
 
                     <FormControl fullWidth>
                         <InputLabel id="game-mode-label">Modo de juego</InputLabel>
