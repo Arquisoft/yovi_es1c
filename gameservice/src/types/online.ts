@@ -46,7 +46,7 @@ export interface OnlineSessionState {
   closeReason: 'winner' | 'abandoned' | 'expired' | 'cancelled' | null;
   connection: Record<number, ConnectionState>;
   reconnectDeadline: Record<number, number | null>;
-  winner: 'B' | 'R' | 'DRAW' | null;
+  winner: 'B' | 'R' | null;
   messages: OnlineChatMessage[];
 }
 

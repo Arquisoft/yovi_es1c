@@ -4,8 +4,8 @@ import { gamesCreated, activeGames, gamesFinished } from '../metrics';
 export class MatchService {
   constructor(private matchRepo: MatchRepository) {}
 
-  async createMatch(userId: number, boardSize: number, difficulty: string) {
-    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty);
+  async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
+    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode);
     gamesCreated.inc();
     activeGames.inc();
     return match;

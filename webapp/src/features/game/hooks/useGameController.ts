@@ -31,9 +31,8 @@ export const updateLayout = (
     return rows.join("/");
 };
 
-export const getCellSymbol = (layout: string, row: number, col: number): string => {
-    return layout.split("/")[row]?.[col] ?? ".";
-};
+export const getCellSymbol = (layout: string, row: number, col: number): string =>
+    layout.split("/")[row]?.[col] ?? ".";
 
 export const coordsFromRowCol = (row: number, col: number, size: number) => {
     const x = size - 1 - row;
@@ -54,7 +53,7 @@ export const rowColFromCoords = (
     return { row, col };
 };
 
-// ── Corrección del cálculo del ganador ──
+// ── Check ganador corregido ──
 export const checkWinner = (layout: string, size: number, symbol: string): boolean => {
     const visited = new Set<string>();
     const rows = layout.split("/");
@@ -110,6 +109,28 @@ export const checkWinner = (layout: string, size: number, symbol: string): boole
     return false;
 };
 
+// ── Helpers externos ──
+function buildBotHttpError(status: number, textFn: () => Promise<string>): Promise<string> {
+    if (status === 401) return Promise.resolve("No estás autenticado. Por favor inicia sesión.");
+    if (status === 400) return Promise.resolve("Movimiento inválido enviado al servidor.");
+    if (status === 409) return Promise.resolve("Juego ya ha terminado o conflicto de estado.");
+    return textFn().then((t) => `Error del bot: ${t}`);
+}
+
+function revertBotState(
+    humanState: YenPositionDto,
+    errorMsg: string,
+    setError: (e: string) => void,
+    setMessage: (m: string) => void,
+    setGameState: (s: YenPositionDto) => void,
+    setBotFailureCount: (fn: (n: number) => number) => void
+): void {
+    setError(errorMsg);
+    setMessage("Error comunicando con el bot");
+    setGameState({ ...humanState, turn: 0 });
+    setBotFailureCount((prev) => prev + 1);
+}
+
 // ── Hook principal ──
 export const useGameController = (
     initialSize: number = DEFAULT_BOARD_SIZE,
@@ -126,6 +147,7 @@ export const useGameController = (
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string>("Click a cell to play");
     const [gameOver, setGameOver] = useState(false);
+
     const [matchId] = useState<string | null>(initialMatchId ?? null);
     const [botFailureCount, setBotFailureCount] = useState(0);
 
@@ -134,6 +156,7 @@ export const useGameController = (
     const announceWinner = (label: string) => {
         setGameOver(true);
         setMessage(`¡Felicidades ${label}!`);
+        window.alert(`¡Felicidades ${label}!`);
     };
 
     const resetGame = (nextMode: GameMode) => {
@@ -159,13 +182,24 @@ export const useGameController = (
             await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/moves`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    position_yen: position.layout,
-                    player,
-                    moveNumber: position.turn + 1,
-                }),
+                body: JSON.stringify({ position_yen: position.layout, player, moveNumber: position.turn + 1 }),
             });
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error("Persist error:", err);
+        }
+    };
+
+    const persistFinish = async (winner: "USER" | "BOT") => {
+        if (!matchId) return;
+        try {
+            await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ winner }),
+            });
+        } catch (err) {
+            console.error("Finish error:", err);
+        }
     };
 
     // ── Manejo de clics ──
@@ -182,46 +216,36 @@ export const useGameController = (
             setGameState((prev) => {
                 const nextSymbol = prev.turn === 0 ? prev.players[0] : prev.players[1];
                 const newLayout = updateLayout(prev.layout, row, col, nextSymbol);
-                const nextState: YenPositionDto = { ...prev, layout: newLayout, turn: prev.turn === 0 ? 1 : 0 };
+                const nextTurn = prev.turn === 0 ? 1 : 0;
+                const nextState: YenPositionDto = { ...prev, layout: newLayout, turn: nextTurn };
                 persistMove(nextState, nextSymbol === prev.players[0] ? "USER" : "BOT");
-
-                const winner = checkWinner(newLayout, prev.size, nextSymbol);
-                const fullBoard = !newLayout.includes(".");
-
-                if (fullBoard && !winner) {
+                if (checkWinner(newLayout, prev.size, nextSymbol)) {
+                    announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
+                } else if (!newLayout.includes(".")) {
                     setGameOver(true);
                     setMessage("Board full — game over");
-                } else if (winner) {
-                    announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
                 } else {
-                    setMessage(`Turno: ${nextState.turn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
+                    setMessage(`Turno: ${nextTurn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
                 }
-
                 return nextState;
             });
             return;
         }
 
-        // Mismo patrón para BOT mode
         setGameState((prev) => {
             const humanLayout = updateLayout(prev.layout, row, col, prev.players[0]);
-            const humanState = { ...prev, layout: humanLayout, turn: 1 };
+            const humanState: YenPositionDto = { ...prev, layout: humanLayout, turn: 1 };
             persistMove(humanState, "USER");
-
-            const winner = checkWinner(humanLayout, prev.size, prev.players[0]);
-            const fullBoard = !humanLayout.includes(".");
-
-            if (fullBoard && !winner) {
+            if (checkWinner(humanLayout, prev.size, prev.players[0])) {
+                announceWinner("Jugador 1");
+                persistFinish("USER");
+                return humanState;
+            }
+            if (!humanLayout.includes(".")) {
                 setGameOver(true);
                 setMessage("Board full — game over");
                 return humanState;
             }
-
-            if (winner) {
-                announceWinner("Jugador 1");
-                return humanState;
-            }
-
             callBot(humanState);
             return humanState;
         });
@@ -241,12 +265,19 @@ export const useGameController = (
             return;
         }
         const botLayout = updateLayout(humanState.layout, mapped.row, mapped.col, humanState.players[1]);
-        const botState = { ...humanState, layout: botLayout, turn: 0 };
+        const botState: YenPositionDto = { ...humanState, layout: botLayout, turn: 0 };
         setGameState(botState);
         await persistMove(botState, "BOT");
-        if (checkWinner(botLayout, humanState.size, humanState.players[1])) announceWinner("Jugador 2 (Bot)");
-        else if (!botLayout.includes(".")) { setGameOver(true); setMessage("Board full — game over"); }
-        else setMessage(`Bot jugó en (${mapped.row}, ${mapped.col})${usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : ''} — tu turno`);
+        if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
+            announceWinner("Jugador 2 (Bot)");
+            await persistFinish("BOT");
+        } else if (!botLayout.includes(".")) {
+            setGameOver(true);
+            setMessage("Board full — game over");
+        } else {
+            const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : '';
+            setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno${fallbackInfo}`);
+        }
         setBotFailureCount(0);
     };
 
@@ -257,23 +288,46 @@ export const useGameController = (
         setMessage("Bot pensando...");
         try {
             const { response: res, usedDifficulty } = await requestBotMove(humanState, botDifficulty, botFailureCount);
-            if (!res.ok) { const errMsg = await buildBotHttpError(res.status, () => res.text()); revertBotState(humanState, errMsg, setError, setMessage, setGameState, setBotFailureCount); return; }
+            if (!res.ok) {
+                const errorMsg = await buildBotHttpError(res.status, () => res.text());
+                revertBotState(humanState, errorMsg, setError, setMessage, setGameState, setBotFailureCount);
+                return;
+            }
             const data = await res.json();
-            if (data.message) { revertBotState(humanState, `Error del bot: ${data.message}`, setError, setMessage, setGameState, setBotFailureCount); return; }
+            if (data.message) {
+                revertBotState(humanState, `Error del bot: ${data.message}`, setError, setMessage, setGameState, setBotFailureCount);
+                return;
+            }
             const coords = data.coords;
-            if (!coords || typeof coords.x !== "number" || typeof coords.y !== "number" || typeof coords.z !== "number") {
-                revertBotState(humanState, "Respuesta inválida del bot.", setError, setMessage, setGameState, setBotFailureCount); return;
+            const hasValidCoords =
+                coords &&
+                typeof coords.x === "number" &&
+                typeof coords.y === "number" &&
+                typeof coords.z === "number";
+            if (!hasValidCoords) {
+                revertBotState(humanState, "Respuesta inválida del bot.", setError, setMessage, setGameState, setBotFailureCount);
+                return;
             }
             await applyBotMove(humanState, data, usedDifficulty);
         } catch (err) {
-            revertBotState(humanState, err instanceof Error ? err.message : "Error desconocido", setError, setMessage, setGameState, setBotFailureCount);
-        } finally { setLoading(false); }
+            revertBotState(
+                humanState,
+                err instanceof Error ? err.message : "Error desconocido",
+                setError, setMessage, setGameState, setBotFailureCount
+            );
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const requestBotMove = async (state: YenPositionDto, difficulty: BotDifficulty, failureCount: number): Promise<{ response: Response; usedDifficulty: BotDifficulty }> => {
-        const degraded = difficulty === 'expert' && failureCount >= 3;
-        const primary = degraded ? 'hard' : difficulty;
-        const candidates: BotDifficulty[] = primary === 'expert' ? ['expert', 'hard'] : [primary];
+    const requestBotMove = async (
+        state: YenPositionDto,
+        difficulty: BotDifficulty,
+        failureCount: number
+    ): Promise<{ response: Response; usedDifficulty: BotDifficulty }> => {
+        const hasExpertDegraded = difficulty === 'expert' && failureCount >= 3;
+        const primaryDifficulty: BotDifficulty = hasExpertDegraded ? 'hard' : difficulty;
+        const candidates: BotDifficulty[] = primaryDifficulty === 'expert' ? ['expert', 'hard'] : [primaryDifficulty];
         let lastError: unknown = null;
         for (const level of candidates) {
             const controller = new AbortController();
@@ -285,39 +339,33 @@ export const useGameController = (
                     body: JSON.stringify(state),
                     signal: controller.signal,
                 });
-                if (!response.ok && level === 'expert' && (response.status >= 500 || response.status === 504)) continue;
+                if (!response.ok && level === 'expert' && (response.status >= 500 || response.status === 504)) {
+                    continue;
+                }
                 return { response, usedDifficulty: level };
-            } catch (err) { lastError = err; if (err instanceof Error && err.name === 'AbortError' && level !== 'expert') throw new Error('Timeout comunicando con gamey'); if (level !== 'expert') throw err; }
-            finally { clearTimeout(timeout); }
+            } catch (error) {
+                lastError = error;
+                if (error instanceof Error && error.name === 'AbortError' && level !== 'expert') {
+                    throw new Error('Timeout comunicando con gamey');
+                }
+                if (level !== 'expert') throw error;
+            } finally {
+                clearTimeout(timeout);
+            }
         }
-        if (lastError instanceof Error && lastError.name === 'AbortError') throw new Error('Timeout comunicando con gamey');
+        if (lastError instanceof Error && lastError.name === 'AbortError') {
+            throw new Error('Timeout comunicando con gamey');
+        }
         throw lastError instanceof Error ? lastError : new Error('No se pudo obtener respuesta del bot');
     };
 
     return {
         state: { gameMode, gameState, loading, error, message, gameOver, isBoardFull },
-        actions: { selectMode: resetGame, newGame: () => resetGame(gameMode), handleCellClick, changeSize },
+        actions: {
+            selectMode: resetGame,
+            newGame: () => resetGame(gameMode),
+            handleCellClick,
+            changeSize,
+        },
     };
 };
-
-// ── Helpers de Bot ──
-function buildBotHttpError(status: number, textFn: () => Promise<string>): Promise<string> {
-    if (status === 401) return Promise.resolve("No estás autenticado. Por favor inicia sesión.");
-    if (status === 400) return Promise.resolve("Movimiento inválido enviado al servidor.");
-    if (status === 409) return Promise.resolve("Juego ya ha terminado o conflicto de estado.");
-    return textFn().then(t => `Error del bot: ${t}`);
-}
-
-function revertBotState(
-    humanState: YenPositionDto,
-    errorMsg: string,
-    setError: (e: string) => void,
-    setMessage: (m: string) => void,
-    setGameState: (s: YenPositionDto) => void,
-    setBotFailureCount: (fn: (n: number) => number) => void
-) {
-    setError(errorMsg);
-    setMessage("Error comunicando con el bot");
-    setGameState({ ...humanState, turn: 0 });
-    setBotFailureCount(prev => prev + 1);
-}
