@@ -184,20 +184,44 @@ export const useGameController = (
                 const newLayout = updateLayout(prev.layout, row, col, nextSymbol);
                 const nextState: YenPositionDto = { ...prev, layout: newLayout, turn: prev.turn === 0 ? 1 : 0 };
                 persistMove(nextState, nextSymbol === prev.players[0] ? "USER" : "BOT");
-                if (checkWinner(newLayout, prev.size, nextSymbol)) announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
-                else if (!newLayout.includes(".")) { setGameOver(true); setMessage("Board full — game over"); }
-                else setMessage(`Turno: ${nextState.turn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
+
+                const winner = checkWinner(newLayout, prev.size, nextSymbol);
+                const fullBoard = !newLayout.includes(".");
+
+                if (fullBoard && !winner) {
+                    setGameOver(true);
+                    setMessage("Board full — game over");
+                } else if (winner) {
+                    announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
+                } else {
+                    setMessage(`Turno: ${nextState.turn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
+                }
+
                 return nextState;
             });
             return;
         }
 
+        // Mismo patrón para BOT mode
         setGameState((prev) => {
             const humanLayout = updateLayout(prev.layout, row, col, prev.players[0]);
             const humanState = { ...prev, layout: humanLayout, turn: 1 };
             persistMove(humanState, "USER");
-            if (checkWinner(humanLayout, prev.size, prev.players[0])) { announceWinner("Jugador 1"); return humanState; }
-            if (!humanLayout.includes(".")) { setGameOver(true); setMessage("Board full — game over"); return humanState; }
+
+            const winner = checkWinner(humanLayout, prev.size, prev.players[0]);
+            const fullBoard = !humanLayout.includes(".");
+
+            if (fullBoard && !winner) {
+                setGameOver(true);
+                setMessage("Board full — game over");
+                return humanState;
+            }
+
+            if (winner) {
+                announceWinner("Jugador 1");
+                return humanState;
+            }
+
             callBot(humanState);
             return humanState;
         });

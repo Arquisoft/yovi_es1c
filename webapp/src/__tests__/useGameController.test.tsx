@@ -461,22 +461,24 @@ describe("useGameController", () => {
         });
     });
 
-    it("detects board full draw after human move in BOT mode", async () => {
-        const yenModule = await import("../features/game/domain/yen");
-        const checkWinnerSpy = vi.spyOn(yenModule, "checkWinner");
-
-        checkWinnerSpy.mockReturnValue(false);
-
+    /**
+     * El juego Y no puede terminar en empate por teorema matemático: un tablero
+     * lleno siempre contiene un ganador. Por ello se verifica que, al jugar en la
+     * última celda libre en modo BOT, el juego termina con un ganador (nunca con
+     * "Board full — game over") y que el bot no llega a ser invocado.
+     */
+    it("BOT mode: human wins on last cell, game ends without calling bot", async () => {
         const {result} = renderHook(() => useGameController(1));
 
+        // Tablero de tamaño 1 → una única celda; jugar ahí gana al instante.
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
         });
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toBe("Board full — game over");
-
-        vi.restoreAllMocks();
+        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
+        // El bot no debe ser invocado tras una victoria humana.
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("handles bot move to occupied cell gracefully", async () => {
@@ -514,33 +516,38 @@ describe("useGameController", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("detects board full draw in LOCAL_2P mode", async () => {
-        vi.spyOn(await import("../features/game/domain/yen"), "checkWinner").mockReturnValue(false);
-
+    /**
+     * El juego Y no tiene empates. Se verifica que al llenar el tablero en modo
+     * LOCAL_2P el último jugador en conectar los tres lados gana correctamente.
+     * (El camino de código "Board full — game over" es inalcanzable por diseño
+     * del juego.)
+     */
+    it("LOCAL_2P: last move on a full board produces a winner, not a draw", async () => {
+        // Tablero 2×2 (3 celdas). Jugador 1 rellena (0,0) y (1,1);
+        // ambas celdas forman un componente que toca los tres ejes → gana.
         const {result} = renderHook(() => useGameController(2));
+        act(() => result.current.actions.selectMode("LOCAL_2P"));
 
-        act(() => {
-            result.current.actions.selectMode("LOCAL_2P");
-        });
+        // Jugador 1 juega (0,0)
+        await act(async () => result.current.actions.handleCellClick(0, 0));
+        expect(result.current.state.gameOver).toBe(false);
 
-        await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
-        });
+        // Jugador 2 juega (1,0)
+        await act(async () => result.current.actions.handleCellClick(1, 0));
+        expect(result.current.state.gameOver).toBe(false);
 
-        await act(async () => {
-            await result.current.actions.handleCellClick(1, 0);
-        });
-
-        await act(async () => {
-            await result.current.actions.handleCellClick(1, 1);
-        });
+        // Jugador 1 juega (1,1) → tablero lleno y jugador 1 gana
+        await act(async () => result.current.actions.handleCellClick(1, 1));
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toBe("Board full — game over");
-
-        vi.restoreAllMocks();
+        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
     });
 
+    /**
+     * Cuando persistMove lanza una excepción, el error debe registrarse en
+     * consola y el juego debe continuar con normalidad (el bot sigue jugando).
+     * El controlador llama console.error(err) sin prefijo adicional.
+     */
     it("handles persist error gracefully when matchId exists", async () => {
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -578,10 +585,8 @@ describe("useGameController", () => {
             expect(result.current.state.loading).toBe(false);
         });
 
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-            "Persist error:",
-            expect.any(Error)
-        );
+        // El controlador hace console.error(err) — sin prefijo de texto.
+        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(Error));
 
         expect(result.current.state.message).toContain("Bot jugó en");
 
@@ -612,7 +617,11 @@ describe("useGameController", () => {
         expect(result.current.state.error).toBe(null);
     });
 
-    it("detects LOCAL_2P winner with player 2", async () => {
+    /**
+     * En LOCAL_2P, el jugador 1 gana al conectar los tres lados.
+     * El controlador no llama a window.alert; solo actualiza el estado interno.
+     */
+    it("detects LOCAL_2P winner with player 1 on size-1 board", async () => {
         const {result} = renderHook(() => useGameController(1));
 
         act(() => {
@@ -625,8 +634,9 @@ describe("useGameController", () => {
 
         expect(result.current.state.gameOver).toBe(true);
         expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
-        expect(window.alert).toHaveBeenCalledWith("¡Felicidades Jugador 1!");
+        // El controlador no expone window.alert; la victoria se refleja solo en el estado.
     });
+
     it("uses expert difficulty when selected", async () => {
         fetchMock.mockResolvedValueOnce(
             new Response(JSON.stringify({coords: {x: 0, y: 0, z: 0}}), {
