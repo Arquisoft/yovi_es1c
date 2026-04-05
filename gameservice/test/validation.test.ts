@@ -4,19 +4,15 @@ import {
     validateAddMove,
     validateUserId,
     validateMatchId,
+    validateFinishMatch,
 } from '../src/validation/game.schemas';
 
 describe('Game validation schemas', () => {
     describe('validateCreateMatch', () => {
         it('should validate correct create match data', () => {
-            const valid = {
-                boardSize: 8,
-                difficulty: 'medium',
-            };
+            const result = validateCreateMatch({ boardSize: 8, difficulty: 'medium', mode: 'BOT' });
 
-            const result = validateCreateMatch(valid);
-
-            expect(result).toEqual(valid);
+            expect(result).toEqual({ boardSize: 8, difficulty: 'medium', mode: 'BOT' });
         });
 
         it('should accept all difficulty levels in lowercase', () => {
@@ -94,6 +90,35 @@ describe('Game validation schemas', () => {
                 validateCreateMatch({
                     boardSize: 8,
                 })
+            ).toThrow();
+        });
+
+        it('should default mode to BOT when not provided', () => {
+            const result = validateCreateMatch({ boardSize: 8, difficulty: 'easy' });
+            expect(result.mode).toBe('BOT');
+        });
+
+        it('should accept all valid modes', () => {
+            for (const mode of ['BOT', 'ONLINE', 'LOCAL_2P']) {
+                const result = validateCreateMatch({ boardSize: 8, difficulty: 'easy', mode });
+                expect(result.mode).toBe(mode);
+            }
+        });
+
+        it('should normalize mode to uppercase', () => {
+            const result = validateCreateMatch({ boardSize: 8, difficulty: 'easy', mode: 'bot' });
+            expect(result.mode).toBe('BOT');
+        });
+
+        it('should reject an invalid mode', () => {
+            expect(() =>
+                validateCreateMatch({ boardSize: 8, difficulty: 'easy', mode: 'RANKED' })
+            ).toThrow('mode must be BOT, ONLINE or LOCAL_2P');
+        });
+
+        it('should reject a non-string mode', () => {
+            expect(() =>
+                validateCreateMatch({ boardSize: 8, difficulty: 'easy', mode: 123 })
             ).toThrow();
         });
     });
@@ -247,6 +272,27 @@ describe('Game validation schemas', () => {
 
         it('should reject NaN', () => {
             expect(() => validateMatchId(NaN)).toThrow();
+        });
+    });
+
+    describe('validateFinishMatch', () => {
+        it('should accept USER as winner', () => {
+            expect(validateFinishMatch({ winner: 'USER' })).toEqual({ winner: 'USER' });
+        });
+
+        it('should accept BOT as winner', () => {
+            expect(validateFinishMatch({ winner: 'BOT' })).toEqual({ winner: 'BOT' });
+        });
+
+        it('should reject invalid winner', () => {
+            expect(() => validateFinishMatch({ winner: 'DRAW' })).toThrow();
+            expect(() => validateFinishMatch({ winner: 'invalid' })).toThrow();
+            expect(() => validateFinishMatch({ winner: '' })).toThrow();
+        });
+
+        it('should reject missing body', () => {
+            expect(() => validateFinishMatch(null)).toThrow();
+            expect(() => validateFinishMatch(undefined)).toThrow();
         });
     });
 });

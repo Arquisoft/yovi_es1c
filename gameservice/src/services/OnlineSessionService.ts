@@ -2,6 +2,7 @@ import { SessionStatePayload } from '../realtime/events/session.events';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { OnlineChatMessage, OnlineSessionState } from '../types/online';
 import { TurnTimerService } from './TurnTimerService';
+import { MatchService } from './MatchService';
 import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
 export type MoveErrorCode =
   | 'VERSION_CONFLICT'
@@ -43,6 +44,7 @@ export class OnlineSessionService {
   private readonly matchLocks = new Map<string, Promise<void>>();
   private readonly dedupeTtlMs = 60_000;
   private readonly dedupeTtlSec = Math.ceil(this.dedupeTtlMs / 1000);
+  private readonly persistedSessions = new Set<string>();
 
   constructor(
       private readonly repository: OnlineSessionRepository,
@@ -50,6 +52,7 @@ export class OnlineSessionService {
       private readonly turnTimeoutSec = 25,
       private readonly reconnectGraceSec = 60,
       private readonly deps: SessionDeps = {},
+      private readonly matchService?: MatchService,
   ) {}
 
   async createSession(
@@ -191,6 +194,7 @@ export class OnlineSessionService {
 
       if (winner) {
         onlineSessionEvents.inc({ event: 'finished' });
+        await this.persistOnlineResult(nextState, winner);
       }
 
       this.emitSessionState(nextState);
@@ -268,6 +272,7 @@ export class OnlineSessionService {
 
         reconnectEvents.inc({ event: 'expired_forfeit' });
         onlineSessionEvents.inc({ event: 'finished' });
+        await this.persistOnlineResult(state, state.winner);
 
         this.emitSessionState(state);
       }
@@ -345,10 +350,9 @@ export class OnlineSessionService {
     return rows.join('/');
   }
 
-  private resolveWinner(layout: string, size: number): 'B' | 'R' | 'DRAW' | null {
+  private resolveWinner(layout: string, size: number): 'B' | 'R' | null {
     if (this.checkWinner(layout, size, 'B')) return 'B';
     if (this.checkWinner(layout, size, 'R')) return 'R';
-    if (!layout.includes('.')) return 'DRAW';
     return null;
   }
 
@@ -492,6 +496,27 @@ export class OnlineSessionService {
     return emptyCells[randomIndex];
   }
 
+  private async persistOnlineResult(state: OnlineSessionState, winnerSymbol: 'B' | 'R'): Promise<void> {
+    if (!this.matchService) return;
+    if (this.persistedSessions.has(state.matchId)) return;
+    this.persistedSessions.add(state.matchId);
+
+    await Promise.all(
+      state.players.map(async (player) => {
+        try {
+          const matchId = await this.matchService!.createMatch(
+            player.userId, state.size, 'medium', 'ONLINE'
+          );
+          if (matchId == null) return;
+          const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
+          await this.matchService!.finishMatch(matchId, winner);
+        } catch (err) {
+          console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
+        }
+      })
+    );
+  }
+
   private sessionKey(matchId: string): string {
     return `session:online:${matchId}`;
   }
@@ -520,9 +545,10 @@ export class OnlineSessionService {
 
       state.status = 'abandoned';
       state.closeReason = 'abandoned';
-      state.winner = state.players.find((player) => player.userId !== userId)?.symbol ?? 'DRAW';
+      state.winner = state.players.find((player) => player.userId !== userId)!.symbol;
       state.version += 1;
       await this.saveState(state);
+      await this.persistOnlineResult(state, state.winner);
       this.emitSessionState(state);
       return state;
     });
