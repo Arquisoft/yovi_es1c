@@ -41,7 +41,7 @@ export default function WinnerOverlay({ winnerLabel, onNewGame, onNavigateHome }
 
                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                     <Button variant="outlined" onClick={onNavigateHome} sx={{ color: '#39ff14', borderColor: '#39ff14' }}>
-                        Menú Principal
+                        Nueva configuración
                     </Button>
                     <Button variant="contained" onClick={onNewGame} sx={{ backgroundColor: '#39ff14', color: 'black' }}>
                         Jugar de nuevo

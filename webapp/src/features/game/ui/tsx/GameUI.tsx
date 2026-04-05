@@ -21,7 +21,8 @@ import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
-import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from './gameUIHelpers.ts';
+import { resolveCurrentTurnLabel,  resolveWinnerLabel} from './gameUIHelpers.ts';
+import WinnerOverlay from './WinnerOverlay';
 
 type GameConfig = {
     matchId: string;
@@ -134,9 +135,11 @@ export default function GameUI() {
 
     const winnerLabel = isOnline
         ? resolveWinnerLabel(displayState.winner, displayState.players)
-        : null;
-
-    const gameOverText = resolveGameOverText(winnerLabel);
+        : state.gameOver
+            ? displayState.turn === 1
+                ? `¡Felicidades, ${displayState.players[0].username} gana!`
+                : `¡Felicidades, ${displayState.players[1].username} gana!`
+            : null;
 
     const handleBoardClick = (row: number, col: number) => {
         if (isOnline) {
@@ -294,9 +297,13 @@ export default function GameUI() {
                     </Paper>
 
                     {gameOver && (
-                        <Typography variant="h4" className={styles.gameOver} sx={{ mt: 3, textAlign: 'center' }}>
-                            {gameOverText}
-                        </Typography>
+                        <WinnerOverlay
+                            winnerLabel={winnerLabel ?? 'Empate'}
+                            onNewGame={() => {
+                                actions.newGame();
+                            }}
+                            onNavigateHome={() => navigate('/create-match')} // vuelve al menú
+                        />
                     )}
 
                     {isOnline && (
