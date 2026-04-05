@@ -24,6 +24,7 @@ pub mod error;
 pub mod state;
 pub mod version;
 pub mod bot_alias_resolver;
+pub mod play;
 
 use std::collections::HashMap;
 use axum::response::IntoResponse;
@@ -54,6 +55,9 @@ pub fn create_router(state: AppState) -> axum::Router {
         .route(
             "/{api_version}/ybot/choose/{bot_id}",
             axum::routing::post(choose::choose),
+        ).route(
+            "/{api_version}/ybot/play",
+            axum::routing::post(play::play),
         )
         .layer(cors)
         .with_state(state)
