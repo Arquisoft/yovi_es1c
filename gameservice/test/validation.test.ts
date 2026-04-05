@@ -4,6 +4,7 @@ import {
     validateAddMove,
     validateUserId,
     validateMatchId,
+    validateFinishMatch,
 } from '../src/validation/game.schemas';
 
 describe('Game validation schemas', () => {
@@ -271,6 +272,27 @@ describe('Game validation schemas', () => {
 
         it('should reject NaN', () => {
             expect(() => validateMatchId(NaN)).toThrow();
+        });
+    });
+
+    describe('validateFinishMatch', () => {
+        it('should accept USER as winner', () => {
+            expect(validateFinishMatch({ winner: 'USER' })).toEqual({ winner: 'USER' });
+        });
+
+        it('should accept BOT as winner', () => {
+            expect(validateFinishMatch({ winner: 'BOT' })).toEqual({ winner: 'BOT' });
+        });
+
+        it('should reject invalid winner', () => {
+            expect(() => validateFinishMatch({ winner: 'DRAW' })).toThrow();
+            expect(() => validateFinishMatch({ winner: 'invalid' })).toThrow();
+            expect(() => validateFinishMatch({ winner: '' })).toThrow();
+        });
+
+        it('should reject missing body', () => {
+            expect(() => validateFinishMatch(null)).toThrow();
+            expect(() => validateFinishMatch(undefined)).toThrow();
         });
     });
 });

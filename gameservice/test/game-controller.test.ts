@@ -322,7 +322,7 @@ describe('GameController integration tests', () => {
         wins: 5,
         losses: 3,
         matches: [
-          { matchId: '1', createdAt: '2026-01-01T10:00:00', mode: 'BOT', status: 'win' },
+          { matchId: '1', createdAt: '2026-01-01T10:00:00', mode: 'BOT', status: 'win' as const },
         ],
       };
 
