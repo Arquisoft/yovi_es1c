@@ -1,7 +1,7 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { MatchService } from "../services/MatchService";
 import { StatsService } from "../services/StatsService";
-import { InvalidMoveError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
+import { InvalidMoveError, MatchAlreadyFinishedError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
 import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId, validateFinishMatch } from "../validation/game.schemas";
 import { MatchmakingService } from "../services/MatchmakingService";
 import { OnlineSessionError, OnlineSessionService } from "../services/OnlineSessionService";
@@ -105,6 +105,10 @@ export function createGameController(
 
       if (match.user_id !== Number(req.userId)) {
         throw new UnauthorizedMatchError();
+      }
+
+      if (match.status !== 'ONGOING') {
+        throw new MatchAlreadyFinishedError();
       }
 
       await matchService.finishMatch(matchId, validated.winner);

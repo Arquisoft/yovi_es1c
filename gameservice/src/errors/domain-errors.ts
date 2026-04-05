@@ -30,3 +30,9 @@ export class ValidationError extends HttpError {
         super(400, 'validation_error', message);
     }
 }
+
+export class MatchAlreadyFinishedError extends HttpError {
+    constructor() {
+        super(409, 'MATCH_ALREADY_FINISHED', 'Match is already finished');
+    }
+}
