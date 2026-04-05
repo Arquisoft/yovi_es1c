@@ -3,9 +3,10 @@ apiVersion: 1
 providers:
   - name: 'default'
     orgId: 1
-    folder: ''
+    folder: 'YOVI'
     type: file
     disableDeletion: false
-    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
     options:
       path: /etc/grafana/provisioning/dashboards

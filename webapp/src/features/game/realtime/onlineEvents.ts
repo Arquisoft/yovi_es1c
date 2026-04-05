@@ -28,6 +28,18 @@ export interface MovePlayPayload {
 }
 
 export interface SessionErrorPayload {
-  code: 'VERSION_CONFLICT' | 'NOT_YOUR_TURN' | 'INVALID_MOVE' | 'SESSION_NOT_FOUND';
+  code:
+    | 'VERSION_CONFLICT'
+    | 'NOT_YOUR_TURN'
+    | 'INVALID_MOVE'
+    | 'SESSION_NOT_FOUND'
+    | 'RECONNECT_EXPIRED'
+    | 'SESSION_TERMINAL'
+    | 'UNAUTHORIZED'
+    | 'DUPLICATE_EVENT'
+    | 'INVALID_TOKEN'
+    | 'AUTH_UNAVAILABLE'
+    | 'SERVICE_UNAVAILABLE';
   message: string;
+  details?: unknown;
 }

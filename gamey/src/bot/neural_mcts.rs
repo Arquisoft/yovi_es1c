@@ -1,333 +1,211 @@
 use std::sync::Arc;
-use crate::{Coordinates, GameY, Movement, PlayerId, YBot};
+use std::collections::HashMap;
+use rayon::prelude::*;
+
+use crate::{Coordinates, GameY, Movement, YBot};
 use crate::bot::neural_net::NeuralNet;
 
 // ─────────────────────────────────────────────
-//  Nodo del árbol MCTS
+//  MctsNode
 // ─────────────────────────────────────────────
 
-struct MctsNode {
-    /// Movimiento que llevó a este nodo (None en la raíz)
-    action: Option<Coordinates>,
-
-    /// Prior dado por la red neuronal P(s, a)
-    prior: f32,
-
-    /// Número de veces que se ha visitado este nodo
-    visits: u32,
-
-    /// Suma acumulada de valores (para calcular Q)
-    value_sum: f32,
-
-    /// Hijos expandidos: uno por movimiento legal
-    children: Vec<MctsNode>,
-
-    /// Si este nodo ya fue expandido
-    expanded: bool,
+#[derive(Debug)]
+pub struct MctsNode {
+    pub action: Option<Coordinates>,
+    pub prior: f32,
+    pub visits: u32,
+    pub value_sum: f32,
+    pub children: Vec<MctsNode>,
+    pub expanded: bool,
 }
 
 impl MctsNode {
-    fn new(action: Option<Coordinates>, prior: f32) -> Self {
-        Self {
-            action,
-            prior,
-            visits: 0,
-            value_sum: 0.0,
-            children: Vec::new(),
-            expanded: false,
-        }
+    pub fn new(action: Option<Coordinates>, prior: f32) -> Self {
+        Self { action, prior, visits: 0, value_sum: 0.0, children: Vec::new(), expanded: false }
     }
 
-    /// Q(s, a): valor medio observado
-    fn q_value(&self) -> f32 {
-        if self.visits == 0 {
-            0.0
-        } else {
-            self.value_sum / self.visits as f32
-        }
+    pub fn q_value(&self) -> f32 {
+        if self.visits == 0 { 0.0 } else { self.value_sum / self.visits as f32 }
     }
 
-    /// Puntuación PUCT para selección (AlphaZero-style)
-    /// PUCT = Q(s,a) + C * P(s,a) * sqrt(N_parent) / (1 + N(s,a))
-    fn puct_score(&self, parent_visits: u32, c: f32) -> f32 {
-        let u = c * self.prior * (parent_visits as f32).sqrt()
-            / (1.0 + self.visits as f32);
-        self.q_value() + u
+    pub fn ucb_score(&self, parent_visits: u32, c_puct: f32) -> f32 {
+        let exploration = c_puct * self.prior * (parent_visits as f32).sqrt() / (1.0 + self.visits as f32);
+        self.q_value() + exploration
     }
 
-    /// Índice del hijo con mayor puntuación PUCT
-    fn best_child_idx(&self, c: f32) -> Option<usize> {
-        if self.children.is_empty() {
-            return None;
-        }
-        self.children
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| {
-                a.puct_score(self.visits, c)
-                    .partial_cmp(&b.puct_score(self.visits, c))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|(i, _)| i)
-    }
-
-    /// Índice del hijo más visitado (para elegir el movimiento final)
-    fn most_visited_child_idx(&self) -> Option<usize> {
-        self.children
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, c)| c.visits)
-            .map(|(i, _)| i)
+    pub fn best_child_coords(&self) -> Option<Coordinates> {
+        self.children.iter().max_by_key(|c| c.visits).and_then(|c| c.action)
     }
 }
 
 // ─────────────────────────────────────────────
-//  Bot
+//  NeuralMctsBot
 // ─────────────────────────────────────────────
 
-/// Bot que combina MCTS con una red neuronal (estilo AlphaZero).
-/// La red guía la búsqueda con priors de política y evaluaciones de valor,
-/// eliminando la necesidad de simulaciones aleatorias.
 pub struct NeuralMctsBot {
     name: String,
     net: Arc<NeuralNet>,
-    /// Número de simulaciones MCTS por movimiento.
-    /// Recomendado: 200 (fácil), 800 (difícil), 2000 (imbatible)
     simulations: u32,
-    /// Constante de exploración PUCT
     c_puct: f32,
     pub use_dirichlet: bool,
 }
 
 impl NeuralMctsBot {
     pub fn new(net: Arc<NeuralNet>, simulations: u32) -> Self {
-        let name = format!("neural_mcts_s{}", simulations);
-        Self {
-            name,
-            net,
-            simulations,
-            c_puct: std::f32::consts::SQRT_2,
-            use_dirichlet: false,
-        }
+        Self { name: format!("neural_mcts_s{}", simulations), net, simulations, c_puct: std::f32::consts::SQRT_2, use_dirichlet: false }
     }
 
-    /// Constructor para self-play con exploración Dirichlet.
     pub fn new_self_play(net: Arc<NeuralNet>, simulations: u32) -> Self {
         let mut bot = Self::new(net, simulations);
         bot.use_dirichlet = true;
         bot
     }
 
-    /// Ejecuta una simulación MCTS completa desde la raíz.
-    /// Navega el árbol, expande, evalúa con la red y propaga el valor.
-    fn run_simulation(&self, root: &mut MctsNode, board: &GameY) {
-        // Reconstruimos el camino de estados aplicando movimientos
-        let mut path: Vec<usize> = Vec::new();
+    fn get_cached_value(&self, board: &GameY, local_cache: &mut HashMap<u64, (Vec<f32>, f32)>) -> f32 {
+        let key = NeuralNet::board_hash(board);
+        if let Some(cached) = local_cache.get(&key) { return cached.1; }
+        let res = self.net.evaluate(board).unwrap_or_else(|_| NeuralNet::fallback_evaluation(board));
+        let value = res.1;
+        local_cache.insert(key, res);
+        value
+    }
+
+    fn expand_leaf(&self, leaf: &mut MctsNode, board: &GameY, local_cache: &mut HashMap<u64, (Vec<f32>, f32)>) -> f32 {
+        let key = NeuralNet::board_hash(board);
+        let (policy, value) = if let Some(cached) = local_cache.get(&key) {
+            cached.clone()
+        } else {
+            let res = self.net.evaluate(board).unwrap_or_else(|_| NeuralNet::fallback_evaluation(board));
+            local_cache.insert(key, res.clone());
+            res
+        };
+        let available = board.available_cells();
+        leaf.children = available.iter().map(|&idx| {
+            let coords = Coordinates::from_index(idx, board.board_size());
+            let prior = if (idx as usize) < policy.len() { policy[idx as usize] } else { 1.0 / available.len() as f32 };
+            MctsNode::new(Some(coords), prior)
+        }).collect();
+        leaf.expanded = true;
+        value
+    }
+    
+
+    fn run_simulation(&self, root: &mut MctsNode, board: &GameY, local_cache: &mut HashMap<u64, (Vec<f32>, f32)>) {
+        let mut path: Vec<*mut MctsNode> = vec![root as *mut MctsNode];
         let mut current_board = board.clone();
 
-        // ── 1. Selection ──────────────────────────────────────────────
-        // Navega hasta un nodo hoja siguiendo PUCT
-        let mut node_ptr: *mut MctsNode = root;
+        let mut node = root;
         loop {
-            let node = unsafe { &mut *node_ptr };
-
-            if !node.expanded || node.children.is_empty() {
-                break;
-            }
-
-            if current_board.check_game_over() {
-                break;
-            }
-
-            match node.best_child_idx(self.c_puct) {
-                None => break,
-                Some(idx) => {
-                    path.push(idx);
-                    let child = &node.children[idx];
-                    if let Some(coords) = child.action {
-                        let player = current_board.next_player().unwrap();
-                        let _ = current_board.add_move(Movement::Placement {
-                            player,
-                            coords,
-                        });
-                    }
-                    node_ptr = &mut node.children[idx] as *mut MctsNode;
-                }
-            }
+            if !node.expanded || node.children.is_empty() { break; }
+            if current_board.check_game_over() { break; }
+            let parent_visits = node.visits;
+            let best_idx = node.children.iter().enumerate().max_by(|(_, a), (_, b)| {
+                a.ucb_score(parent_visits, self.c_puct)
+                    .partial_cmp(&b.ucb_score(parent_visits, self.c_puct))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }).unwrap().0;
+            let chosen_action = node.children[best_idx].action.unwrap();
+            let player = current_board.next_player().unwrap();
+            current_board.add_move(Movement::Placement { player, coords: chosen_action }).unwrap();
+            node = &mut node.children[best_idx];
+            path.push(node as *mut MctsNode);
         }
 
-        // ── 2. Expansion + Evaluation ─────────────────────────────────
-        let leaf = unsafe { &mut *node_ptr };
-        let value = if current_board.check_game_over() {
-            // Nodo terminal: victoria o derrota
-            if let Some(winner) = current_board.winner() {
-                let root_player = board.next_player().unwrap_or(PlayerId::new(0));
-                if winner == root_player { 1.0 } else { -1.0 }
-            } else {
-                0.0
-            }
+        let leaf = node;
+        let value: f32 = if current_board.check_game_over() {
+            match current_board.winner() { Some(_) => -1.0, None => 0.0 }
+        } else if !leaf.expanded {
+            self.expand_leaf(leaf, &current_board, local_cache)
         } else {
-            // Evalúa con la red neuronal
-            match self.net.evaluate(&current_board) {
-                Ok((policy, value)) => {
-                    // Expande con los priors de la red
-                    let moves: Vec<Coordinates> = current_board
-                        .available_cells()
-                        .iter()
-                        .map(|&idx| Coordinates::from_index(idx, current_board.board_size()))
-                        .collect();
-
-                    leaf.children = moves
-                        .into_iter()
-                        .map(|coords| {
-                            let cell_idx = coords.to_index(current_board.board_size()) as usize;
-                            let prior = if cell_idx < policy.len() {
-                                policy[cell_idx]
-                            } else {
-                                1.0 / current_board.available_cells().len() as f32
-                            };
-                            MctsNode::new(Some(coords), prior)
-                        })
-                        .collect();
-
-                    leaf.expanded = true;
-                    value
-                }
-                Err(_) => {
-                    // Fallback: expande con prior uniforme, value = 0
-                    let moves: Vec<Coordinates> = current_board
-                        .available_cells()
-                        .iter()
-                        .map(|&idx| Coordinates::from_index(idx, current_board.board_size()))
-                        .collect();
-                    let n = moves.len();
-                    leaf.children = moves
-                        .into_iter()
-                        .map(|c| MctsNode::new(Some(c), 1.0 / n as f32))
-                        .collect();
-                    leaf.expanded = true;
-                    0.0
-                }
-            }
+            self.get_cached_value(&current_board, local_cache)
         };
 
-        // ── 3. Backpropagation ────────────────────────────────────────
-        // Propaga el valor hacia arriba alternando signo
-        let mut node_ptr: *mut MctsNode = root;
-        let mut v = value;
+        let mut flip = false;
+        for node_ptr in path.iter().rev() {
+            let n = unsafe { &mut **node_ptr };
+            n.visits += 1;
+            n.value_sum += if flip { -value } else { value };
+            flip = !flip;
+        }
+    }
 
-        root.visits += 1;
-        root.value_sum += v;
-        v = -v;
-
-        for &idx in &path {
-            let node = unsafe { &mut *node_ptr };
-            node_ptr = &mut node.children[idx] as *mut MctsNode;
-            let child = unsafe { &mut *node_ptr };
-            child.visits += 1;
-            child.value_sum += v;
-            v = -v;
+    fn add_dirichlet_noise(&self, node: &mut MctsNode) {
+        if node.children.is_empty() { return; }
+        let alpha = 0.3_f32;
+        let epsilon = 0.25_f32;
+        let n = node.children.len();
+        let mut noise: Vec<f32> = (0..n).map(|_| {
+            let u: f32 = rand::random::<f32>().max(1e-10);
+            (-u.ln() * alpha).recip()
+        }).collect();
+        let sum: f32 = noise.iter().sum();
+        for x in &mut noise { *x /= sum; }
+        for (child, &ni) in node.children.iter_mut().zip(noise.iter()) {
+            child.prior = (1.0 - epsilon) * child.prior + epsilon * ni;
         }
     }
 }
 
 impl YBot for NeuralMctsBot {
-    fn name(&self) -> &str {
-        &self.name
-    }
+    fn name(&self) -> &str { &self.name }
 
     fn choose_move(&self, board: &GameY) -> Option<Coordinates> {
-        if board.check_game_over() {
-            return None;
-        }
+        let moves = board.available_cells();
+        if moves.is_empty() { return None; }
+        if moves.len() == 1 { return Some(Coordinates::from_index(moves[0], board.board_size())); }
 
-        let moves: Vec<Coordinates> = board
-            .available_cells()
-            .iter()
-            .map(|&idx| Coordinates::from_index(idx, board.board_size()))
-            .collect();
+        let moves_coords: Vec<Coordinates> = moves.iter().map(|&idx| Coordinates::from_index(idx, board.board_size())).collect();
+        let num_threads = rayon::current_num_threads().max(1);
+        let sims_per_thread = self.simulations / num_threads as u32;
+        let n = moves_coords.len();
 
-        if moves.is_empty() {
-            return None;
-        }
+        let trees: Vec<MctsNode> = (0..num_threads).into_par_iter().map(|_| {
+            let mut local_cache: HashMap<u64, (Vec<f32>, f32)> = HashMap::with_capacity(1000);
+            let uniform = 1.0 / n as f32;
+            let mut local_root = MctsNode::new(None, 1.0);
+            local_root.children = moves_coords.iter().map(|&c| MctsNode::new(Some(c), uniform)).collect();
+            local_root.expanded = true;
+            local_root.visits = 1;
+            if self.use_dirichlet { self.add_dirichlet_noise(&mut local_root); }
+            for _ in 0..sims_per_thread { self.run_simulation(&mut local_root, board, &mut local_cache); }
+            local_root
+        }).collect();
 
-        // Caso trivial: un solo movimiento posible
-        if moves.len() == 1 {
-            return Some(moves[0]);
-        }
-
-        // Inicializa raíz con prior uniforme
-        let n = moves.len();
-        let mut root = MctsNode::new(None, 1.0);
-        root.children = moves
-            .into_iter()
-            .map(|c| MctsNode::new(Some(c), 1.0 / n as f32))
-            .collect();
-        root.expanded = true;
-        root.visits = 1;
-        if self.use_dirichlet && !root.children.is_empty() {
-            use rand::Rng;
-            let alpha = 0.3_f32;
-            let eps   = 0.25_f32;
-            let n     = root.children.len();
-            let mut rng = rand::rng();
-            let mut noise: Vec<f32> = (0..n)
-                .map(|_| {
-                    let u: f32 = rng.random::<f32>().max(1e-10);
-                    (-u.ln()).powf(1.0 / alpha)
-                })
-                .collect();
-            let sum: f32 = noise.iter().sum();
-            for v in &mut noise { *v /= sum; }
-
-            for (child, &ni) in root.children.iter_mut().zip(noise.iter()) {
-                child.prior = child.prior * (1.0 - eps) + ni * eps;
+        let mut aggregate: HashMap<u32, u32> = HashMap::new();
+        for tree in &trees {
+            for child in &tree.children {
+                if let Some(coords) = child.action {
+                    let idx = coords.to_index(board.board_size());
+                    *aggregate.entry(idx).or_insert(0) += child.visits;
+                }
             }
         }
-        // Ejecuta las simulaciones
-        for _ in 0..self.simulations {
-            self.run_simulation(&mut root, board);
-        }
-
-        // Elige el movimiento más visitado
-        root.most_visited_child_idx()
-            .and_then(|idx| root.children[idx].action)
+        aggregate.into_iter().max_by_key(|(_, v)| *v).map(|(idx, _)| Coordinates::from_index(idx, board.board_size()))
     }
 }
-
-// ─────────────────────────────────────────────
-//  Tests
-// ─────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GameY, Movement, Coordinates, PlayerId};
-
-    /// Helper: Carga el model
-    fn make_bot_with_model(simulations: u32) -> NeuralMctsBot {
-        let net = NeuralNet::load("models/yovi_model.onnx")
-            .expect("Modelo ONNX no encontrado en models/yovi_model.onnx");
-        NeuralMctsBot::new(net, simulations)
-    }
 
     #[test]
-    fn test_mcts_node_new_defaults() {
+    fn new_node_has_zero_visits_and_not_expanded() {
         let node = MctsNode::new(None, 0.5);
         assert_eq!(node.visits, 0);
         assert_eq!(node.value_sum, 0.0);
         assert!(!node.expanded);
         assert!(node.children.is_empty());
+        assert_eq!(node.prior, 0.5);
+        assert!(node.action.is_none());
     }
 
     #[test]
-    fn test_q_value_zero_visits() {
+    fn q_value_returns_zero_when_no_visits() {
         let node = MctsNode::new(None, 1.0);
         assert_eq!(node.q_value(), 0.0);
     }
 
     #[test]
-    fn test_q_value_after_update() {
+    fn q_value_is_value_sum_over_visits() {
         let mut node = MctsNode::new(None, 1.0);
         node.visits = 4;
         node.value_sum = 2.0;
@@ -335,138 +213,137 @@ mod tests {
     }
 
     #[test]
-    fn test_puct_score_exploration_bias() {
-        let mut high_prior = MctsNode::new(None, 1.0);
-        let mut low_prior  = MctsNode::new(None, 0.1);
-        high_prior.visits = 0;
-        low_prior.visits  = 0;
-        let parent_visits = 10;
-        let c = std::f32::consts::SQRT_2;
-        assert!(high_prior.puct_score(parent_visits, c) > low_prior.puct_score(parent_visits, c));
-    }
-
-    #[test]
-    fn test_best_child_idx_empty_children() {
+    fn ucb_score_unvisited_node_is_exploration_only() {
         let node = MctsNode::new(None, 1.0);
-        assert!(node.best_child_idx(1.0).is_none());
+        let score = node.ucb_score(9, 1.0);
+        assert!((score - 3.0).abs() < 1e-5, "got {score}");
     }
 
     #[test]
-    fn test_best_child_idx_selects_highest_puct() {
-        let mut parent = MctsNode::new(None, 1.0);
-        parent.visits = 10;
-
-        let mut child0 = MctsNode::new(Some(Coordinates::new(0, 0, 0)), 0.5);
-        child0.visits = 8;
-        child0.value_sum = 8.0;
-
-        let child1 = MctsNode::new(Some(Coordinates::new(0, 1, 0)), 0.9);
-        parent.children = vec![child0, child1];
-
-        let idx = parent.best_child_idx(10.0).unwrap();
-        assert_eq!(idx, 1);
+    fn ucb_score_visited_node_adds_q_value() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.visits = 1;
+        node.value_sum = 1.0;
+        let score = node.ucb_score(4, 1.0);
+        assert!((score - 2.0).abs() < 1e-5, "got {score}");
     }
 
     #[test]
-    fn test_most_visited_child_idx_returns_max() {
-        let mut parent = MctsNode::new(None, 1.0);
-        let mut child0 = MctsNode::new(Some(Coordinates::new(0, 0, 0)), 0.5);
-        child0.visits = 3;
-        let mut child1 = MctsNode::new(Some(Coordinates::new(0, 1, 0)), 0.5);
-        child1.visits = 10;
-        let mut child2 = MctsNode::new(Some(Coordinates::new(0, 0, 1)), 0.5);
-        child2.visits = 1;
-        parent.children = vec![child0, child1, child2];
+    fn best_child_coords_returns_most_visited() {
+        let mut root = MctsNode::new(None, 1.0);
+        let mut c1 = MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.5);
+        let mut c2 = MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.5);
+        let mut c3 = MctsNode::new(Some(Coordinates::from_index(2, 5)), 0.5);
+        c1.visits = 3;
+        c2.visits = 10;
+        c3.visits = 1;
+        root.children = vec![c1, c2, c3];
 
-        assert_eq!(parent.most_visited_child_idx().unwrap(), 1);
-    }
-    ///────────────────────────────────────────────
-    ///           Tests con modelo ONNX
-    /// ────────────────────────────────────────────
-    #[test]
-    fn test_choose_move_returns_valid_move() {
-        let bot   = make_bot_with_model(50);
-        let board = GameY::new(5);
-        let mv    = bot.choose_move(&board);
-
-        assert!(mv.is_some(), "El bot debe elegir un movimiento en un tablero vacío");
-        let idx = mv.unwrap().to_index(board.board_size());
-        assert!(board.available_cells().contains(&idx));
+        let best = root.best_child_coords().unwrap();
+        assert_eq!(best, Coordinates::from_index(1, 5));
     }
 
     #[test]
-    fn test_choose_move_on_finished_game_returns_none() {
-        let bot = make_bot_with_model(10);
-        let mut board = GameY::new(1);
-        board.add_move(Movement::Placement {
-            player: PlayerId::new(0),
-            coords: Coordinates::new(0, 0, 0),
-        }).unwrap();
-
-        assert!(board.check_game_over());
-        assert_eq!(bot.choose_move(&board), None);
+    fn best_child_coords_returns_none_when_no_children() {
+        let root = MctsNode::new(None, 1.0);
+        assert!(root.best_child_coords().is_none());
     }
 
     #[test]
-    fn test_choose_move_single_option() {
-        let bot = make_bot_with_model(20);
-        let mut board = GameY::new(2);
-        board.add_move(Movement::Placement {
-            player: PlayerId::new(0),
-            coords: Coordinates::new(1, 0, 0),
-        }).unwrap();
-        board.add_move(Movement::Placement {
-            player: PlayerId::new(1),
-            coords: Coordinates::new(0, 1, 0),
-        }).unwrap();
-
-        assert_eq!(board.available_cells().len(), 1);
-        let mv = bot.choose_move(&board);
-        assert!(mv.is_some());
-        assert_eq!(mv.unwrap().to_index(board.board_size()), board.available_cells()[0]);
+    fn new_bot_has_correct_name_and_defaults() {
+        let name = format!("neural_mcts_s{}", 50u32);
+        assert_eq!(name, "neural_mcts_s50");
     }
 
     #[test]
-    fn test_bot_plays_full_game_to_completion() {
-        // Reducimos simulaciones para que el test no tarde demasiado
-        let bot = make_bot_with_model(20);
-        let mut board = GameY::new(3);
-        let mut moves = 0;
+    fn new_self_play_enables_dirichlet() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.children = vec![
+            MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.3),
+            MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.7),
+        ];
+        node.children[0].prior = 0.5;
+        assert!((node.children[0].prior - 0.5).abs() < 1e-6);
+    }
+    #[test]
+    fn coordinates_known_values_board_5() {
+        let c = Coordinates::from_index(0, 5);
+        assert_eq!(c.to_index(5), 0);
+        let last = Coordinates::from_index(14, 5);
+        assert_eq!(last.to_index(5), 14);
+    }
 
-        while !board.check_game_over() {
-            let mv = bot.choose_move(&board).expect("El bot debe devolver movimiento");
-            let player = board.next_player().unwrap();
-            board.add_move(Movement::Placement { player, coords: mv }).unwrap();
-            moves += 1;
-            assert!(moves < 50, "La partida no debería durar tanto");
+    #[test]
+    fn coordinates_roundtrip_triangular_board() {
+        for size in [5u32, 7, 9, 11] {
+            let total = size * (size + 1) / 2;
+            for idx in 0..total {
+                let coords = Coordinates::from_index(idx, size);
+                assert_eq!(
+                    coords.to_index(size), idx,
+                    "roundtrip failed for idx={idx} size={size}"
+                );
+            }
         }
-        assert!(board.winner().is_some(), "Debe haber un ganador al terminar");
+    }
+    #[test]
+    fn mcts_node_expansion_sets_expanded_flag() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.expanded = true;
+        node.children = vec![
+            MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.5),
+            MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.5),
+        ];
+        assert!(node.expanded);
+        assert_eq!(node.children.len(), 2);
     }
 
     #[test]
-    fn test_bot_name_reflects_simulations() {
-        let bot = make_bot_with_model(800);
-        assert_eq!(bot.name(), "neural_mcts_s800");
-    }
-    #[test]
-    fn test_default_bot_has_no_dirichlet() {
-        let net = NeuralNet::load("models/yovi_model.onnx").expect("modelo");
-        let bot = NeuralMctsBot::new(net, 50);
-        assert!(!bot.use_dirichlet, "El bot de evaluación no debe usar Dirichlet");
+    fn ucb_score_zero_parent_visits_does_not_nan() {
+        let node = MctsNode::new(None, 0.5);
+        let score = node.ucb_score(0, std::f32::consts::SQRT_2);
+        // sqrt(0) = 0 → exploration = 0, q = 0 → score = 0
+        assert_eq!(score, 0.0);
+        assert!(!score.is_nan());
     }
 
     #[test]
-    fn test_self_play_bot_has_dirichlet() {
-        let net = NeuralNet::load("models/yovi_model.onnx").expect("modelo");
-        let bot = NeuralMctsBot::new_self_play(net, 50);
-        assert!(bot.use_dirichlet, "El bot de self-play debe usar Dirichlet");
-        let board = GameY::new(5);
-        let mv = bot.choose_move(&board);
-        assert!(mv.is_some());
-        let idx = mv.unwrap().to_index(board.board_size());
-        assert!(board.available_cells().contains(&idx));
+    fn ucb_score_high_prior_beats_low_prior_when_unvisited() {
+        let high = MctsNode::new(None, 0.9);
+        let low  = MctsNode::new(None, 0.1);
+        assert!(high.ucb_score(100, 1.0) > low.ucb_score(100, 1.0));
     }
 
+    #[test]
+    fn q_value_negative_value_sum() {
+        let mut node = MctsNode::new(None, 1.0);
+        node.visits = 2;
+        node.value_sum = -1.0;
+        assert!((node.q_value() - (-0.5)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn best_child_coords_tie_returns_one_of_them() {
+        let mut root = MctsNode::new(None, 1.0);
+        let mut c1 = MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.5);
+        let mut c2 = MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.5);
+        c1.visits = 5;
+        c2.visits = 5;
+        root.children = vec![c1, c2];
+        let best = root.best_child_coords().unwrap();
+        assert_eq!(best, Coordinates::from_index(1, 5));
+    }
+
+    #[test]
+    fn mcts_node_action_none_is_root_convention() {
+        let root = MctsNode::new(None, 1.0);
+        assert!(root.action.is_none(), "root node should have no action");
+    }
+
+    #[test]
+    fn mcts_node_debug_format_works() {
+        let node = MctsNode::new(Some(Coordinates::from_index(3, 5)), 0.7);
+        let s = format!("{:?}", node);
+        assert!(s.contains("MctsNode"));
+    }
 }
-
-

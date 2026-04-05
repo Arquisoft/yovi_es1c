@@ -12,11 +12,15 @@ import {
 type MockRepo = {
     createUser: ReturnType<typeof vi.fn>;
     findUserByUsername: ReturnType<typeof vi.fn>;
+    createSession: ReturnType<typeof vi.fn>;
+    countActiveSessions: ReturnType<typeof vi.fn>;
+    revokeOldestActiveSession: ReturnType<typeof vi.fn>;
     storeRefreshToken: ReturnType<typeof vi.fn>;
     findRefreshTokenByHash: ReturnType<typeof vi.fn>;
     revokeRefreshToken: ReturnType<typeof vi.fn>;
     revokeRefreshTokenFamily: ReturnType<typeof vi.fn>;
     revokeAllUserSessions: ReturnType<typeof vi.fn>;
+    revokeSessionById: ReturnType<typeof vi.fn>;
     findUserById: ReturnType<typeof vi.fn>;
 };
 
@@ -24,11 +28,15 @@ function buildRepoMock(): MockRepo {
     return {
         createUser: vi.fn(),
         findUserByUsername: vi.fn(),
+        createSession: vi.fn(),
+        countActiveSessions: vi.fn().mockResolvedValue(0),
+        revokeOldestActiveSession: vi.fn().mockResolvedValue(0),
         storeRefreshToken: vi.fn(),
         findRefreshTokenByHash: vi.fn(),
         revokeRefreshToken: vi.fn(),
         revokeRefreshTokenFamily: vi.fn(),
         revokeAllUserSessions: vi.fn(),
+        revokeSessionById: vi.fn(),
         findUserById: vi.fn(),
     };
 }
@@ -123,7 +131,7 @@ describe('AuthService', () => {
         expect(repo.revokeRefreshToken).toHaveBeenCalledWith(15);
         expect(repo.storeRefreshToken).toHaveBeenCalledTimes(1);
 
-        const [storedUserId, , storedFamilyId] = repo.storeRefreshToken.mock.calls.at(0)!;
+        const [storedUserId, , , storedFamilyId] = repo.storeRefreshToken.mock.calls.at(0)!;
         expect(storedUserId).toBe(9);
         expect(storedFamilyId).toBe('family-1');
     });

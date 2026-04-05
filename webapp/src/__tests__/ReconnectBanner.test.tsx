@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from '../app/App';
+import { fetchWithAuth } from '../shared/api/fetchWithAuth';
 
 const activeSessionMock = vi.fn();
 
@@ -19,6 +20,10 @@ vi.mock('../features/game/hooks/useActiveSession', () => ({
   useActiveSession: () => activeSessionMock(),
 }));
 
+vi.mock('../shared/api/fetchWithAuth', () => ({
+  fetchWithAuth: vi.fn(),
+}));
+
 describe('Reconnect banner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,6 +37,7 @@ describe('Reconnect banner', () => {
       loading: false,
       error: null,
     });
+    vi.mocked(fetchWithAuth).mockResolvedValue(new Response(JSON.stringify({ matchId: 'm-active' }), { status: 200 }));
   });
 
   it('shows reconnect banner when an active session exists', () => {
@@ -39,11 +45,10 @@ describe('Reconnect banner', () => {
     expect(screen.getByText('Tienes una partida en curso. ¿Quieres reconectarte?')).toBeInTheDocument();
   });
 
-  it('dismisses banner and stores abandoned flag', async () => {
+  it('dismisses banner and calls backend abandon', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Abandonar partida' }));
-
-    expect(localStorage.getItem('abandoned:m-active')).toBe('true');
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalled());
     await waitFor(() => {
       expect(screen.queryByText('Tienes una partida en curso. ¿Quieres reconectarte?')).not.toBeInTheDocument();
     });

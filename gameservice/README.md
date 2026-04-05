@@ -14,6 +14,7 @@ Exposed internally on port `3002`, accessible externally only through the Nginx 
 - **Turn control**: Configurable per-turn timeout (`TURN_TIMEOUT_SEC`). If a player does not move in time, `BotFallbackService` acts automatically on their behalf.
 - **Reconnection support**: Configurable grace period (`RECONNECT_GRACE_SEC`) before penalising a disconnected player's session.
 - JWT verification on every authenticated request, delegated to the Auth Service via internal call.
+- Versioned OpenAPI contract in `openapi.yaml`.
 
 ## Internal Structure
 ```
@@ -75,7 +76,28 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`).
 
 In addition to the REST API, the service exposes a **Socket.IO** server on the same port (`3002`), accessible externally through Nginx at `/api/game/socket.io/`.
 
-Socket.IO events handle real-time board updates, turn notifications, timeouts, and disconnection events.
+Socket.IO events handle real-time board updates, turn notifications, timeouts, disconnections, and typed `session:error` responses (`code`, `message`, optional `details`).
+
+## Error Contract
+
+Online/session/auth-related endpoints use a normalized payload:
+
+```json
+{
+  "code": "SESSION_NOT_FOUND",
+  "message": "Online session not found",
+  "details": {}
+}
+```
+
+The same `code` catalog is used in HTTP and Socket.IO `session:error` events.
+
+## Redis keyspaces used by online runtime
+
+- `session:online:<matchId>`: live online session snapshot.
+- `session:user-active:<userId>`: active-match index for fast lookup.
+- `session:dedupe:<matchId>:<userId>:<clientEventId>`: dedupe lock with TTL.
+- `mm:*`: matchmaking queue/player/assignment state.
 
 ## Environment Variables
 
@@ -88,6 +110,7 @@ Socket.IO events handle real-time board updates, turn notifications, timeouts, a
 | `MM_TIMEOUT_SEC` | Max seconds to wait in matchmaking queue before bot fallback | `30` |
 | `TURN_TIMEOUT_SEC` | Seconds per turn before activating bot fallback | `25` |
 | `RECONNECT_GRACE_SEC` | Grace period in seconds for a disconnected player to reconnect | `45` |
+| `MM_ASSIGNMENT_TTL_SEC` | TTL for temporary matchmaking assignments in Redis | `120` |
 
 ## Running
 

@@ -3,7 +3,7 @@ info:
   title: Auth Service API
   version: 1.0.0
   description: |
-    Authentication service API for registration, login, token refresh, and internal JWT verification.
+    Authentication service API for registration, login, logout, token refresh, and internal JWT verification.
 servers:
   - url: http://localhost
     description: Public entrypoint through Nginx
@@ -153,6 +153,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current session refresh tokens
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout processed (idempotent)
+
+  /api/auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Revoke all user sessions
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout all processed (idempotent)
+
   /api/auth/verify:
     post:
       tags: [Internal]
@@ -207,6 +227,12 @@ components:
           type: string
           minLength: 8
           example: password123
+        deviceId:
+          type: string
+          example: web-123
+        deviceName:
+          type: string
+          example: webapp
 
     RefreshRequest:
       type: object
@@ -242,6 +268,8 @@ components:
           properties:
             user:
               $ref: '#/components/schemas/AuthUser'
+            session:
+              $ref: '#/components/schemas/SessionRef'
 
     AuthUser:
       type: object
@@ -250,6 +278,15 @@ components:
         id:
           type: integer
         username:
+          type: string
+
+    SessionRef:
+      type: object
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+        deviceId:
           type: string
 
     VerifySuccessResponse:

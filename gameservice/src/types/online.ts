@@ -1,5 +1,6 @@
 export type OpponentType = 'HUMAN' | 'BOT';
 export type ConnectionState = 'CONNECTED' | 'DISCONNECTED';
+export type SessionStatus = 'created' | 'active' | 'waiting_reconnect' | 'finished' | 'abandoned' | 'expired' | 'cancelled';
 
 export interface OnlineQueueEntry {
   userId: number;
@@ -41,6 +42,8 @@ export interface OnlineSessionState {
   timerEndsAt: number;
   players: [OnlinePlayerState, OnlinePlayerState];
   opponentType: OpponentType;
+  status: SessionStatus;
+  closeReason: 'winner' | 'abandoned' | 'expired' | 'cancelled' | null;
   connection: Record<number, ConnectionState>;
   reconnectDeadline: Record<number, number | null>;
   winner: 'B' | 'R' | 'DRAW' | null;
@@ -57,4 +60,5 @@ export interface MovePayload {
   matchId: string;
   move: { row: number; col: number };
   expectedVersion: number;
+  clientEventId?: string;
 }

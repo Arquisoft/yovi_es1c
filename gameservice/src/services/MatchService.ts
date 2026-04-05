@@ -1,10 +1,14 @@
 import { MatchRepository } from "../repositories/MatchRepository";
+import { gamesCreated, activeGames, gamesFinished } from '../metrics';
 
 export class MatchService {
   constructor(private matchRepo: MatchRepository) {}
 
   async createMatch(userId: number, boardSize: number, difficulty: string) {
-    return this.matchRepo.createMatch(userId, boardSize, difficulty);
+    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty);
+    gamesCreated.inc();
+    activeGames.inc();
+    return match;
   }
 
   async getMatch(id: number) {
@@ -16,6 +20,9 @@ export class MatchService {
   }
 
   async finishMatch(matchId: number, winner: string) {
-    return this.matchRepo.finishMatch(matchId, winner);
+    const result = await this.matchRepo.finishMatch(matchId, winner);
+    gamesFinished.inc({ winner });
+    activeGames.dec();
+    return result;
   }
 }

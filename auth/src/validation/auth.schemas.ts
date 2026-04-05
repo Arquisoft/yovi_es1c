@@ -1,7 +1,8 @@
 import { InvalidInputError } from '../errors/domain-errors.js';
 
-type AuthBody = { username: string; password: string };
+type AuthBody = { username: string; password: string; deviceId?: string; deviceName?: string };
 type RefreshBody = { refreshToken?: string };
+type LogoutBody = { sessionId?: string };
 
 function asRecord(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -17,6 +18,8 @@ export function parseAuthBody(body: unknown): AuthBody {
 
     const usernameRaw = data.username;
     const passwordRaw = data.password;
+    const deviceIdRaw = data.deviceId;
+    const deviceNameRaw = data.deviceName;
 
     if (typeof usernameRaw !== 'string' || usernameRaw.trim().length === 0) {
         details.push({ field: 'username', message: 'username is required and must be a non-empty string' });
@@ -35,7 +38,17 @@ export function parseAuthBody(body: unknown): AuthBody {
     const username = usernameRaw as string;
     const password = passwordRaw as string;
 
-    return { username: username.trim(), password };
+    const parsed: AuthBody = { username: username.trim(), password };
+
+    if (typeof deviceIdRaw === 'string' && deviceIdRaw.trim().length > 0) {
+        parsed.deviceId = deviceIdRaw.trim();
+    }
+
+    if (typeof deviceNameRaw === 'string' && deviceNameRaw.trim().length > 0) {
+        parsed.deviceName = deviceNameRaw.trim();
+    }
+
+    return parsed;
 }
 
 export function parseRefreshBody(body: unknown): RefreshBody {
@@ -53,6 +66,27 @@ export function parseRefreshBody(body: unknown): RefreshBody {
 
     if (typeof refreshTokenRaw === 'string') {
         return { refreshToken: refreshTokenRaw.trim() };
+    }
+
+    return {};
+}
+
+export function parseLogoutBody(body: unknown): LogoutBody {
+    if (body === undefined || body === null) return {};
+    const data = asRecord(body);
+    const details: Array<{ field: string; message: string }> = [];
+    const sessionIdRaw = data.sessionId;
+
+    if (sessionIdRaw !== undefined && (typeof sessionIdRaw !== 'string' || sessionIdRaw.trim().length === 0)) {
+        details.push({ field: 'sessionId', message: 'sessionId must be a non-empty string when provided' });
+    }
+
+    if (details.length > 0) {
+        throw new InvalidInputError(details);
+    }
+
+    if (typeof sessionIdRaw === 'string') {
+        return { sessionId: sessionIdRaw.trim() };
     }
 
     return {};

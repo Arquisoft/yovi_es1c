@@ -15,11 +15,17 @@ import { AuthService } from '../src/services/auth.service.js';
 function buildRepoMock() {
     return {
         createUser: vi.fn(),
+        createSession: vi.fn(),
         findUserByUsername: vi.fn(),
+        findUserById: vi.fn(),
+        countActiveSessions: vi.fn(),
+        revokeOldestActiveSession: vi.fn(),
         storeRefreshToken: vi.fn(),
         findRefreshTokenByHash: vi.fn(),
         revokeRefreshToken: vi.fn(),
         revokeRefreshTokenFamily: vi.fn(),
+        revokeSessionById: vi.fn(),
+        revokeAllUserSessions: vi.fn(),
     };
 }
 
@@ -77,6 +83,7 @@ describe('auth unit coverage', () => {
         process.env.JWT_SECRET = 'unit-secret';
         const repo = buildRepoMock();
         repo.createUser.mockResolvedValue(1);
+        repo.createSession.mockResolvedValue(undefined);
 
         const signSpy = vi.spyOn(jwt, 'sign').mockImplementation(() => {
             throw new Error('jwt-fail');

@@ -1,9 +1,11 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { act } from 'react';
 import Nav from '../components/layout/Nav';
 import { AuthProvider } from '../features/auth/context/AuthContext';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const fetchMock = vi.fn();
 
 function renderNav() {
     return render(
@@ -16,6 +18,11 @@ function renderNav() {
 }
 
 describe('Nav Component', () => {
+    beforeEach(() => {
+        fetchMock.mockReset();
+        fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+        vi.stubGlobal('fetch', fetchMock);
+    });
     it('renders navigation links', () => {
         renderNav();
 
@@ -102,13 +109,14 @@ describe('Nav Component', () => {
         localStorage.clear();
     });
 
-    it('clears session when clicking logout', () => {
+    it('clears session when clicking logout', async () => {
         localStorage.setItem('auth_token', 'test-token');
         localStorage.setItem('auth_user', JSON.stringify({ id: 1, username: 'Pablo' }));
 
         renderNav();
         fireEvent.click(screen.getByRole('button', { name: /logout/i }));
 
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
         expect(localStorage.getItem('auth_token')).toBeNull();
     });
 });
