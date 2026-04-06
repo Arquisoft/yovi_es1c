@@ -3,6 +3,8 @@ services:
     build: ./users
     container_name: users
     image: ghcr.io/arquisoft/yovi_es1c-users:latest
+    environment:
+      - DB_DATA_DIR=/app/data
     expose:
       - "3000"
     networks:

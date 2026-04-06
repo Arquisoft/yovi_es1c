@@ -33,7 +33,7 @@ interface QueueScanResult {
   players: OnlineQueueEntry[];
 }
 
-const ATOMIC_CLAIM_PAIR_LUA = `
+export const ATOMIC_CLAIM_PAIR_LUA = `
 local queueKey = KEYS[1]
 local playerAHash = KEYS[2]
 local playerBHash = KEYS[3]
@@ -46,6 +46,7 @@ if redis.call('exists', playerAHash) == 0 then return 0 end
 if redis.call('exists', playerBHash) == 0 then return 0 end
 
 redis.call('zrem', queueKey, playerA, playerB)
+redis.call('del', playerAHash, playerBHash)
 return 1
 `;
 
@@ -56,11 +57,11 @@ export class MatchmakingService {
   private readonly assignmentTtlSec = Number(process.env.MM_ASSIGNMENT_TTL_SEC ?? 120);
 
   constructor(
-    private readonly repository: MatchmakingRepository,
-    private readonly statsService: StatsService,
-    private readonly botFallbackService: BotFallbackService,
-    private readonly timeoutSec = 30,
-    private readonly deps: MatchmakingDeps = {},
+      private readonly repository: MatchmakingRepository,
+      private readonly statsService: StatsService,
+      private readonly botFallbackService: BotFallbackService,
+      private readonly timeoutSec = 30,
+      private readonly deps: MatchmakingDeps = {},
   ) {
     this.workerIntervalMs = deps.workerIntervalMs ?? 2_000;
   }
@@ -124,19 +125,14 @@ export class MatchmakingService {
         const assignment = await this.tryMatchCandidate(sortedPlayers[index], sortedPlayers, queue.boardSize, now);
         if (!assignment) continue;
         await this.persistInitialMatch(assignment, queue.boardSize);
+        await this.storePendingAssignment(assignment);
         this.emitMatched(assignment);
       }
     }
   }
 
-  async tryMatch(userId: number, now = Date.now()): Promise<OnlineMatchAssignment | null> {
-    const pending = await this.consumePendingAssignment(userId);
-    if (pending) return pending;
-
-    const allCandidates = this.deps.redis ? (await this.listRedisQueueByBoard(8)) : await this.repository.listByBoard(8);
-    const self = allCandidates.find((entry) => entry.userId === userId);
-    if (!self) return null;
-    return this.tryMatchCandidate(self, allCandidates, 8, now);
+  async tryMatch(userId: number): Promise<OnlineMatchAssignment | null> {
+    return this.consumePendingAssignment(userId);
   }
 
   getBotDifficulty(winRate: number): 'easy' | 'medium' | 'hard' {
@@ -150,7 +146,7 @@ export class MatchmakingService {
       now: number,
   ): Promise<OnlineMatchAssignment | null> {
     const waitedSec = (now - self.joinedAt) / 1000;
-    const skillRange = waitedSec >= 20 ? 2 : waitedSec >= 10 ? 1 : 0;
+    const skillRange = waitedSec >= 20 ? 2 : 1;
     const rival = allCandidates.find(
         (entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange
     );
@@ -176,7 +172,6 @@ export class MatchmakingService {
         revealAfterGame: false,
       };
 
-      await this.storePendingAssignment(assignment);
       return assignment;
     }
 
@@ -204,7 +199,6 @@ export class MatchmakingService {
     const queueKey = this.getQueueKey(entry.boardSize);
     const playerKey = this.getPlayerKey(entry.userId);
 
-    await redis.zAdd(queueKey, [{ score: entry.joinedAt, value: String(entry.userId) }]);
     await redis.hSet(playerKey, {
       userId: String(entry.userId),
       username: entry.username,
@@ -214,6 +208,7 @@ export class MatchmakingService {
       socketId: entry.socketId,
       queueJoinId: entry.queueJoinId,
     });
+    await redis.zAdd(queueKey, [{ score: entry.joinedAt, value: String(entry.userId) }]);
     await redis.zAdd('mm:boards', [{ score: entry.boardSize, value: String(entry.boardSize) }]);
   }
 
@@ -319,9 +314,9 @@ export class MatchmakingService {
       messages: [],
     };
 
-    await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial));
-    await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId);
-    await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId);
+    await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial), { EX: 3600 });
+    await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId, { EX: 3600 });
+    await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId, { EX: 3600 });
   }
 
   private emitMatched(assignment: OnlineMatchAssignment): void {
@@ -342,17 +337,19 @@ export class MatchmakingService {
 
 
   private async storePendingAssignment(assignment: OnlineMatchAssignment): Promise<void> {
-    if (!assignment.playerB) return;
-
     if (this.deps.redis) {
       const raw = JSON.stringify(assignment);
       await this.deps.redis.set(this.getAssignmentKey(assignment.playerA.userId), raw, { EX: this.assignmentTtlSec });
-      await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw, { EX: this.assignmentTtlSec });
+      if (assignment.playerB) {
+        await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw, { EX: this.assignmentTtlSec });
+      }
       return;
     }
 
     this.pendingAssignments.set(assignment.playerA.userId, assignment);
-    this.pendingAssignments.set(assignment.playerB.userId, assignment);
+    if (assignment.playerB) {
+      this.pendingAssignments.set(assignment.playerB.userId, assignment);
+    }
   }
 
   private async consumePendingAssignment(userId: number): Promise<OnlineMatchAssignment | null> {
