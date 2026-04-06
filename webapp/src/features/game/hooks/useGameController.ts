@@ -1,23 +1,115 @@
 import { useMemo, useState } from "react";
 import type { YenPositionDto } from "../../../shared/contracts";
-import {
-    checkWinner,
-    createEmptyYEN,
-    getCellSymbol,
-    rowColFromCoords,
-    updateLayout,
-} from "../domain/yen";
 import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 import { API_CONFIG } from "../../../config/api.config";
 
+// ── Tipos ──
 export type GameMode = "BOT" | "LOCAL_2P" | "ONLINE";
 export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
 
 const DEFAULT_BOARD_SIZE = 8;
 const GAMEY_TIMEOUT_MS = 4000;
 
-// ── Helpers externos al hook (reducen complejidad cognitiva de callBot) ──
+// ── Funciones de dominio ──
+export const createEmptyYEN = (size: number): YenPositionDto => {
+    const layout = Array.from({ length: size }, (_, rowIndex) =>
+        ".".repeat(rowIndex + 1)
+    ).join("/");
+    return { size, turn: 0, players: ["B", "R"], layout };
+};
 
+export const updateLayout = (
+    layout: string,
+    row: number,
+    col: number,
+    symbol: string
+): string => {
+    const rows = layout.split("/");
+    const rowChars = rows[row].split("");
+    rowChars[col] = symbol;
+    rows[row] = rowChars.join("");
+    return rows.join("/");
+};
+
+export const getCellSymbol = (layout: string, row: number, col: number): string =>
+    layout.split("/")[row]?.[col] ?? ".";
+
+export const coordsFromRowCol = (row: number, col: number, size: number) => {
+    const x = size - 1 - row;
+    const y = col;
+    const z = row - col;
+    return { x, y, z };
+};
+
+export const rowColFromCoords = (
+    coords: { x: number; y: number; z: number },
+    size: number
+) => {
+    const row = size - 1 - coords.x;
+    const col = coords.y;
+    if (row < 0 || row >= size) return null;
+    if (col < 0 || col > row) return null;
+    if (row - col !== coords.z) return null;
+    return { row, col };
+};
+
+// ── Check ganador corregido ──
+export const checkWinner = (layout: string, size: number, symbol: string): boolean => {
+    const visited = new Set<string>();
+    const rows = layout.split("/");
+
+    const hasSymbol = (row: number, col: number) => rows[row]?.[col] === symbol;
+
+    for (let row = 0; row < size; row++) {
+        for (let col = 0; col <= row; col++) {
+            if (!hasSymbol(row, col)) continue;
+            const key = `${row}-${col}`;
+            if (visited.has(key)) continue;
+
+            const queue: Array<{ row: number; col: number }> = [{ row, col }];
+            visited.add(key);
+
+            let touchesX = false;
+            let touchesY = false;
+            let touchesZ = false;
+
+            while (queue.length > 0) {
+                const current = queue.shift()!;
+                const coords = coordsFromRowCol(current.row, current.col, size);
+
+                if (coords.x === 0) touchesX = true;
+                if (coords.y === 0) touchesY = true;
+                if (coords.z === 0) touchesZ = true;
+
+                if (touchesX && touchesY && touchesZ) return true;
+
+                const neighbors = [
+                    { x: coords.x - 1, y: coords.y + 1, z: coords.z },
+                    { x: coords.x - 1, y: coords.y, z: coords.z + 1 },
+                    { x: coords.x + 1, y: coords.y - 1, z: coords.z },
+                    { x: coords.x, y: coords.y - 1, z: coords.z + 1 },
+                    { x: coords.x + 1, y: coords.y, z: coords.z - 1 },
+                    { x: coords.x, y: coords.y + 1, z: coords.z - 1 },
+                ];
+
+                for (const n of neighbors) {
+                    if (n.x < 0 || n.y < 0 || n.z < 0) continue;
+                    if (n.x + n.y + n.z !== size - 1) continue;
+                    const next = rowColFromCoords(n, size);
+                    if (!next) continue;
+                    const nextKey = `${next.row}-${next.col}`;
+                    if (visited.has(nextKey)) continue;
+                    if (!hasSymbol(next.row, next.col)) continue;
+                    visited.add(nextKey);
+                    queue.push(next);
+                }
+            }
+        }
+    }
+    return false;
+};
+
+// ── Helpers externos ──
 function buildBotHttpError(status: number, textFn: () => Promise<string>): Promise<string> {
     if (status === 401) return Promise.resolve("No estás autenticado. Por favor inicia sesión.");
     if (status === 400) return Promise.resolve("Movimiento inválido enviado al servidor.");
@@ -39,6 +131,7 @@ function revertBotState(
     setBotFailureCount((prev) => prev + 1);
 }
 
+// ── Hook principal ──
 export const useGameController = (
     initialSize: number = DEFAULT_BOARD_SIZE,
     initialMode: GameMode = "BOT",
@@ -63,7 +156,6 @@ export const useGameController = (
     const announceWinner = (label: string) => {
         setGameOver(true);
         setMessage(`¡Felicidades ${label}!`);
-        window.alert(`¡Felicidades ${label}!`);
     };
 
     const resetGame = (nextMode: GameMode) => {
@@ -77,12 +169,7 @@ export const useGameController = (
 
     const changeSize = (newSize: number) => {
         const emptyLayout = Array.from({ length: newSize }, (_, i) => ".".repeat(i + 1)).join("/");
-        setGameState({
-            ...gameState,
-            size: newSize,
-            layout: emptyLayout,
-            turn: 0,
-        });
+        setGameState({ ...gameState, size: newSize, layout: emptyLayout, turn: 0 });
         setGameOver(false);
         setError(null);
         setMessage("Click a cell to play");
@@ -110,11 +197,7 @@ export const useGameController = (
             await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/moves`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    position_yen: position.layout,
-                    player: player,
-                    moveNumber: position.turn + 1,
-                }),
+                body: JSON.stringify({ position_yen: position.layout, player, moveNumber: position.turn + 1 }),
             });
         } catch (err) {
             console.error("Persist error:", err);
@@ -134,6 +217,7 @@ export const useGameController = (
         }
     };
 
+    // ── Manejo de clics ──
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
@@ -186,7 +270,7 @@ export const useGameController = (
         });
     };
 
-    // ── applyBotMove extraída para bajar complejidad de callBot ──
+    // ── Bot ──
     const applyBotMove = async (
         humanState: YenPositionDto,
         data: { coords: { x: number; y: number; z: number } },
