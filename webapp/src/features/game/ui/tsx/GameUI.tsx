@@ -84,15 +84,15 @@ export default function GameUI() {
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
-  useEffect(() => {
-    if (config?.mode !== 'ONLINE') return;
-    if (!onlineError?.code) return;
-    if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
-      return;
-    }
-    globalThis.alert('La partida ya no está disponible');
-    navigate('/create-match');
-  }, [config?.mode, navigate, onlineError?.code]);
+    useEffect(() => {
+        if (config?.mode !== 'ONLINE') return;
+        if (!onlineError?.code) return;
+        if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
+            return;
+        }
+        globalThis.alert('La partida ya no está disponible');
+        navigate('/create-match');
+    }, [config?.mode, navigate, onlineError?.code]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;
@@ -160,7 +160,7 @@ export default function GameUI() {
                     flexDirection: { xs: 'column', md: 'row' },
                     width: '100%',
                     maxWidth: 1180,
-                    minHeight: 'calc(100vh - 140px)',
+                    minHeight: 'calc(100dvh - 140px)',
                 }}
             >
                 <Box className={styles.sidebar} sx={{ width: { xs: '100%', md: 300 } }}>
@@ -269,6 +269,7 @@ export default function GameUI() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         p: { xs: 2, md: 4 },
+                        minHeight: 0,
                     }}
                 >
                     <Typography variant="h3" className={styles.gameTitle} sx={{ mb: 2 }}>
@@ -287,34 +288,45 @@ export default function GameUI() {
                         </Paper>
                     )}
 
-                    <Paper className={styles.boardPanel} sx={{ mt: 3, p: { xs: 1, sm: 1.5, md: 2 }, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', maxWidth: '100%', overflow: 'visible' }}>
-                        <Board
-                            layout={displayState.layout}
-                            size={displayState.size}
-                            onCellClick={handleBoardClick}
-                            currentPlayer={displayState.turn}
-                        />
-                    </Paper>
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flexGrow: 1,
+                            minHeight: 0, // Firefox: required so flex children can shrink and remain visible with backdrop/overflow clipping.
+                            alignItems: 'center',
+                            width: '100%',
+                        }}
+                    >
+                        <Paper className={styles.boardPanel} sx={{ mt: 3, p: { xs: 1, sm: 1.5, md: 2 }, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', maxWidth: '100%', overflow: 'visible' }}>
+                            <Board
+                                layout={displayState.layout}
+                                size={displayState.size}
+                                onCellClick={handleBoardClick}
+                                currentPlayer={displayState.turn}
+                            />
+                        </Paper>
 
-                    {gameOver && (
-                        <WinnerOverlay
-                            winnerLabel={winnerLabel ?? 'Empate'}
-                            onNewGame={() => {
-                                actions.newGame();
-                            }}
-                            onNavigateHome={() => navigate('/create-match')} // vuelve al menú
-                        />
-                    )}
+                        {gameOver && (
+                            <WinnerOverlay
+                                winnerLabel={winnerLabel ?? 'Partida terminada'}
+                                onNewGame={() => {
+                                    actions.newGame();
+                                }}
+                                onNavigateHome={() => navigate('/create-match')} // vuelve al menú
+                            />
+                        )}
 
-                    {isOnline && (
-                        <ChatBox
-                            matchId={sessionState?.matchId ?? null}
-                            winner={displayState.winner ?? null}
-                            localUserId={user?.id ?? null}
-                            messages={messages}
-                            sendMessage={sendMessage}
-                        />
-                    )}
+                        {isOnline && (
+                            <ChatBox
+                                matchId={sessionState?.matchId ?? null}
+                                winner={displayState.winner ?? null}
+                                localUserId={user?.id ?? null}
+                                messages={messages}
+                                sendMessage={sendMessage}
+                            />
+                        )}
+                    </Box>
                 </Box>
             </Box>
         </Box>

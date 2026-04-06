@@ -175,7 +175,7 @@ export const useGameController = (
         setMessage("Click a cell to play");
     };
 
-    const finishMatch = async (winner: "USER" | "BOT" | "DRAW") => {
+    const finishMatch = async (winner: "USER" | "BOT") => {
         if (!matchId) return;
         try {
             await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
@@ -234,17 +234,15 @@ export const useGameController = (
                 const nextTurn = prev.turn === 0 ? 1 : 0;
                 const nextState: YenPositionDto = { ...prev, layout: newLayout, turn: nextTurn };
                 persistMove(nextState, nextSymbol === prev.players[0] ? "USER" : "BOT");
+
                 if (checkWinner(newLayout, prev.size, nextSymbol)) {
                     const winnerCode = nextSymbol === prev.players[0] ? "USER" : "BOT";
                     announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
                     finishMatch(winnerCode);
-                } else if (!newLayout.includes(".")) {
-                    setGameOver(true);
-                    setMessage("Board full — game over");
-                    finishMatch("DRAW");
                 } else {
                     setMessage(`Turno: ${nextTurn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
                 }
+
                 return nextState;
             });
             return;
@@ -254,17 +252,13 @@ export const useGameController = (
             const humanLayout = updateLayout(prev.layout, row, col, prev.players[0]);
             const humanState: YenPositionDto = { ...prev, layout: humanLayout, turn: 1 };
             persistMove(humanState, "USER");
+
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
                 announceWinner("Jugador 1");
                 persistFinish("USER");
                 return humanState;
             }
-            if (!humanLayout.includes(".")) {
-                setGameOver(true);
-                setMessage("Board full — game over");
-                finishMatch("DRAW");
-                return humanState;
-            }
+
             callBot(humanState);
             return humanState;
         });
@@ -277,63 +271,74 @@ export const useGameController = (
         usedDifficulty: BotDifficulty
     ) => {
         const mapped = rowColFromCoords(data.coords, humanState.size);
+
         if (!mapped || getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
             setMessage("Bot sugirió una celda inválida, vuelve a jugar");
             setGameState({ ...humanState, turn: 0 });
             setBotFailureCount((prev) => prev + 1);
             return;
         }
+
         const botLayout = updateLayout(humanState.layout, mapped.row, mapped.col, humanState.players[1]);
         const botState: YenPositionDto = { ...humanState, layout: botLayout, turn: 0 };
         setGameState(botState);
         await persistMove(botState, "BOT");
+
         if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
             announceWinner("Jugador 2 (Bot)");
             await persistFinish("BOT");
-        } else if (!botLayout.includes(".")) {
-            setGameOver(true);
-            setMessage("Board full — game over");
-            await finishMatch("DRAW");
         } else {
             const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : "";
             setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno${fallbackInfo}`);
         }
+
         setBotFailureCount(0);
     };
 
     const callBot = async (humanState: YenPositionDto) => {
         if (gameMode !== "BOT") return;
+
         setLoading(true);
         setError(null);
         setMessage("Bot pensando...");
+
         try {
             const { response: res, usedDifficulty } = await requestBotMove(humanState, botDifficulty, botFailureCount);
+
             if (!res.ok) {
                 const errorMsg = await buildBotHttpError(res.status, () => res.text());
                 revertBotState(humanState, errorMsg, setError, setMessage, setGameState, setBotFailureCount);
                 return;
             }
+
             const data = await res.json();
+
             if (data.message) {
                 revertBotState(humanState, `Error del bot: ${data.message}`, setError, setMessage, setGameState, setBotFailureCount);
                 return;
             }
+
             const coords = data.coords;
             const hasValidCoords =
                 coords &&
                 typeof coords.x === "number" &&
                 typeof coords.y === "number" &&
                 typeof coords.z === "number";
+
             if (!hasValidCoords) {
                 revertBotState(humanState, "Respuesta inválida del bot.", setError, setMessage, setGameState, setBotFailureCount);
                 return;
             }
+
             await applyBotMove(humanState, data, usedDifficulty);
         } catch (err) {
             revertBotState(
                 humanState,
                 err instanceof Error ? err.message : "Error desconocido",
-                setError, setMessage, setGameState, setBotFailureCount
+                setError,
+                setMessage,
+                setGameState,
+                setBotFailureCount
             );
         } finally {
             setLoading(false);
@@ -345,13 +350,16 @@ export const useGameController = (
         difficulty: BotDifficulty,
         failureCount: number
     ): Promise<{ response: Response; usedDifficulty: BotDifficulty }> => {
-        const hasExpertDegraded = difficulty === 'expert' && failureCount >= 3;
-        const primaryDifficulty: BotDifficulty = hasExpertDegraded ? 'hard' : difficulty;
-        const candidates: BotDifficulty[] = primaryDifficulty === 'expert' ? ['expert', 'hard'] : [primaryDifficulty];
+        const hasExpertDegraded = difficulty === "expert" && failureCount >= 3;
+        const primaryDifficulty: BotDifficulty = hasExpertDegraded ? "hard" : difficulty;
+        const candidates: BotDifficulty[] = primaryDifficulty === "expert" ? ["expert", "hard"] : [primaryDifficulty];
+
         let lastError: unknown = null;
+
         for (const level of candidates) {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), GAMEY_TIMEOUT_MS);
+
             try {
                 const response = await fetchWithAuth(`${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${level}`, {
                     method: "POST",
@@ -359,24 +367,30 @@ export const useGameController = (
                     body: JSON.stringify(state),
                     signal: controller.signal,
                 });
-                if (!response.ok && level === 'expert' && (response.status >= 500 || response.status === 504)) {
+
+                if (!response.ok && level === "expert" && (response.status >= 500 || response.status === 504)) {
                     continue;
                 }
+
                 return { response, usedDifficulty: level };
             } catch (error) {
                 lastError = error;
-                if (error instanceof Error && error.name === 'AbortError' && level !== 'expert') {
-                    throw new Error('Timeout comunicando con gamey');
+
+                if (error instanceof Error && error.name === "AbortError" && level !== "expert") {
+                    throw new Error("Timeout comunicando con gamey");
                 }
-                if (level !== 'expert') throw error;
+
+                if (level !== "expert") throw error;
             } finally {
                 clearTimeout(timeout);
             }
         }
-        if (lastError instanceof Error && lastError.name === 'AbortError') {
-            throw new Error('Timeout comunicando con gamey');
+
+        if (lastError instanceof Error && lastError.name === "AbortError") {
+            throw new Error("Timeout comunicando con gamey");
         }
-        throw lastError instanceof Error ? lastError : new Error('No se pudo obtener respuesta del bot');
+
+        throw lastError instanceof Error ? lastError : new Error("No se pudo obtener respuesta del bot");
     };
 
     return {

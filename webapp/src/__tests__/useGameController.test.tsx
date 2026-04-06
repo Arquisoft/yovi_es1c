@@ -3,7 +3,6 @@ import { act } from "react";
 import { useGameController } from "../features/game/hooks/useGameController";
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import * as fetchWithAuthModule from "../shared/api/fetchWithAuth";
-import * as yen from "../features/game/domain/yen";
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -803,64 +802,4 @@ describe("useGameController", () => {
             winner: "BOT",
         });
     });
-
-    it("finishMatch is called with DRAW when board is full with matchId", async () => {
-        // Simulamos respuestas correctas del backend para guardar movimientos y cerrar la partida.
-        fetchMock.mockImplementation(async (url) => {
-            const urlString = String(url);
-
-            if (urlString.includes("/matches/match-draw-test/moves")) {
-                return new Response(null, { status: 200 });
-            }
-
-            if (urlString.includes("/matches/match-draw-test/finish")) {
-                return new Response(null, { status: 200 });
-            }
-
-            return new Response(null, { status: 200 });
-        });
-
-        // Tablero triangular de tamaño 3:
-        // fila 0 -> "B"
-        // fila 1 -> "RR"
-        // fila 2 -> "BR."
-        //
-        // Solo queda libre la celda (2,2).
-        // Al jugar ahí, el tablero se llena, pero B no gana.
-        const initialYEN = {
-            size: 3,
-            turn: 0,
-            players: ["B", "R"] as ["B", "R"],
-            layout: "B/RR/BR.",
-        };
-
-        // Creamos el hook en modo BOT y con matchId para que persista el resultado.
-        const { result } = renderHook(() =>
-            useGameController(3, "BOT", initialYEN, "match-draw-test")
-        );
-
-        // El humano juega la última celda libre.
-        await act(async () => {
-            await result.current.actions.handleCellClick(2, 2);
-        });
-
-        // Esperamos a que la partida termine.
-        await waitFor(() => {
-            expect(result.current.state.gameOver).toBe(true);
-        });
-
-        // Buscamos la llamada al endpoint de finish.
-        const finishCall = fetchMock.mock.calls.find(([url]) =>
-            String(url).includes("/matches/match-draw-test/finish")
-        );
-
-        expect(finishCall).toBeTruthy();
-
-        // Verificamos que el ganador enviado al backend es DRAW.
-        expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
-            winner: "DRAW",
-        });
-    });
-
-
 });
