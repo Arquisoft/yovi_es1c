@@ -8,6 +8,12 @@ function mapWinnerToStatus(winner: string | null): MatchDto['status'] {
   return 'lose';
 }
 
+function toUtcIsoString(sqliteDate: string): string {
+  return sqliteDate.includes('T')
+    ? sqliteDate
+    : sqliteDate.replace(' ', 'T') + 'Z';
+}
+
 export class StatsService {
   constructor(private readonly statsRepo: StatsRepository) {}
 
@@ -28,7 +34,7 @@ export class StatsService {
 
     const matches: MatchDto[] = history.map((row) => ({
       matchId: String(row.id),
-      createdAt: row.created_at,
+      createdAt: toUtcIsoString(row.created_at),
       mode: row.mode,
       status: mapWinnerToStatus(row.winner),
     }));
