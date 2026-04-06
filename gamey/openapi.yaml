@@ -46,7 +46,7 @@ paths:
           description: Bot alias (difficulty)
           schema:
             type: string
-            enum: [easy, medium, hard]
+            enum: [easy, medium, hard, expert]
             example: easy
       requestBody:
         required: true
@@ -247,7 +247,7 @@ components:
 
         bot_id:
           type: string
-          enum: [ easy, medium, hard ]
+          enum: [ easy, medium, hard, expert ]
           example: "easy"
 
         coords:
@@ -263,7 +263,7 @@ components:
         bot_id:
           type: string
           description: Bot alias (defaults to "random" if omitted)
-          enum: [easy, medium, hard]
+          enum: [easy, medium, hard, expert]
           example: easy
 
     PlayResponse:
@@ -278,7 +278,7 @@ components:
           example: "v1"
         bot_id:
           type: string
-          enum: [easy, medium, hard]
+          enum: [easy, medium, hard, expert]
           example: "easy"
         position:
           $ref: '#/components/schemas/YEN'
