@@ -117,13 +117,12 @@ describe("CreateMatchPage Component", () => {
     it("changes board size when user selects a different option", async () => {
         setupAuthenticatedUser();
         renderWithProviders(<CreateMatchPage />);
-        const boardSizeButton = screen.getByText("8 x 8").closest('[role="combobox"]');
-        fireEvent.mouseDown(boardSizeButton!);
-        const option16 = await screen.findByRole("option", { name: "16 x 16" });
-        fireEvent.click(option16);
+
+        const slider = screen.getByRole('slider', { name: /TAMAÑO DEL TABLERO/i });
+        fireEvent.change(slider, { target: { value: 16 } });
 
         await waitFor(() => {
-            expect(screen.getByText("16 x 16")).toBeInTheDocument();
+            expect(screen.getByText(/16 x 16/i)).toBeInTheDocument();
         });
     });
 
@@ -144,15 +143,16 @@ describe("CreateMatchPage Component", () => {
         setupAuthenticatedUser();
         renderWithProviders(<CreateMatchPage />);
 
-        expect(screen.getByText(/Media/i)).toBeInTheDocument();
-        const modeButton = screen.getByText("VS Bot").closest('[role="combobox"]');
+        expect(screen.getByText(/MEDIA/i)).toBeInTheDocument();
+
+        const modeButton = screen.getByLabelText("Modo de juego") || screen.getByText("VS BOT");
         fireEvent.mouseDown(modeButton!);
-        const local2pOption = await screen.findByRole("option", { name: "2 Jugadores" });
+        const local2pOption = await screen.findByRole("option", { name: "2 JUGADORES (LOCAL)" });
         fireEvent.click(local2pOption);
 
         await waitFor(() => {
-            expect(screen.getByText("2 Jugadores")).toBeInTheDocument();
-            expect(screen.queryByText(/Media/i)).not.toBeInTheDocument();
+            expect(screen.getByText("2 JUGADORES (LOCAL)")).toBeInTheDocument();
+            expect(screen.queryByText(/MEDIA/i)).not.toBeInTheDocument();
         });
     });
 
@@ -160,22 +160,22 @@ describe("CreateMatchPage Component", () => {
         setupAuthenticatedUser();
         renderWithProviders(<CreateMatchPage />);
 
-        let modeButton = screen.getByText("VS Bot").closest('[role="combobox"]');
+        let modeButton = screen.getByText("VS BOT").closest('[role="button"]') || screen.getByLabelText("Modo de juego");
         fireEvent.mouseDown(modeButton!);
-        const local2pOption = await screen.findByRole("option", { name: "2 Jugadores" });
+        const local2pOption = await screen.findByRole("option", { name: "2 JUGADORES (LOCAL)" });
         fireEvent.click(local2pOption);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Media/i)).not.toBeInTheDocument();
+            expect(screen.queryByText(/MEDIA/i)).not.toBeInTheDocument();
         });
 
-        modeButton = screen.getByText("2 Jugadores").closest('[role="combobox"]');
+        modeButton = screen.getByText("2 JUGADORES (LOCAL)").closest('[role="button"]') || screen.getByLabelText("Modo de juego");
         fireEvent.mouseDown(modeButton!);
-        const botOption = await screen.findByRole("option", { name: "VS Bot" });
+        const botOption = await screen.findByRole("option", { name: "VS BOT" });
         fireEvent.click(botOption);
 
         await waitFor(() => {
-            expect(screen.getByText(/Media/i)).toBeInTheDocument();
+            expect(screen.getByText(/MEDIA/i)).toBeInTheDocument();
         });
     });
 
@@ -206,35 +206,28 @@ describe("CreateMatchPage Component", () => {
         setupAuthenticatedUser();
 
         let resolvePromise: (value: Response) => void = () => {};
-        const pendingPromise = new Promise<Response>((resolve) => {
-            resolvePromise = resolve;
-        });
-
+        const pendingPromise = new Promise<Response>((resolve) => { resolvePromise = resolve; });
         fetchMock.mockReturnValueOnce(pendingPromise);
 
         renderWithProviders(<CreateMatchPage />);
 
-        const createButton = screen.getByRole("button", { name: /Crear partida/i });
-
+        const createButton = screen.getByRole("button", { name: /CREAR PARTIDA/i });
         fireEvent.click(createButton);
 
         await waitFor(() => {
             expect(createButton).toBeDisabled();
-            expect(screen.getByText(/Creando partida/i)).toBeInTheDocument();
+            expect(screen.getByText(/INICIALIZANDO/i)).toBeInTheDocument();
         });
 
-        resolvePromise(
-            new Response(JSON.stringify({ matchId: "123", initialYEN: {} }), {
-                status: 200,
-                headers: new Headers({ 'Content-Type': 'application/json' }),
-            })
-        );
+        resolvePromise(new Response(JSON.stringify({ matchId: "123", initialYEN: {} }), {
+            status: 200,
+            headers: new Headers({ 'Content-Type': 'application/json' }),
+        }));
 
         await waitFor(() => {
             expect(mockNavigate).toHaveBeenCalled();
         });
     });
-
 
     it("handles unknown error gracefully", async () => {
         setupAuthenticatedUser();
@@ -266,31 +259,29 @@ describe("CreateMatchPage Component", () => {
 
         renderWithProviders(<CreateMatchPage />);
 
-        const modeButton = screen.getByText("VS Bot").closest('[role="combobox"]');
+        const modeButton = screen.getByText("VS BOT").closest('[role="button"]') || screen.getByLabelText("Modo de juego");
         fireEvent.mouseDown(modeButton!);
-        const local2pOption = await screen.findByRole("option", { name: "2 Jugadores" });
+        const local2pOption = await screen.findByRole("option", { name: "2 JUGADORES (LOCAL)" });
         fireEvent.click(local2pOption);
 
         await waitFor(() => {
-            expect(screen.getByText("2 Jugadores")).toBeInTheDocument();
+            expect(screen.getByText("2 JUGADORES (LOCAL)")).toBeInTheDocument();
         });
 
-        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+        const createButton = screen.getByRole("button", { name: /CREAR PARTIDA/i });
         fireEvent.click(createButton);
 
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalled();
             const callArgs = fetchMock.mock.calls[0];
             const requestBody = JSON.parse(callArgs[1].body);
-
             expect(requestBody).toEqual({
                 boardSize: 8,
                 difficulty: "medium",
-                mode: "LOCAL_2P"
+                mode: "LOCAL_2P",
             });
         });
     });
-
 
     it("changes all selects to non-default values before creating match", async () => {
         setupAuthenticatedUser();
@@ -307,24 +298,19 @@ describe("CreateMatchPage Component", () => {
 
         renderWithProviders(<CreateMatchPage />);
 
-        let selectButton = screen.getByText("8 x 8").closest('[role="combobox"]');
-        fireEvent.mouseDown(selectButton!);
-        const size32 = await screen.findByRole("option", { name: "32 x 32" });
-        fireEvent.click(size32);
+        // Cambiar boardSize
+        const slider = screen.getByRole('slider', { name: /TAMAÑO DEL TABLERO/i });
+        fireEvent.change(slider, { target: { value: 32 } });
+        await waitFor(() => expect(screen.getByText(/32 x 32/i)).toBeInTheDocument());
 
-        await waitFor(() => {
-            expect(screen.getByText("32 x 32")).toBeInTheDocument();
-        });
-
-        selectButton = screen.getByText(/Media/i).closest('[role="combobox"]');
-        fireEvent.mouseDown(selectButton!);
-        const easyOption = await screen.findByRole("option", { name: /Fácil/i });
+        // Cambiar dificultad
+        const difficultyButton = screen.getByLabelText("Dificultad") || screen.getByText("MEDIA");
+        fireEvent.mouseDown(difficultyButton!);
+        const easyOption = await screen.findByRole("option", { name: "FÁCIL" });
         fireEvent.click(easyOption);
+        await waitFor(() => expect(screen.getByText(/FÁCIL/i)).toBeInTheDocument());
 
-        await waitFor(() => {
-            expect(screen.getByText(/Fácil/i)).toBeInTheDocument();
-        });
-        const createButton = screen.getByRole("button", { name: /Crear partida/i });
+        const createButton = screen.getByRole("button", { name: /CREAR PARTIDA/i });
         fireEvent.click(createButton);
 
         await waitFor(() => {
@@ -334,7 +320,7 @@ describe("CreateMatchPage Component", () => {
                     initialYEN: {},
                     boardSize: 32,
                     mode: "BOT",
-                    difficulty: "easy"
+                    difficulty: "easy",
                 },
             });
         });

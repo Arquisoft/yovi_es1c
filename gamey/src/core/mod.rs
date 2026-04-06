@@ -14,7 +14,7 @@ pub mod coord;
 pub mod game;
 pub mod movement;
 pub mod player;
-mod player_set;
+pub(crate) mod player_set;
 pub mod render_options;
 
 pub use action::*;

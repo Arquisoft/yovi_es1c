@@ -35,6 +35,26 @@ impl AppState {
     }
 }
 
+impl AppState {
+    #[cfg(test)]
+    pub fn new_test() -> Self {
+        use std::sync::Arc;
+        use crate::RandomBot;
+        use crate::bot_server::bot_alias_resolver::BotAliasResolver;
+        use crate::YBotRegistry;
+
+        // Creamos un registro de bots con al menos un bot de prueba
+        let registry = YBotRegistry::new().with_bot(Arc::new(RandomBot));
+
+        // Alias resolver de prueba
+        let mut map = std::collections::HashMap::new();
+        map.insert("easy".to_string(), "random".to_string());
+        let resolver = BotAliasResolver::new(map);
+
+        Self::new(registry, resolver)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -303,7 +303,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
         'disconnect',
         safeAsync<undefined>(socket, async () => {
           activeSocketConnections.dec();
-          await matchmakingService.cancelQueue(user.userId);
+          await matchmakingService.cancelQueueIfStale(user.userId);
 
           if (socket.data.activeMatchId) {
             await sessionService.markDisconnected(socket.data.activeMatchId, user.userId);

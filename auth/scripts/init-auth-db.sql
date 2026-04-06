@@ -1,9 +1,5 @@
 PRAGMA foreign_keys = ON;
 
-DROP TABLE IF EXISTS refresh_tokens;
-DROP TABLE IF EXISTS sessions;
-DROP TABLE IF EXISTS users_credentials;
-
 CREATE TABLE IF NOT EXISTS users_credentials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,

@@ -29,6 +29,7 @@ import { useOnlineMatchmaking } from '../features/game/hooks/useOnlineMatchmakin
 describe('OnlineMatchmakingPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        joinQueueMock.mockResolvedValue(undefined);
         vi.mocked(useOnlineMatchmaking).mockReturnValue({
             waiting: true,
             waitedSec: 5,
@@ -37,7 +38,7 @@ describe('OnlineMatchmakingPage', () => {
             queueState: 'searching',
             joinQueue: joinQueueMock,
             cancelQueue: cancelQueueMock,
-        });
+        } as any);
     });
 
     it('shows login gate when token is missing', () => {
@@ -56,10 +57,12 @@ describe('OnlineMatchmakingPage', () => {
         expect(navigateMock).toHaveBeenCalledWith('/login');
     });
 
-    it('joins queue when token exists and renders queue state', async () => {
+    it('joins queue and runs returned cleanup on unmount', async () => {
         vi.mocked(useAuth).mockReturnValue({ token: 'abc' } as any);
+        const cleanup = vi.fn();
+        joinQueueMock.mockResolvedValue(cleanup);
 
-        render(
+        const { unmount } = render(
             <MemoryRouter initialEntries={[{ pathname: '/online', state: { boardSize: 10 } }]}>
                 <Routes>
                     <Route path="/online" element={<OnlineMatchmakingPage />} />
@@ -72,11 +75,39 @@ describe('OnlineMatchmakingPage', () => {
         });
 
         expect(screen.getByText('Tablero: 10 x 10')).toBeInTheDocument();
-        expect(screen.getByText('Estado: Buscando partida')).toBeInTheDocument();
-        expect(screen.getByText('Tiempo en cola: 5s')).toBeInTheDocument();
+
+        unmount();
+        expect(cleanup).toHaveBeenCalled();
     });
 
-    it('navigates to game when matched and can cancel queue', async () => {
+    it('navigates to BOT mode when fallback match appears', async () => {
+        vi.mocked(useAuth).mockReturnValue({ token: 'abc' } as any);
+        vi.mocked(useOnlineMatchmaking).mockReturnValue({
+            waiting: false,
+            waitedSec: 30,
+            matched: { matchId: '__BOT_FALLBACK__', opponent: 'Bot', revealAfterGame: false },
+            error: null,
+            queueState: 'idle',
+            joinQueue: joinQueueMock,
+            cancelQueue: cancelQueueMock,
+        } as any);
+
+        render(
+            <MemoryRouter initialEntries={['/online']}>
+                <Routes>
+                    <Route path="/online" element={<OnlineMatchmakingPage />} />
+                </Routes>
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(navigateMock).toHaveBeenCalledWith('/gamey', {
+                state: { boardSize: 8, mode: 'BOT', difficulty: 'medium' },
+            });
+        });
+    });
+
+    it('navigates to ONLINE mode when real match is found and can cancel queue', async () => {
         vi.mocked(useAuth).mockReturnValue({ token: 'abc' } as any);
         vi.mocked(useOnlineMatchmaking).mockReturnValue({
             waiting: false,
