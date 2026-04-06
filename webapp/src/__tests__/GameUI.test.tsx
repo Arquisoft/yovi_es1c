@@ -5,17 +5,55 @@ import { fireEvent, waitFor } from '@testing-library/react';
 import GameUI from '../features/game/ui/tsx/GameUI.tsx';
 import * as useGameControllerModule from '../features/game/hooks/useGameController';
 import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from '../features/game/index.ts';
-
+import { onlineSocketClient } from '../features/game/realtime/onlineSocketClient';
+import { useOnlineSession } from '../features/game/hooks/useOnlineSession';
+import { useChatSession } from '../features/game/hooks/useChatSession';
 vi.mock('../features/game/hooks/useGameController');
 vi.mock('../features/game/hooks/useOnlineSession', () => ({ useOnlineSession: vi.fn() }));
 vi.mock('../features/game/hooks/useChatSession', () => ({ useChatSession: vi.fn() }));
 vi.mock('../features/game/ui/tsx/Board.tsx', () => ({
     Board: ({ onCellClick }: any) => <button onClick={() => onCellClick(0, 0)}>BoardMock</button>,
 }));
+vi.mock('../features/game/ui/tsx/TurnTimer', () => ({
+    default: ({ onExpire }: { onExpire: () => void }) => (
+        <button onClick={onExpire}>ExpireTurn</button>
+    ),
+}));
 
-import { useOnlineSession } from '../features/game/hooks/useOnlineSession';
-import { useChatSession } from '../features/game/hooks/useChatSession';
 
+vi.mock('../features/game/ui/tsx/WinnerOverlay', () => ({
+    default: ({
+                  winnerLabel,
+                  onNewGame,
+                  onNavigateHome,
+              }: {
+        winnerLabel: string;
+        onNewGame: () => void;
+        onNavigateHome: () => void;
+    }) => (
+        <div>
+            <span>{winnerLabel}</span>
+            <button onClick={onNewGame}>WinnerOverlayNewGame</button>
+            <button onClick={onNavigateHome}>WinnerOverlayHome</button>
+        </div>
+    ),
+}));
+
+vi.mock('../features/game/realtime/onlineSocketClient', () => ({
+    onlineSocketClient: { emit: vi.fn() },
+}));
+
+const renderWithConfigAndRoutes = (stateConfig: any) => {
+    return renderWithProviders(
+        <MemoryRouter initialEntries={[{ pathname: '/gamey', state: stateConfig }]}>
+            <Routes>
+                <Route path="/gamey" element={<GameUI />} />
+                <Route path="/create-match" element={<div>CreateMatchPage</div>} />
+            </Routes>
+        </MemoryRouter>,
+        { withRouter: false },
+    );
+};
 describe('GameUI Component', () => {
     const mockActions = {
         newGame: vi.fn(),
@@ -265,6 +303,108 @@ describe('GameUI Component', () => {
         });
         renderWithConfig({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
         expect(screen.queryByText(/^Bot$/i)).not.toBeInTheDocument();
+    });
+
+    it('emits turn:timeout when online timer expires', () => {
+        vi.mocked(useOnlineSession).mockReturnValue({
+            sessionState: {
+                matchId: 'online-1',
+                layout: '. /..'.replace(/ /g, ''),
+                size: 2,
+                turn: 1,
+                version: 7,
+                timerEndsAt: Date.now() + 10000,
+                players: [
+                    { userId: 1, username: 'yo', symbol: 'B' },
+                    { userId: 2, username: 'rival', symbol: 'R' },
+                ],
+                winner: null,
+            },
+            error: null,
+            connectionStatus: 'CONNECTED',
+            playMove: vi.fn(),
+        } as any);
+
+        renderWithConfig({ boardSize: 2, mode: 'ONLINE', difficulty: 'medium', matchId: 'online-1' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'ExpireTurn' }));
+
+        expect(onlineSocketClient.emit).toHaveBeenCalledWith('turn:timeout', {
+            matchId: 'online-1',
+            version: 7,
+        });
+    });
+
+    it('navigates to /create-match when clicking "Nueva Partida"', () => {
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Nueva Partida' }));
+
+        expect(screen.getByText('CreateMatchPage')).toBeInTheDocument();
+    });
+
+    it('renders offline winner label for player 1', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                gameState: { ...mockState.gameState, turn: 1 },
+            },
+            actions: mockActions,
+        });
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
+
+        expect(screen.getByText('¡Felicidades, Jugador 1 gana!')).toBeInTheDocument();
+    });
+
+    it('renders offline winner label for player 2', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                gameState: { ...mockState.gameState, turn: 0 },
+            },
+            actions: mockActions,
+        });
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
+
+        expect(screen.getByText('¡Felicidades, Jugador 2 gana!')).toBeInTheDocument();
+    });
+
+    it('calls actions.newGame from WinnerOverlay', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                gameState: { ...mockState.gameState, turn: 1 },
+            },
+            actions: mockActions,
+        });
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'WinnerOverlayNewGame' }));
+
+        expect(mockActions.newGame).toHaveBeenCalled();
+    });
+
+    it('navigates to /create-match from WinnerOverlay', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                gameState: { ...mockState.gameState, turn: 1 },
+            },
+            actions: mockActions,
+        });
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'WinnerOverlayHome' }));
+
+        expect(screen.getByText('CreateMatchPage')).toBeInTheDocument();
     });
 
 });
