@@ -100,6 +100,70 @@ paths:
                     api_version: "v1"
                     bot_id: "easy"
 
+  /{api_version}/ybot/play:
+    post:
+      summary: Play a move on a board position
+      description: |
+        Given a YEN board state and an optional bot alias, the server plays one bot move
+        on the board and returns the updated board state in YEN format.
+        If no `bot_id` is provided, defaults to the `random` bot.
+      parameters:
+        - name: api_version
+          in: path
+          required: true
+          description: API version (currently only "v1" is supported)
+          schema:
+            type: string
+            enum: [v1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayRequest'
+            examples:
+              play_example:
+                summary: Play request with board state
+                value:
+                  position:
+                    size: 3
+                    turn: 0
+                    players: ["B", "R"]
+                    layout: "./B./.RB"
+                  bot_id: easy
+      responses:
+        "200":
+          description: Move played successfully or an error occurred
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PlayResponse'
+                  - $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                success:
+                  summary: Move played successfully
+                  value:
+                    api_version: "v1"
+                    bot_id: "easy"
+                    position:
+                      size: 3
+                      turn: 1
+                      players: ["B", "R"]
+                      layout: "B/B./.RB"
+                invalid_yen:
+                  summary: Invalid YEN format error
+                  value:
+                    message: "Invalid YEN format: unexpected character"
+                    api_version: "v1"
+                    bot_id: "easy"
+                no_moves:
+                  summary: No valid moves available
+                  value:
+                    message: "No valid moves available"
+                    api_version: "v1"
+                    bot_id: "easy"
+
 components:
   schemas:
     YEN:
@@ -188,6 +252,36 @@ components:
 
         coords:
           $ref: '#/components/schemas/Coordinates'
+
+    PlayRequest:
+      type: object
+      required:
+        - position
+      properties:
+        position:
+          $ref: '#/components/schemas/YEN'
+        bot_id:
+          type: string
+          description: Bot alias (defaults to "random" if omitted)
+          enum: [easy, medium, hard]
+          example: easy
+
+    PlayResponse:
+      type: object
+      required:
+        - api_version
+        - bot_id
+        - position
+      properties:
+        api_version:
+          type: string
+          example: "v1"
+        bot_id:
+          type: string
+          enum: [easy, medium, hard]
+          example: "easy"
+        position:
+          $ref: '#/components/schemas/YEN'
 
     ErrorResponse:
       type: object
