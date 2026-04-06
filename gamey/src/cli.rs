@@ -18,6 +18,8 @@ use std::fmt::Display;
 use std::sync::Arc;
 use crate::bot::minimax::MinimaxBot;
 use crate::bot::set_based_heuristic::SetBasedHeuristic;
+use crate::bot::both_players_set_distances_heuristic::BotPlayersSetDistancesHeuristic;
+use crate::set_connectivity_heuristic::SetConnectivityHeuristic;
 
 /// Command-line arguments for the GameY application.
 #[derive(Parser, Debug)]
@@ -75,7 +77,11 @@ pub fn run_cli_game() -> Result<()> {
     let bots_registry = YBotRegistry::new()
         .with_bot(Arc::new(RandomBot))
         .with_bot(Arc::new(
-            MinimaxBot::new(SetBasedHeuristic, 4)
+            MinimaxBot::new(SetBasedHeuristic, 4)))
+        .with_bot(Arc::new(
+            MinimaxBot::new(BotPlayersSetDistancesHeuristic, 4)))
+        .with_bot(Arc::new(
+            MinimaxBot::new(SetConnectivityHeuristic, 4)
         ));
     let bot: Arc<dyn YBot> = match bots_registry.find(&args.bot) {
         Some(b) => b,
