@@ -4,7 +4,7 @@ import type { ChatMessage } from '../../hooks/useChatSession';
 
 interface ChatBoxProps {
     readonly matchId: string | null;
-    readonly winner: 'B' | 'R' | 'DRAW' | null;
+    readonly winner: 'B' | 'R' | null;
     readonly localUserId: number | null;
     readonly messages: ChatMessage[];
     readonly sendMessage: (text: string) => void;

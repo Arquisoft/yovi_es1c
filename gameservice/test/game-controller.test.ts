@@ -315,6 +315,29 @@ describe('GameController integration tests', () => {
     });
   });
 
+
+  describe('POST /api/game/matches/:id/finish', () => {
+    it('should reject DRAW winner as invalid', async () => {
+      vi.spyOn(mockMatchService, 'getMatch').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 8,
+        difficulty: 'medium',
+        status: 'ONGOING',
+        winner: null,
+        created_at: '2026-03-02T10:00:00Z',
+      } as any);
+
+      const response = await request(app)
+          .post('/api/game/matches/1/finish')
+          .send({ winner: 'DRAW' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+      expect(mockMatchService.finishMatch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /api/game/stats/:userId', () => {
     it('should return StatsDto format for a user with matches', async () => {
       const mockDto = {
@@ -590,5 +613,336 @@ describe('GameController online routes', () => {
     const second = await request(app).post('/api/game/online/sessions/m1/abandon').send({});
     expect(first.status).toBe(204);
     expect(second.status).toBe(204);
+  });
+});
+
+describe('GameController online routes', () => {
+  let app: Express;
+  const matchService = {
+    createMatch: vi.fn(),
+    getMatch: vi.fn(),
+    addMove: vi.fn(),
+    finishMatch: vi.fn(),
+  } as unknown as MatchService;
+  const statsService = { getStats: vi.fn(), getFullStats: vi.fn() } as unknown as StatsService;
+  let matchmakingService: any;
+  let onlineSessionService: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    matchmakingService = {
+      joinQueue: vi.fn(),
+      tryMatch: vi.fn(),
+      cancelQueue: vi.fn(),
+    };
+    onlineSessionService = {
+      getSnapshot: vi.fn(),
+      createSession: vi.fn(),
+      getActiveSessionForUser: vi.fn(),
+      handleMove: vi.fn(),
+      reconnect: vi.fn(),
+      abandon: vi.fn(),
+    };
+
+    app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      (req as any).username = 'alice';
+      next();
+    });
+    app.use('/api/game', createGameController(matchService, statsService, matchmakingService, onlineSessionService));
+    app.use(errorHandler);
+  });
+
+  it('joins online queue', async () => {
+    matchmakingService.joinQueue.mockResolvedValue({ joinedAt: 1234 });
+    const response = await request(app).post('/api/game/online/queue').send({ boardSize: 8 });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ queued: true, joinedAt: 1234 });
+  });
+
+  it('returns matched=false when no assignment exists', async () => {
+    matchmakingService.tryMatch.mockResolvedValue(null);
+    const response = await request(app).get('/api/game/online/queue/match');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ matched: false });
+  });
+
+  it('returns opponent payload when assignment exists', async () => {
+    matchmakingService.tryMatch.mockResolvedValue({
+      matchId: 'm-1',
+      revealAfterGame: true,
+      playerA: { userId: 1, username: 'alice', boardSize: 8 },
+      playerB: { userId: 2, username: 'bob', boardSize: 8 },
+    });
+    onlineSessionService.getSnapshot.mockResolvedValue({
+      players: [
+        { userId: 1, username: 'alice' },
+        { userId: 2, username: 'bob' },
+      ],
+    });
+
+    const response = await request(app).get('/api/game/online/queue/match');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ matched: true, matchId: 'm-1', opponent: 'bob', revealAfterGame: true });
+  });
+
+  it('cancels queue', async () => {
+    const response = await request(app).delete('/api/game/online/queue');
+
+    expect(response.status).toBe(204);
+    expect(matchmakingService.cancelQueue).toHaveBeenCalledWith(1);
+  });
+
+  it('returns 204 for no active session', async () => {
+    onlineSessionService.getActiveSessionForUser.mockResolvedValue(null);
+
+    const response = await request(app).get('/api/game/online/sessions/active');
+
+    expect(response.status).toBe(204);
+  });
+
+  it('validates online move payload', async () => {
+    const response = await request(app)
+        .post('/api/game/online/sessions/m-1/moves')
+        .send({ move: { row: 1 } });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty('code', 'VALIDATION_ERROR');
+  });
+
+  it('maps OnlineSessionError in reconnect endpoint', async () => {
+    onlineSessionService.reconnect.mockRejectedValue(new OnlineSessionError('SESSION_TERMINAL', 'closed'));
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/reconnect').send({});
+
+    expect(response.status).toBe(409);
+    expect(response.body).toHaveProperty('code', 'SESSION_TERMINAL');
+  });
+
+  it('maps OnlineSessionError in abandon endpoint', async () => {
+    onlineSessionService.abandon.mockRejectedValue(new OnlineSessionError('UNAUTHORIZED', 'nope'));
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/abandon').send({});
+
+    expect(response.status).toBe(403);
+    expect(response.body).toHaveProperty('code', 'UNAUTHORIZED');
+  });
+});
+
+describe('GameController online error mapping and finish branches', () => {
+  it('maps session not found to 404 in move endpoint', async () => {
+    const app = express();
+    const onlineSessionService: any = {
+      handleMove: vi.fn().mockRejectedValue(new OnlineSessionError('SESSION_NOT_FOUND', 'missing')),
+    };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      (req as any).username = 'alice';
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app)
+        .post('/api/game/online/sessions/m-1/moves')
+        .send({ move: { row: 0, col: 0 }, expectedVersion: 1 });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('maps duplicate event to 409 in reconnect endpoint', async () => {
+    const app = express();
+    const onlineSessionService: any = {
+      reconnect: vi.fn().mockRejectedValue(new OnlineSessionError('DUPLICATE_EVENT', 'dup')),
+    };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      (req as any).username = 'alice';
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/reconnect').send({});
+
+    expect(response.status).toBe(409);
+  });
+
+  it('maps invalid move to 400 in abandon endpoint', async () => {
+    const app = express();
+    const onlineSessionService: any = {
+      abandon: vi.fn().mockRejectedValue(new OnlineSessionError('INVALID_MOVE', 'bad')),
+    };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      (req as any).username = 'alice';
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/abandon').send({});
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 409 in post finish endpoint when match already finished', async () => {
+    const app = express();
+    const matchService: any = {
+      getMatch: vi.fn().mockResolvedValue({ id: 1, user_id: 1, status: 'FINISHED' }),
+      finishMatch: vi.fn(),
+    };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController(matchService, { getFullStats: vi.fn() } as any));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/matches/1/finish').send({ winner: 'USER' });
+
+    expect(response.status).toBe(409);
+    expect(matchService.finishMatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('GameController additional online branches', () => {
+  it('returns 404 when reconnect snapshot is missing', async () => {
+    const app = express();
+    const onlineSessionService: any = { reconnect: vi.fn().mockResolvedValue(null) };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/reconnect').send({});
+    expect(response.status).toBe(404);
+  });
+
+  it('returns 503 for abandon when online service is unavailable', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/abandon').send({});
+    expect(response.status).toBe(503);
+  });
+
+  it('propagates unknown reconnect errors', async () => {
+    const app = express();
+    const onlineSessionService: any = { reconnect: vi.fn().mockRejectedValue(new Error('boom')) };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/reconnect').send({});
+    expect(response.status).toBe(500);
+  });
+
+  it('propagates unknown abandon errors', async () => {
+    const app = express();
+    const onlineSessionService: any = { abandon: vi.fn().mockRejectedValue(new Error('boom')) };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/abandon').send({});
+    expect(response.status).toBe(500);
+  });
+});
+
+describe('GameController move/reconnect remaining branches', () => {
+  it('returns 503 when move endpoint has no online session service', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any));
+    app.use(errorHandler);
+
+    const response = await request(app)
+        .post('/api/game/online/sessions/m-1/moves')
+        .send({ move: { row: 0, col: 0 }, expectedVersion: 1 });
+
+    expect(response.status).toBe(503);
+  });
+
+  it('returns 201 when move endpoint succeeds', async () => {
+    const app = express();
+    const onlineSessionService: any = { handleMove: vi.fn().mockResolvedValue({ version: 2 }) };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app)
+        .post('/api/game/online/sessions/m-1/moves')
+        .send({ move: { row: 0, col: 0 }, expectedVersion: 1 });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ version: 2 });
+  });
+
+  it('propagates unknown move errors as 500', async () => {
+    const app = express();
+    const onlineSessionService: any = { handleMove: vi.fn().mockRejectedValue(new Error('boom')) };
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, {} as any, onlineSessionService));
+    app.use(errorHandler);
+
+    const response = await request(app)
+        .post('/api/game/online/sessions/m-1/moves')
+        .send({ move: { row: 0, col: 0 }, expectedVersion: 1 });
+
+    expect(response.status).toBe(500);
+  });
+
+  it('returns 503 when reconnect endpoint has no online session service', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = 1;
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any));
+    app.use(errorHandler);
+
+    const response = await request(app).post('/api/game/online/sessions/m-1/reconnect').send({});
+
+    expect(response.status).toBe(503);
   });
 });

@@ -27,9 +27,6 @@ FROM node:18-alpine AS runtime
 
 WORKDIR /app
 
-# Crear carpeta de datos con permisos
-RUN mkdir -p /app/data && chmod 777 /app/data
-
 # Copiar build y package.json
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./

@@ -1,142 +1,167 @@
-import { describe, expect, it, vi } from 'vitest';
-import { MatchmakingRepository } from '../src/repositories/MatchmakingRepository';
-import { MatchmakingService } from '../src/services/MatchmakingService';
-import { BotFallbackService } from '../src/services/BotFallbackService';
-import { StatsService } from '../src/services/StatsService';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { MatchService } from '../src/services/MatchService';
+import { MatchRepository } from '../src/repositories/MatchRepository';
 
-describe('MatchmakingService', () => {
-  const statsService = {
-    getWinRateForUser: vi.fn(async (id: number) => (id === 1 ? 52 : 55)),
-  } as unknown as StatsService;
+describe('MatchService', () => {
+  let matchService: MatchService;
+  let mockMatchRepository: MatchRepository;
 
-  it('matches two human players', async () => {
-    const repo = new MatchmakingRepository();
-    const service = new MatchmakingService(repo, statsService, new BotFallbackService(), 30);
+  beforeEach(() => {
+    mockMatchRepository = {
+      createMatch: vi.fn(),
+      getMatchById: vi.fn(),
+      addMove: vi.fn(),
+      finishMatch: vi.fn(),
+    } as unknown as MatchRepository;
 
-    await service.joinQueue({ userId: 1, username: 'alice', boardSize: 8, socketId: 's1' });
-    await service.joinQueue({ userId: 2, username: 'bob', boardSize: 8, socketId: 's2' });
-
-    const assignment = await service.tryMatch(1, Date.now() + 11_000);
-    expect(assignment?.opponentType).toBe('HUMAN');
-    expect(assignment?.playerB?.username).toBe('bob');
+    matchService = new MatchService(mockMatchRepository);
   });
 
-  it('triggers bot fallback after timeout', async () => {
-    const repo = new MatchmakingRepository();
-    const service = new MatchmakingService(repo, statsService, new BotFallbackService(), 30);
+  describe('createMatch', () => {
+    it('should create a match with valid parameters', async () => {
+      const userId = 1;
+      const boardSize = 8;
+      const difficulty = 'medium';
+      const mode = 'BOT';
+      const expectedId = 42;
 
-    const queued = await service.joinQueue({ userId: 1, username: 'alice', boardSize: 8, socketId: 's1' });
-    const assignment = await service.tryMatch(1, queued.joinedAt + 31_000);
+      vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(expectedId);
 
-    expect(assignment?.opponentType).toBe('BOT');
-    expect(assignment?.revealAfterGame).toBe(true);
+      const result = await matchService.createMatch(userId, boardSize, difficulty, mode);
+
+      expect(result).toBe(expectedId);
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(userId, boardSize, difficulty, mode);
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should default mode to BOT when not provided', async () => {
+      vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+
+      await matchService.createMatch(1, 8, 'medium');
+
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
+    });
+
+    it('should accept all valid modes', async () => {
+      const modes = ['BOT', 'ONLINE', 'LOCAL_2P'];
+
+      for (const mode of modes) {
+        vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+
+        await matchService.createMatch(1, 8, 'easy', mode);
+
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', mode);
+      }
+    });
+
+    it('should accept all difficulty levels', async () => {
+      const difficulties = ['easy', 'medium', 'hard'];
+
+      for (const difficulty of difficulties) {
+        vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+
+        await matchService.createMatch(1, 8, difficulty, 'BOT');
+
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty, 'BOT');
+      }
+    });
+
+    it('should propagate errors from repository', async () => {
+      vi.spyOn(mockMatchRepository, 'createMatch').mockRejectedValue(
+          new Error('Database error')
+      );
+
+      await expect(
+          matchService.createMatch(1, 8, 'medium', 'BOT')
+      ).rejects.toThrow('Database error');
+    });
   });
 
-  it('handles race condition via lua claim path', async () => {
-    const evalMock = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0);
-    const repo = new MatchmakingRepository({ eval: evalMock });
+  describe('getMatch', () => {
+    it('should retrieve a match by id', async () => {
+      const matchId = 1;
+      const mockMatch = {
+        id: matchId,
+        user_id: 1,
+        board_size: 8,
+        difficulty: 'medium',
+        status: 'ONGOING',
+        winner: null,
+        created_at: '2026-03-02T10:00:00Z',
+      };
 
-    await repo.enqueue({ userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' });
-    await repo.enqueue({ userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' });
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue(mockMatch);
 
-    const first = await repo.claimPair(
-        { userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' },
-        { userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' },
-    );
-    const second = await repo.claimPair(
-        { userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' },
-        { userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' },
-    );
+      const result = await matchService.getMatch(matchId);
 
-    expect(first).toBe(true);
-    expect(second).toBe(false);
-    expect(evalMock).toHaveBeenCalledTimes(2);
-    expect(repo.getClaimLuaScript()).toContain('sadd');
+      expect(result).toEqual(mockMatch);
+      expect(mockMatchRepository.getMatchById).toHaveBeenCalledWith(matchId);
+      expect(mockMatchRepository.getMatchById).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return undefined when match does not exist', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue(undefined);
+
+      const result = await matchService.getMatch(999);
+
+      expect(result).toBeUndefined();
+      expect(mockMatchRepository.getMatchById).toHaveBeenCalledWith(999);
+    });
   });
 
-  it('stores queue entries in redis and supports cancelQueue', async () => {
-    const redis = {
-      zAdd: vi.fn().mockResolvedValue(1),
-      zRem: vi.fn().mockResolvedValue(1),
-      zRange: vi.fn().mockResolvedValue([]),
-      hSet: vi.fn().mockResolvedValue(1),
-      hGetAll: vi.fn().mockResolvedValue({ userId: '9', username: 'neo', boardSize: '8', skillBand: '2', joinedAt: '11', socketId: 's9', queueJoinId: 'q9' }),
-      del: vi.fn().mockResolvedValue(1),
-      eval: vi.fn().mockResolvedValue(1),
-      set: vi.fn().mockResolvedValue('OK'),
-      get: vi.fn().mockResolvedValue(null),
-    };
-    const service = new MatchmakingService(new MatchmakingRepository(), statsService, new BotFallbackService(), 30, { redis });
+  describe('addMove', () => {
+    it('should add a move to a match', async () => {
+      const matchId = 1;
+      const position = 'a1';
+      const player = 'USER';
+      const moveNumber = 1;
 
-    await service.joinQueue({ userId: 9, username: 'neo', boardSize: 8, socketId: 's9' });
-    await service.cancelQueue(9);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
 
-    expect(redis.zAdd).toHaveBeenCalled();
-    expect(redis.hSet).toHaveBeenCalled();
-    expect(redis.zRem).toHaveBeenCalledWith('mm:queue:8', ['9']);
-    expect(redis.del).toHaveBeenCalledWith('mm:player:9');
+      await matchService.addMove(matchId, position, player, moveNumber);
+
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(
+          matchId,
+          position,
+          player,
+          moveNumber
+      );
+      expect(mockMatchRepository.addMove).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate errors when adding move fails', async () => {
+      vi.spyOn(mockMatchRepository, 'addMove').mockRejectedValue(
+          new Error('Move validation failed')
+      );
+
+      await expect(
+          matchService.addMove(1, 'a1', 'USER', 1)
+      ).rejects.toThrow('Move validation failed');
+    });
   });
 
-  it('runMatchmakingTick emits and persists initial session for redis queue', async () => {
-    const emit = vi.fn();
-    const io = { to: vi.fn(() => ({ emit })) };
-    const redis = {
-      zAdd: vi.fn().mockResolvedValue(1),
-      zRem: vi.fn().mockResolvedValue(2),
-      zRange: vi.fn().mockImplementation(async (key: string) => {
-        if (key === 'mm:boards') return ['8'];
-        if (key === 'mm:queue:8') return ['1', '2'];
-        return [];
-      }),
-      hSet: vi.fn().mockResolvedValue(1),
-      hGetAll: vi.fn().mockImplementation(async (key: string) => {
-        if (key.endsWith(':1')) return { userId: '1', username: 'alice', boardSize: '8', skillBand: '2', joinedAt: '1', socketId: 's1', queueJoinId: 'q1' };
-        return { userId: '2', username: 'bob', boardSize: '8', skillBand: '2', joinedAt: '2', socketId: 's2', queueJoinId: 'q2' };
-      }),
-      del: vi.fn().mockResolvedValue(1),
-      eval: vi.fn().mockResolvedValue(1),
-      set: vi.fn().mockResolvedValue('OK'),
-      get: vi.fn().mockResolvedValue(null),
-    };
+  describe('finishMatch', () => {
+    it('should finish a match with a winner', async () => {
+      const matchId = 1;
+      const winner = 'USER';
 
-    const service = new MatchmakingService(new MatchmakingRepository(), statsService, new BotFallbackService(), 30, { redis, io });
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
 
-    await service.runMatchmakingTick(20_000);
+      await matchService.finishMatch(matchId, winner);
 
-    expect(redis.eval).toHaveBeenCalled();
-    expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^session:online:online-/), expect.any(String));
-    expect(io.to).toHaveBeenCalledWith('user:1');
-    expect(io.to).toHaveBeenCalledWith('user:2');
-    expect(emit).toHaveBeenCalledWith('matchmaking:matched', expect.objectContaining({ revealAfterGame: false }));
-  });
+      expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(matchId, winner);
+      expect(mockMatchRepository.finishMatch).toHaveBeenCalledTimes(1);
+    });
 
-  it('tryMatch consumes pending assignment from redis once', async () => {
-    const assignment = {
-      matchId: 'online-xyz',
-      playerA: { userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' },
-      playerB: { userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' },
-      opponentType: 'HUMAN' as const,
-      revealAfterGame: false,
-    };
-    const redis = {
-      zAdd: vi.fn().mockResolvedValue(1),
-      zRem: vi.fn().mockResolvedValue(1),
-      zRange: vi.fn().mockResolvedValue([]),
-      hSet: vi.fn().mockResolvedValue(1),
-      hGetAll: vi.fn().mockResolvedValue({}),
-      del: vi.fn().mockResolvedValue(1),
-      eval: vi.fn().mockResolvedValue(1),
-      set: vi.fn().mockResolvedValue('OK'),
-      get: vi.fn().mockResolvedValueOnce(JSON.stringify(assignment)).mockResolvedValueOnce(null),
-    };
+    it('should handle BOT as winner', async () => {
+      const matchId = 1;
+      const winner = 'BOT';
 
-    const service = new MatchmakingService(new MatchmakingRepository(), statsService, new BotFallbackService(), 30, { redis });
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
 
-    const first = await service.tryMatch(1);
-    const second = await service.tryMatch(1);
+      await matchService.finishMatch(matchId, winner);
 
-    expect(first?.matchId).toBe('online-xyz');
-    expect(second).toBeNull();
-    expect(redis.del).toHaveBeenCalledWith('mm:assignment:1');
+      expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(matchId, winner);
+    });
   });
 });

@@ -16,20 +16,20 @@ export interface OnlineSnapshotPayload {
     { userId: number; username: string; symbol: 'B' | 'R' },
     { userId: number; username: string; symbol: 'B' | 'R' }
   ];
-  winner?: 'B' | 'R' | 'DRAW' | null;
+  winner?: 'B' | 'R' | null;
   connectionStatus?: ConnectionBadgeState;
 }
 
 interface SessionErrorPayload {
   code:
-    | 'VERSION_CONFLICT'
-    | 'NOT_YOUR_TURN'
-    | 'INVALID_MOVE'
-    | 'SESSION_NOT_FOUND'
-    | 'RECONNECT_EXPIRED'
-    | 'SESSION_TERMINAL'
-    | 'UNAUTHORIZED'
-    | 'DUPLICATE_EVENT';
+      | 'VERSION_CONFLICT'
+      | 'NOT_YOUR_TURN'
+      | 'INVALID_MOVE'
+      | 'SESSION_NOT_FOUND'
+      | 'RECONNECT_EXPIRED'
+      | 'SESSION_TERMINAL'
+      | 'UNAUTHORIZED'
+      | 'DUPLICATE_EVENT';
   message: string;
   details?: unknown;
 }
@@ -45,7 +45,7 @@ interface SessionStateSocketPayload {
     { userId: number; username: string; symbol: 'B' | 'R' },
     { userId: number; username: string; symbol: 'B' | 'R' }
   ];
-  winner?: 'B' | 'R' | 'DRAW' | null;
+  winner?: 'B' | 'R' | null;
   connectionStatus?: ConnectionBadgeState;
 }
 
