@@ -22,19 +22,36 @@ describe('MatchService', () => {
       const userId = 1;
       const boardSize = 8;
       const difficulty = 'medium';
+      const mode = 'BOT';
       const expectedId = 42;
 
       vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(expectedId);
 
-      const result = await matchService.createMatch(userId, boardSize, difficulty);
+      const result = await matchService.createMatch(userId, boardSize, difficulty, mode);
 
       expect(result).toBe(expectedId);
-      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(
-          userId,
-          boardSize,
-          difficulty
-      );
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(userId, boardSize, difficulty, mode);
       expect(mockMatchRepository.createMatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should default mode to BOT when not provided', async () => {
+      vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+
+      await matchService.createMatch(1, 8, 'medium');
+
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
+    });
+
+    it('should accept all valid modes', async () => {
+      const modes = ['BOT', 'ONLINE', 'LOCAL_2P'];
+
+      for (const mode of modes) {
+        vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+
+        await matchService.createMatch(1, 8, 'easy', mode);
+
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', mode);
+      }
     });
 
     it('should accept all difficulty levels', async () => {
@@ -43,10 +60,9 @@ describe('MatchService', () => {
       for (const difficulty of difficulties) {
         vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
 
-        const result = await matchService.createMatch(1, 8, difficulty);
+        await matchService.createMatch(1, 8, difficulty, 'BOT');
 
-        expect(result).toBe(1);
-        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty);
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty, 'BOT');
       }
     });
 
@@ -56,7 +72,7 @@ describe('MatchService', () => {
       );
 
       await expect(
-          matchService.createMatch(1, 8, 'medium')
+          matchService.createMatch(1, 8, 'medium', 'BOT')
       ).rejects.toThrow('Database error');
     });
   });

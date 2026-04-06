@@ -50,7 +50,6 @@ export default function Nav() {
         <img src={isDark ? logoDark : logoLight} alt="Game Y Logo" className={styles.logo} />
         <span className={styles.brandText}>
           <span className={styles.brandTitle}>YOVI</span>
-          <span className={styles.brandVersion}>Phosphor CRT</span>
         </span>
       </Link>
 

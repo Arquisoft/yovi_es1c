@@ -71,12 +71,16 @@ pub enum GameYError {
         col: usize,
     },
 
-    /// Attempted to make a move in a finished game.
+    /// Attempted to make a specific move in a finished game.
     #[error("Attempt to play movement {movement} in a finished game")]
     GameOver {
         /// The movement that was attempted.
         movement: Movement,
     },
+
+    /// Attempted to play any move in a finished game
+    #[error("Attempt to play in a finished game")]
+    GameAlreadyFinished,
 
     /// Wrong player attempted to make a move.
     #[error("Wrong player in movement: Expected player {expected}, found player {found}")]

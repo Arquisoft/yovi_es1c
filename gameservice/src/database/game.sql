@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS matches (
     difficulty TEXT NOT NULL,
     status TEXT DEFAULT 'ONGOING',
     winner TEXT,
+    mode TEXT DEFAULT 'BOT',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -18,8 +19,10 @@ CREATE TABLE IF NOT EXISTS moves (
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 );
 
-CREATE VIEW IF NOT EXISTS user_stats AS
-SELECT 
+DROP VIEW IF EXISTS user_stats;
+
+CREATE VIEW user_stats AS
+SELECT
     user_id,
     SUM(CASE WHEN winner = 'USER' THEN 1 ELSE 0 END) as wins,
     SUM(CASE WHEN winner = 'BOT' THEN 1 ELSE 0 END) as losses,

@@ -28,6 +28,17 @@ vi.mock('../features/game/ui/tsx/GameUI.tsx', () => ({
     default: () => <div>GameUI Mock</div>,
 }));
 
+vi.mock('../features/stats/hooks/useStatsController', () => ({
+    useStatsController: () => ({
+        state: {
+            stats: { totalMatches: 0, wins: 0, losses: 0, matches: [] },
+            loading: false,
+            error: null,
+        },
+        refresh: vi.fn(),
+    }),
+}));
+
 describe('App Routing', () => {
     beforeEach(() => {
         vi.clearAllMocks();

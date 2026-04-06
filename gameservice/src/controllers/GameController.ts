@@ -1,8 +1,8 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { MatchService } from "../services/MatchService";
 import { StatsService } from "../services/StatsService";
-import { InvalidMoveError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
-import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId } from "../validation/game.schemas";
+import { InvalidMoveError, MatchAlreadyFinishedError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
+import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId, validateFinishMatch } from "../validation/game.schemas";
 import { MatchmakingService } from "../services/MatchmakingService";
 import { OnlineSessionError, OnlineSessionService } from "../services/OnlineSessionService";
 import { validateQueueJoin } from "../validation/online.schemas";
@@ -42,7 +42,7 @@ export function createGameController(
       }
 
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);
@@ -93,15 +93,59 @@ export function createGameController(
     }
   });
 
-  router.get("/stats/:userId", async (req: Request, res: Response, next: NextFunction) => {
+  router.put("/matches/:id/finish", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = validateUserId(req.params.userId);
-      const stats = await statsService.getStats(userId);
-      res.json(stats || { user_id: userId, wins: 0, losses: 0, total_games: 0, win_rate: 0 });
+      const matchId = validateMatchId(req.params.id);
+      const validated = validateFinishMatch(req.body);
+
+      const match = await matchService.getMatch(matchId);
+      if (!match) {
+        throw new MatchNotFoundError();
+      }
+
+      if (match.user_id !== Number(req.userId)) {
+        throw new UnauthorizedMatchError();
+      }
+
+      if (match.status !== 'ONGOING') {
+        throw new MatchAlreadyFinishedError();
+      }
+
+      await matchService.finishMatch(matchId, validated.winner);
+      res.status(200).json({ message: "Match finished" });
     } catch (error) {
       next(error);
     }
   });
+
+  router.get("/stats/:userId", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = validateUserId(req.params.userId);
+      const stats = await statsService.getFullStats(userId);
+      res.json(stats);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/matches/:id/finish", async (req, res, next) => {
+  try {
+    const matchId = validateMatchId(req.params.id);
+    const { winner } = req.body; // 'USER' | 'BOT' | 'DRAW'
+
+    const match = await matchService.getMatch(matchId);
+    if (!match) throw new MatchNotFoundError();
+    if (match.user_id !== Number(req.userId)) throw new UnauthorizedMatchError();
+    if (match.status !== 'ONGOING') {
+      return res.status(409).json(apiError('MATCH_ALREADY_FINISHED', 'Match is already finished'));
+    }
+
+    await matchService.finishMatch(matchId, winner);
+    res.status(200).json({ message: "Match finished" });
+  } catch (error) {
+    next(error);
+  }
+});
 
   router.post('/online/queue', async (req: Request, res: Response, next: NextFunction) => {
     try {

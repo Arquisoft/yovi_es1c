@@ -3,11 +3,11 @@ import { Database } from "sqlite";
 export class MatchRepository {
   constructor(private db: Database) {}
 
-  async createMatch(userId: number, boardSize: number, difficulty: string) {
+  async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
     const result = await this.db.run(
-        `INSERT INTO matches (user_id, board_size, difficulty, status)
-         VALUES (?, ?, ?, 'ONGOING')`,
-        [userId, boardSize, difficulty]
+        `INSERT INTO matches (user_id, board_size, difficulty, status, mode)
+         VALUES (?, ?, ?, 'ONGOING', ?)`,
+        [userId, boardSize, difficulty, mode]
     );
 
     return result.lastID;
