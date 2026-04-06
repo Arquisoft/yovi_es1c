@@ -4,7 +4,7 @@ import { API_CONFIG } from '../../../config/api.config';
 import { AUTH_STORAGE_KEYS } from '../../auth/constants/storage';
 import { onlineSocketClient } from '../realtime/onlineSocketClient';
 import type { ConnectionBadgeState } from '../realtime/onlineEvents';
-
+import { v4 as uuidv4 } from 'uuid';
 export interface OnlineSnapshotPayload {
   matchId: string;
   layout: string;
@@ -112,7 +112,7 @@ export function useOnlineSession(matchId: string | null) {
 
     const handleConnect = () => {
       setIsConnected(true);
-      onlineSocketClient.emit('match:join', { matchId, clientEventId: crypto.randomUUID() });
+      onlineSocketClient.emit('match:join', { matchId, clientEventId: uuidv4() });
     };
 
     const handleDisconnect = () => {
@@ -186,7 +186,7 @@ export function useOnlineSession(matchId: string | null) {
       matchId: sessionState.matchId,
       move: { row, col },
       expectedVersion: sessionState.version,
-      clientEventId: crypto.randomUUID(),
+      clientEventId: uuidv4(),
     });
   };
 
