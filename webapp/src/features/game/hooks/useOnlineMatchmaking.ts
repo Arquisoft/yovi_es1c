@@ -69,10 +69,6 @@ export function useOnlineMatchmaking(boardSize: number) {
       if (joinedRef.current) {
         onlineSocketClient.emit('queue:cancel');
       }
-
-      if (!matchedRef.current) {
-        onlineSocketClient.disconnect();
-      }
     };
   }, []);
 

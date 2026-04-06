@@ -93,7 +93,15 @@ export class MatchmakingService {
     }
     matchmakingEvents.inc({ event: 'queue', result: 'cancel' });
   }
+  async cancelQueueIfStale(userId: number, graceMs = 5_000): Promise<void> {
+    const player = await this.readPlayerFromRedis(userId);
+    if (!player) return;
 
+    const elapsed = Date.now() - player.joinedAt;
+    if (elapsed < graceMs) return;
+
+    await this.cancelQueue(userId);
+  }
   startWorker(): void {
     if (this.workerTimer) return;
     this.workerTimer = setInterval(() => {
@@ -363,6 +371,7 @@ export class MatchmakingService {
   }
 
   private getSkillBand(winRate: number): number {
+    if (!Number.isFinite(winRate)) return 0;
     if (winRate <= 30) return 0;
     if (winRate <= 45) return 1;
     if (winRate <= 60) return 2;
