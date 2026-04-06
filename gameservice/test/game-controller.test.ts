@@ -329,7 +329,7 @@ describe('GameController integration tests', () => {
       } as any);
 
       const response = await request(app)
-          .post('/api/game/matches/1/finish')
+          .put('/api/game/matches/1/finish')
           .send({ winner: 'DRAW' });
 
       expect(response.status).toBe(400);
@@ -808,7 +808,7 @@ describe('GameController online error mapping and finish branches', () => {
     app.use('/api/game', createGameController(matchService, { getFullStats: vi.fn() } as any));
     app.use(errorHandler);
 
-    const response = await request(app).post('/api/game/matches/1/finish').send({ winner: 'USER' });
+    const response = await request(app).put('/api/game/matches/1/finish').send({ winner: 'USER' });
 
     expect(response.status).toBe(409);
     expect(matchService.finishMatch).not.toHaveBeenCalled();
