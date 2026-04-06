@@ -11,6 +11,7 @@ export type ApiErrorCode =
   | 'RECONNECT_EXPIRED'
   | 'SESSION_TERMINAL'
   | 'DUPLICATE_EVENT'
+  | 'MATCH_ALREADY_FINISHED'
   | 'INTERNAL_ERROR';
 
 export interface ApiErrorPayload {

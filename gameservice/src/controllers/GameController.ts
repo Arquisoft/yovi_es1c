@@ -128,6 +128,25 @@ export function createGameController(
     }
   });
 
+  router.post("/matches/:id/finish", async (req, res, next) => {
+  try {
+    const matchId = validateMatchId(req.params.id);
+    const { winner } = req.body; // 'USER' | 'BOT' | 'DRAW'
+
+    const match = await matchService.getMatch(matchId);
+    if (!match) throw new MatchNotFoundError();
+    if (match.user_id !== Number(req.userId)) throw new UnauthorizedMatchError();
+    if (match.status !== 'ONGOING') {
+      return res.status(409).json(apiError('MATCH_ALREADY_FINISHED', 'Match is already finished'));
+    }
+
+    await matchService.finishMatch(matchId, winner);
+    res.status(200).json({ message: "Match finished" });
+  } catch (error) {
+    next(error);
+  }
+});
+
   router.post('/online/queue', async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!matchmakingService || !req.userId || !req.username) {
