@@ -3,7 +3,6 @@ import {act} from "react";
 import {useGameController} from "../features/game/hooks/useGameController";
 import {describe, it, expect, beforeEach, vi, afterEach} from "vitest";
 import * as fetchWithAuthModule from "../shared/api/fetchWithAuth";
-import * as yen from "../features/game/domain/yen";
 
 type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -802,39 +801,5 @@ describe("useGameController", () => {
         expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
             winner: "BOT",
         });
-    });
-
-    it("persistFinish is called with DRAW when board is full with matchId", async () => {
-        const checkWinnerSpy = vi.spyOn(yen, "checkWinner").mockReturnValue(false);
-
-        fetchMock.mockImplementation(async () => {
-            return new Response(JSON.stringify({message: "ok"}), {
-                status: 200,
-                headers: {"Content-Type": "application/json"},
-            });
-        });
-
-        const {result} = renderHook(() =>
-            useGameController(1, "BOT", undefined, "match-draw-test")
-        );
-
-        await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
-        });
-
-        await waitFor(() => {
-            expect(result.current.state.gameOver).toBe(true);
-        });
-
-        const finishCall = fetchMock.mock.calls.find(([url]) =>
-            String(url).includes("/matches/match-draw-test/finish")
-        );
-
-        expect(finishCall).toBeTruthy();
-        expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
-            winner: "DRAW",
-        });
-
-        checkWinnerSpy.mockRestore();
     });
 });

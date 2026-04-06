@@ -163,16 +163,5 @@ describe('MatchService', () => {
 
       expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(matchId, winner);
     });
-
-    it('should handle draw scenario', async () => {
-      const matchId = 1;
-      const winner = 'DRAW';
-
-      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
-
-      await matchService.finishMatch(matchId, winner);
-
-      expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(matchId, winner);
-    });
   });
 });

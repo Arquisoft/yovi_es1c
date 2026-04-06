@@ -159,9 +159,6 @@ describe('GameUI Component', () => {
         it('R → segundo jugador', () => {
             expect(resolveWinnerLabel('R', players)).toBe('Bob');
         });
-        it('DRAW → Empate', () => {
-            expect(resolveWinnerLabel('DRAW', players)).toBe('Empate');
-        });
         it('null → null', () => {
             expect(resolveWinnerLabel(null, players)).toBeNull();
         });
@@ -173,9 +170,6 @@ describe('GameUI Component', () => {
     describe('resolveGameOverText', () => {
         it('null → mensaje genérico', () => {
             expect(resolveGameOverText(null)).toBe('¡Partida terminada!');
-        });
-        it('Empate → mensaje empate', () => {
-            expect(resolveGameOverText('Empate')).toBe('¡Partida terminada en empate!');
         });
         it('nombre → mensaje ganador', () => {
             expect(resolveGameOverText('Alice')).toBe('¡Ganador: Alice!');

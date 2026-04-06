@@ -175,7 +175,7 @@ export const useGameController = (
         setMessage("Click a cell to play");
     };
 
-    const finishMatch = async (winner: "USER" | "BOT" | "DRAW") => {
+    const finishMatch = async (winner: "USER" | "BOT") => {
         if (!matchId) return;
         try {
             await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
@@ -239,9 +239,9 @@ export const useGameController = (
                     announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
                     finishMatch(winnerCode);
                 } else if (!newLayout.includes(".")) {
+                    console.error("Invalid state: board full with no winner");
                     setGameOver(true);
-                    setMessage("Board full — game over");
-                    finishMatch("DRAW");
+                    setMessage("Estado inválido: tablero lleno sin ganador");
                 } else {
                     setMessage(`Turno: ${nextTurn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
                 }
@@ -260,9 +260,9 @@ export const useGameController = (
                 return humanState;
             }
             if (!humanLayout.includes(".")) {
+                console.error("Invalid state: board full with no winner");
                 setGameOver(true);
-                setMessage("Board full — game over");
-                finishMatch("DRAW");
+                setMessage("Estado inválido: tablero lleno sin ganador");
                 return humanState;
             }
             callBot(humanState);
@@ -291,9 +291,9 @@ export const useGameController = (
             announceWinner("Jugador 2 (Bot)");
             await persistFinish("BOT");
         } else if (!botLayout.includes(".")) {
+            console.error("Invalid state: board full with no winner");
             setGameOver(true);
-            setMessage("Board full — game over");
-            await finishMatch("DRAW");
+            setMessage("Estado inválido: tablero lleno sin ganador");
         } else {
             const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : "";
             setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno${fallbackInfo}`);
