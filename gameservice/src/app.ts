@@ -58,11 +58,13 @@ app.get('/metrics', async (_req, res) => {
       new OnlineSessionRepository(),
       new TurnTimerService(),
       Number(process.env.TURN_TIMEOUT_SEC ?? 25),
-      Number(process.env.RECONNECT_GRACE_SEC ?? 60)
+      Number(process.env.RECONNECT_GRACE_SEC ?? 60),
+      {},
+      matchService
   );
 
   const server = createServer(app);
-  const realtimeBundle = await attachSocketServer(server, { statsService });
+  const realtimeBundle = await attachSocketServer(server, { statsService, matchService });
 
   const controllerMatchmakingService =
       realtimeBundle?.matchmakingService ?? matchmakingService;

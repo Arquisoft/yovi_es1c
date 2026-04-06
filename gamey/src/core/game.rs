@@ -57,6 +57,21 @@ impl GameY {
         }
     }
 
+    pub fn get_board_map(&self) -> &HashMap<Coordinates, (SetIdx, PlayerId)> {
+        &self.board_map
+    }
+
+    pub fn get_sets(&self) -> &Vec<PlayerSet> {
+        &self.sets
+    }
+
+    pub fn find_const(&self, mut i: SetIdx) -> SetIdx {
+        while self.sets[i].parent != i {
+            i = self.sets[i].parent;
+        }
+        i
+    }
+
     /// Returns the current game status.
     pub fn status(&self) -> &GameStatus {
         &self.status
@@ -119,7 +134,7 @@ impl GameY {
     /// Returns the opposing player to the one who should make the next move, or None if the game is over.
     pub fn opponent_player(&self) -> Option<PlayerId> {
         if let GameStatus::Ongoing { next_player } = self.status {
-            Some(other_player(next_player))
+            Some(GameY::other_player(next_player))
         } else {
             None
         }
@@ -230,7 +245,7 @@ impl GameY {
         } else {
             // tracing::debug!("No win yet..."); // Optional debug
             self.status = GameStatus::Ongoing {
-                next_player: other_player(player),
+                next_player: GameY::other_player(player),
             };
         }
     }
@@ -240,12 +255,12 @@ impl GameY {
         match action {
             GameAction::Resign => {
                 self.status = GameStatus::Finished {
-                    winner: other_player(player),
+                    winner: GameY::other_player(player),
                 };
             }
             GameAction::Swap => {
                 self.status = GameStatus::Ongoing {
-                    next_player: other_player(player),
+                    next_player: GameY::other_player(player),
                 };
             }
         }
@@ -279,6 +294,7 @@ impl GameY {
             touches_side_b: coords.touches_side_b(),
             touches_side_c: coords.touches_side_c(),
             size: 1,
+            cells: vec![coords],
         };
         self.sets.push(new_set);
         self.board_map.insert(coords, (set_idx, player));
@@ -292,7 +308,7 @@ impl GameY {
     }
 
     /// Returns the neighboring coordinates for a given cell.
-    fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
+    pub(crate) fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
         let mut neighbors = Vec::new();
         let x = coords.x();
         let y = coords.y();
@@ -449,7 +465,7 @@ impl GameY {
     }
 
     /// Disjoint Set Union 'Find' with path compression
-    fn find(&mut self, i: SetIdx) -> SetIdx {
+    pub(crate) fn find(&mut self, i: SetIdx) -> SetIdx {
         if self.sets[i].parent == i {
             i
         } else {
@@ -483,6 +499,20 @@ impl GameY {
                 && self.sets[root_j].touches_side_c;
         }
         false
+    }
+
+    pub fn other_player(player: PlayerId) -> PlayerId {
+        // Assuming two players with IDs 0 and 1
+        if player.id() == 0 {
+            PlayerId::new(1)
+        } else {
+            PlayerId::new(0)
+        }
+    }
+
+    pub fn play_coords(&mut self, coords: Coordinates) -> Result<()> {
+        let player = self.next_player().ok_or(GameYError::GameAlreadyFinished)?;
+        self.add_move(Movement::Placement { player, coords })
     }
 }
 
@@ -548,7 +578,7 @@ impl From<&GameY> for YEN {
     fn from(game: &GameY) -> Self {
         let size = game.board_size;
         let turn = match game.status {
-            GameStatus::Finished { winner } => other_player(winner).id() as u32,
+            GameStatus::Finished { winner } => GameY::other_player(winner).id() as u32,
             GameStatus::Ongoing { next_player } => next_player.id(),
         };
         let mut layout = String::new();
@@ -567,15 +597,6 @@ impl From<&GameY> for YEN {
             }
         }
         YEN::new(size, turn, players, layout)
-    }
-}
-
-fn other_player(player: PlayerId) -> PlayerId {
-    // Assuming two players with IDs 0 and 1
-    if player.id() == 0 {
-        PlayerId::new(1)
-    } else {
-        PlayerId::new(0)
     }
 }
 
@@ -603,8 +624,8 @@ mod tests {
 
     #[test]
     fn test_other_player() {
-        assert_eq!(other_player(PlayerId::new(0)), PlayerId::new(1));
-        assert_eq!(other_player(PlayerId::new(1)), PlayerId::new(0));
+        assert_eq!(GameY::other_player(PlayerId::new(0)), PlayerId::new(1));
+        assert_eq!(GameY::other_player(PlayerId::new(1)), PlayerId::new(0));
     }
 
     #[test]

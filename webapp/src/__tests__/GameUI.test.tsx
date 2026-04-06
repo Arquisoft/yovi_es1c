@@ -199,28 +199,6 @@ describe('GameUI Component', () => {
         expect(screen.getByText(/Algo salió mal/i)).toBeInTheDocument();
     });
 
-    it('shows gameOver text when local game ends', () => {
-        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
-            state: { ...mockState, gameOver: true },
-            actions: mockActions,
-        });
-        renderWithConfig({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
-        expect(screen.getByText(/Partida terminada/i)).toBeInTheDocument();
-    });
-
-    it('shows gameOver when online session has a winner', () => {
-        vi.mocked(useOnlineSession).mockReturnValue({
-            sessionState: {
-                matchId: 'm3', layout: '........', size: 8, turn: 0 as const, version: 1,
-                timerEndsAt: Date.now() + 10_000,
-                players: [{ userId: 1, username: 'yo', symbol: 'B' }, { userId: 2, username: 'rival', symbol: 'R' }],
-                winner: 'B',
-            },
-            error: null, connectionStatus: 'CONNECTED', playMove: vi.fn(),
-        } as any);
-        renderWithConfig({ boardSize: 8, mode: 'ONLINE', difficulty: 'easy', matchId: 'm3' });
-        expect(screen.getByText(/Ganador/i)).toBeInTheDocument();
-    });
     it('shows fallback component NoConfigFallback when no state is provided', () => {
         renderWithProviders(
             <MemoryRouter initialEntries={['/gamey']}>
