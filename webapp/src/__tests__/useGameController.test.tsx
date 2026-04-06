@@ -1,7 +1,7 @@
-import {renderHook, waitFor} from "@testing-library/react";
-import {act} from "react";
-import {useGameController} from "../features/game/hooks/useGameController";
-import {describe, it, expect, beforeEach, vi, afterEach} from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { act } from "react";
+import { useGameController } from "../features/game/hooks/useGameController";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import * as fetchWithAuthModule from "../shared/api/fetchWithAuth";
 import * as yen from "../features/game/domain/yen";
 
@@ -27,7 +27,7 @@ describe("useGameController", () => {
     });
 
     it("initializes with default state", () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         expect(result.current.state.gameMode).toBe("BOT");
         expect(result.current.state.loading).toBe(false);
@@ -47,7 +47,7 @@ describe("useGameController", () => {
                 })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             result.current.actions.handleCellClick(0, 0);
@@ -64,9 +64,9 @@ describe("useGameController", () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
 
         resolveFetch(
-            new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+            new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
@@ -76,7 +76,7 @@ describe("useGameController", () => {
     });
 
     it("does nothing if game is over", async () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -97,7 +97,7 @@ describe("useGameController", () => {
     });
 
     it("does nothing if cell is occupied", async () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -118,7 +118,7 @@ describe("useGameController", () => {
     });
 
     it("handles LOCAL_2P turn alternation", async () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -140,13 +140,13 @@ describe("useGameController", () => {
 
     it("handles BOT valid response", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+            new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -163,13 +163,13 @@ describe("useGameController", () => {
 
     it("handles BOT response without coords gracefully", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({message: "invalid"}), {
+            new Response(JSON.stringify({ message: "invalid" }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -184,13 +184,13 @@ describe("useGameController", () => {
 
     it("handles BOT invalid coords", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 999, y: 999, z: 999}}), {
+            new Response(JSON.stringify({ coords: { x: 999, y: 999, z: 999 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -211,7 +211,7 @@ describe("useGameController", () => {
             })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -228,15 +228,15 @@ describe("useGameController", () => {
 
     it("falls back from expert to hard when expert returns 5xx", async () => {
         fetchMock
-            .mockResolvedValueOnce(new Response("gamey unavailable", {status: 503}))
+            .mockResolvedValueOnce(new Response("gamey unavailable", { status: 503 }))
             .mockResolvedValueOnce(
-                new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+                new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                     status: 200,
-                    headers: {"Content-Type": "application/json"},
+                    headers: { "Content-Type": "application/json" },
                 })
             );
 
-        const {result} = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
+        const { result } = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -253,7 +253,7 @@ describe("useGameController", () => {
         timeoutError.name = "AbortError";
         fetchMock.mockRejectedValue(timeoutError);
 
-        const {result} = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
+        const { result } = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -266,7 +266,7 @@ describe("useGameController", () => {
     it("handles fetch rejection", async () => {
         fetchMock.mockRejectedValueOnce(new Error("Network issue"));
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -282,7 +282,7 @@ describe("useGameController", () => {
     });
 
     it("changeSize resets board correctly", () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.changeSize(3);
@@ -294,7 +294,7 @@ describe("useGameController", () => {
     });
 
     it("newGame resets state", () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -312,14 +312,14 @@ describe("useGameController", () => {
     it("persistMove is called when matchId exists", async () => {
         fetchMock
             .mockResolvedValueOnce(
-                new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+                new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                     status: 200,
-                    headers: {"Content-Type": "application/json"},
+                    headers: { "Content-Type": "application/json" },
                 })
             )
-            .mockResolvedValueOnce(new Response(null, {status: 200}));
+            .mockResolvedValueOnce(new Response(null, { status: 200 }));
 
-        const {result} = renderHook(() =>
+        const { result } = renderHook(() =>
             useGameController(8, "BOT", undefined, "match-123")
         );
 
@@ -337,10 +337,10 @@ describe("useGameController", () => {
 
     it("handles 401 bot error", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response("", {status: 401})
+            new Response("", { status: 401 })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -354,10 +354,10 @@ describe("useGameController", () => {
 
     it("handles 400 bot error", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response("", {status: 400})
+            new Response("", { status: 400 })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -370,10 +370,10 @@ describe("useGameController", () => {
 
     it("handles 409 bot error", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response("", {status: 409})
+            new Response("", { status: 409 })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -387,13 +387,13 @@ describe("useGameController", () => {
 
     it("calls easy bot endpoint by default", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+            new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -409,13 +409,13 @@ describe("useGameController", () => {
 
     it("handles human player winning in BOT mode", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+            new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController(1));
+        const { result } = renderHook(() => useGameController(1));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -427,13 +427,13 @@ describe("useGameController", () => {
 
     it("handles bot winning", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 0, y: 0, z: 0}}), {
+            new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 0 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController(2));
+        const { result } = renderHook(() => useGameController(2));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -443,12 +443,12 @@ describe("useGameController", () => {
             expect(result.current.state.loading).toBe(false);
         });
 
-        const {result: result2} = renderHook(() => useGameController(3));
+        const { result: result2 } = renderHook(() => useGameController(3));
 
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 1, y: 0, z: 0}}), {
+            new Response(JSON.stringify({ coords: { x: 1, y: 0, z: 0 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
@@ -464,7 +464,7 @@ describe("useGameController", () => {
      * "Board full — game over") y que el bot no llega a ser invocado.
      */
     it("BOT mode: human wins on last cell, game ends without calling bot", async () => {
-        const {result} = renderHook(() => useGameController(1));
+        const { result } = renderHook(() => useGameController(1));
 
         // Tablero de tamaño 1 → una única celda; jugar ahí gana al instante.
         await act(async () => {
@@ -479,13 +479,13 @@ describe("useGameController", () => {
 
     it("handles bot move to occupied cell gracefully", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 0, y: 0, z: 0}}), {
+            new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 0 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController(2));
+        const { result } = renderHook(() => useGameController(2));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -500,7 +500,7 @@ describe("useGameController", () => {
     });
 
     it("does not call bot when not in BOT mode", async () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -522,7 +522,7 @@ describe("useGameController", () => {
     it("LOCAL_2P: last move on a full board produces a winner, not a draw", async () => {
         // Tablero 2×2 (3 celdas). Jugador 1 rellena (0,0) y (1,1);
         // ambas celdas forman un componente que toca los tres ejes → gana.
-        const {result} = renderHook(() => useGameController(2));
+        const { result } = renderHook(() => useGameController(2));
         act(() => result.current.actions.selectMode("LOCAL_2P"));
 
         // Jugador 1 juega (0,0)
@@ -555,9 +555,9 @@ describe("useGameController", () => {
             const urlString = String(url);
 
             if (urlString.includes("/ybot/")) {
-                return new Response(JSON.stringify({coords: {x: 6, y: 0, z: 1}}), {
+                return new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {
                     status: 200,
-                    headers: {"Content-Type": "application/json"},
+                    headers: { "Content-Type": "application/json" },
                 });
             }
 
@@ -566,13 +566,13 @@ describe("useGameController", () => {
                 if (movePersistCallCount === 1) {
                     throw new Error("Database connection failed");
                 }
-                return new Response(null, {status: 200});
+                return new Response(null, { status: 200 });
             }
 
-            return new Response(null, {status: 404});
+            return new Response(null, { status: 404 });
         });
 
-        const {result} = renderHook(() =>
+        const { result } = renderHook(() =>
             useGameController(8, "BOT", undefined, "match-123")
         );
 
@@ -596,13 +596,13 @@ describe("useGameController", () => {
 
     it("bot plays without winning - normal game flow", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 6, y: 1, z: 0}}), {
+            new Response(JSON.stringify({ coords: { x: 6, y: 1, z: 0 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController(8));
+        const { result } = renderHook(() => useGameController(8));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -622,7 +622,7 @@ describe("useGameController", () => {
      * El controlador no llama a window.alert; solo actualiza el estado interno.
      */
     it("detects LOCAL_2P winner with player 1 on size-1 board", async () => {
-        const {result} = renderHook(() => useGameController(1));
+        const { result } = renderHook(() => useGameController(1));
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -639,13 +639,13 @@ describe("useGameController", () => {
 
     it("uses expert difficulty when selected", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 0, y: 0, z: 0}}), {
+            new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 0 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() =>
+        const { result } = renderHook(() =>
             useGameController(8, "BOT", undefined, undefined, "expert")
         );
 
@@ -662,7 +662,7 @@ describe("useGameController", () => {
     });
 
     it("online mode shows waiting message and skips bot fetch", async () => {
-        const {result} = renderHook(() => useGameController(8, "ONLINE"));
+        const { result } = renderHook(() => useGameController(8, "ONLINE"));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -674,13 +674,13 @@ describe("useGameController", () => {
 
     it("handles malformed coords payload", async () => {
         fetchMock.mockResolvedValueOnce(
-            new Response(JSON.stringify({coords: {x: 1}}), {
+            new Response(JSON.stringify({ coords: { x: 1 } }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             })
         );
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -692,9 +692,9 @@ describe("useGameController", () => {
     });
 
     it("handles unknown error status with text body", async () => {
-        fetchMock.mockResolvedValueOnce(new Response("server exploded", {status: 500}));
+        fetchMock.mockResolvedValueOnce(new Response("server exploded", { status: 500 }));
 
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -706,12 +706,12 @@ describe("useGameController", () => {
     });
 
     it("isBoardFull is false on empty board", () => {
-        const {result} = renderHook(() => useGameController(4));
+        const { result } = renderHook(() => useGameController(4));
         expect(result.current.state.isBoardFull).toBe(false);
     });
 
     it("selectMode switches to LOCAL_2P and resets", () => {
-        const {result} = renderHook(() => useGameController());
+        const { result } = renderHook(() => useGameController());
 
         act(() => {
             result.current.actions.selectMode("LOCAL_2P");
@@ -730,13 +730,13 @@ describe("useGameController", () => {
         };
 
         fetchMock.mockImplementation(async () => {
-            return new Response(JSON.stringify({message: "ok"}), {
+            return new Response(JSON.stringify({ message: "ok" }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             });
         });
 
-        const {result} = renderHook(() =>
+        const { result } = renderHook(() =>
             useGameController(3, "BOT", initialYEN, "match-finish-test")
         );
 
@@ -770,19 +770,19 @@ describe("useGameController", () => {
             const urlStr = String(url);
 
             if (urlStr.includes("/ybot/")) {
-                return new Response(JSON.stringify({coords: {x: 0, y: 0, z: 2}}), {
+                return new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 2 } }), {
                     status: 200,
-                    headers: {"Content-Type": "application/json"},
+                    headers: { "Content-Type": "application/json" },
                 });
             }
 
-            return new Response(JSON.stringify({message: "ok"}), {
+            return new Response(JSON.stringify({ message: "ok" }), {
                 status: 200,
-                headers: {"Content-Type": "application/json"},
+                headers: { "Content-Type": "application/json" },
             });
         });
 
-        const {result} = renderHook(() =>
+        const { result } = renderHook(() =>
             useGameController(3, "BOT", initialYEN, "match-bot-wins")
         );
 
@@ -804,37 +804,63 @@ describe("useGameController", () => {
         });
     });
 
-    it("persistFinish is called with DRAW when board is full with matchId", async () => {
-        const checkWinnerSpy = vi.spyOn(yen, "checkWinner").mockReturnValue(false);
+    it("finishMatch is called with DRAW when board is full with matchId", async () => {
+        // Simulamos respuestas correctas del backend para guardar movimientos y cerrar la partida.
+        fetchMock.mockImplementation(async (url) => {
+            const urlString = String(url);
 
-        fetchMock.mockImplementation(async () => {
-            return new Response(JSON.stringify({message: "ok"}), {
-                status: 200,
-                headers: {"Content-Type": "application/json"},
-            });
+            if (urlString.includes("/matches/match-draw-test/moves")) {
+                return new Response(null, { status: 200 });
+            }
+
+            if (urlString.includes("/matches/match-draw-test/finish")) {
+                return new Response(null, { status: 200 });
+            }
+
+            return new Response(null, { status: 200 });
         });
 
-        const {result} = renderHook(() =>
-            useGameController(1, "BOT", undefined, "match-draw-test")
+        // Tablero triangular de tamaño 3:
+        // fila 0 -> "B"
+        // fila 1 -> "RR"
+        // fila 2 -> "BR."
+        //
+        // Solo queda libre la celda (2,2).
+        // Al jugar ahí, el tablero se llena, pero B no gana.
+        const initialYEN = {
+            size: 3,
+            turn: 0,
+            players: ["B", "R"] as ["B", "R"],
+            layout: "B/RR/BR.",
+        };
+
+        // Creamos el hook en modo BOT y con matchId para que persista el resultado.
+        const { result } = renderHook(() =>
+            useGameController(3, "BOT", initialYEN, "match-draw-test")
         );
 
+        // El humano juega la última celda libre.
         await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
+            await result.current.actions.handleCellClick(2, 2);
         });
 
+        // Esperamos a que la partida termine.
         await waitFor(() => {
             expect(result.current.state.gameOver).toBe(true);
         });
 
+        // Buscamos la llamada al endpoint de finish.
         const finishCall = fetchMock.mock.calls.find(([url]) =>
             String(url).includes("/matches/match-draw-test/finish")
         );
 
         expect(finishCall).toBeTruthy();
+
+        // Verificamos que el ganador enviado al backend es DRAW.
         expect(JSON.parse(finishCall![1]?.body as string)).toEqual({
             winner: "DRAW",
         });
-
-        checkWinnerSpy.mockRestore();
     });
+
+
 });
