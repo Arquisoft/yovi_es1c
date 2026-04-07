@@ -1,6 +1,5 @@
 use crate::{GameY, PlayerId};
 use crate::bot::heurisitic::Heuristic;
-use std::collections::HashSet;
 
 pub struct BotPlayersSetDistancesHeuristic;
 
