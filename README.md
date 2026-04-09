@@ -1,3 +1,5 @@
+## Project deployed [here](http://20.111.39.121/)
+
 # Yovi_es1c - Game Y at UniOvi
 
 [![Release — Test, Build, Publish, Deploy](https://github.com/arquisoft/yovi_es1c/actions/workflows/release-deploy.yml/badge.svg)](https://github.com/arquisoft/yovi_es1c/actions/workflows/release-deploy.yml)
