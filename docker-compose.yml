@@ -12,17 +12,42 @@ services:
     volumes:
       - ./users/data:/app/data
 
+  auth-db:
+    image: postgres:16-alpine
+    container_name: auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-changeme}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - monitor-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d authdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   auth:
     build: ./auth
     container_name: auth
     image: ghcr.io/arquisoft/yovi_es1c-auth:latest
     environment:
       - JWT_SECRET=${JWT_SECRET}
-      - AUTH_DB_PATH=${AUTH_DB_PATH:-/app/auth/data/auth.db}
+      - PGHOST=auth-db
+      - PGPORT=5432
+      - PGDATABASE=authdb
+      - PGUSER=auth_user
+      - PGPASSWORD=${AUTH_DB_PASSWORD:-changeme}
     networks:
       - monitor-net
-    volumes:
-      - ./auth/data:/app/auth/data
+    depends_on:
+      auth-db:
+        condition: service_healthy
 
   webapp:
     build:
@@ -127,3 +152,6 @@ services:
 networks:
   monitor-net:
     driver: bridge
+
+volumes:
+  auth-db-data:
