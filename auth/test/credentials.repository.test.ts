@@ -7,20 +7,22 @@ interface FakeQueryResult {
     rowCount: number;
 }
 
-
-const mockQuery   = vi.fn();
-const mockConnect = vi.fn();
 const mockRelease = vi.fn();
 
+const { mockQuery, mockConnect } = vi.hoisted(() => ({
+    mockQuery: vi.fn(),
+    mockConnect: vi.fn(),
+}));
 vi.mock('pg', async () => {
     class MockPool {
-        query   = mockQuery;
+        query = mockQuery;
         connect = mockConnect;
         constructor(_config?: unknown) {}
     }
-    return {
 
+    return {
         default: { Pool: MockPool },
+        Pool: MockPool,
     };
 });
 

@@ -19,7 +19,7 @@ function resetStore() {
 }
 
 function runSql(sql: string, params?: unknown[]): { rows: unknown[]; rowCount: number } {
-    const s = sql.trim();
+    const s = sql.replace(/\s+/g, ' ').trim();
 
     if (/CREATE TABLE|CREATE INDEX/i.test(s)) {
         return { rows: [], rowCount: 0 };
@@ -32,85 +32,89 @@ function runSql(sql: string, params?: unknown[]): { rows: unknown[]; rowCount: n
         users.push({ id, username, password_hash });
         return { rows: [{ id }], rowCount: 1 };
     }
-    if (/SELECT.*FROM users_credentials WHERE username\s*=/i.test(s)) {
+    if (/SELECT .* FROM users_credentials WHERE username\s*=\s*\$1/i.test(s)) {
         const row = users.find(u => u.username === params![0]) ?? null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
     }
-    if (/SELECT.*FROM users_credentials WHERE id\s*=/i.test(s)) {
+    if (/SELECT .* FROM users_credentials WHERE id\s*=\s*\$1/i.test(s)) {
         const row = users.find(u => u.id === params![0]) ?? null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
     }
 
-    // ── sessions ─────────────────────────────────────────────────────────────
     if (/INSERT INTO sessions/i.test(s)) {
         const [id, user_id, device_id, device_name] = params as [string, number, string, string?];
         sessions.push({ id, user_id, device_id, device_name, created_at: new Date(), revoked_at: null });
         return { rows: [], rowCount: 1 };
     }
-    if (/COUNT\(\*\).*FROM sessions WHERE user_id/i.test(s)) {
+    if (/SELECT COUNT\(\*\) AS total FROM sessions WHERE user_id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         const total = sessions.filter(r => r.user_id === params![0] && !r.revoked_at).length;
         return { rows: [{ total: String(total) }], rowCount: 1 };
     }
-    // SELECT oldest session (revokeOldestActiveSession)
-    if (/SELECT id FROM sessions WHERE user_id.*ORDER BY created_at/is.test(s)) {
+    if (/SELECT id FROM sessions WHERE user_id\s*=\s*\$1 AND revoked_at IS NULL ORDER BY created_at ASC LIMIT 1/i.test(s)) {
         const active = sessions
             .filter(r => r.user_id === params![0] && !r.revoked_at)
             .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
-        return { rows: active.length ? [{ id: active[0].id }] : [], rowCount: active.length };
+        const oldest = active[0];
+        return { rows: oldest ? [{ id: oldest.id }] : [], rowCount: active.length };
     }
-    // UPDATE sessions WHERE user_id  ← ANTES que WHERE id para evitar colisión
-    if (/UPDATE sessions SET revoked_at.*WHERE user_id/i.test(s)) {
+    if (/UPDATE sessions SET revoked_at = NOW\(\) WHERE user_id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         let count = 0;
-        sessions.filter(r => r.user_id === params![0] && !r.revoked_at)
+        sessions
+            .filter(r => r.user_id === params![0] && !r.revoked_at)
             .forEach(r => { r.revoked_at = new Date(); count++; });
         return { rows: [], rowCount: count };
     }
-    // UPDATE sessions WHERE id (revokeOldestActiveSession inner + revokeSessionById)
-    if (/UPDATE sessions SET revoked_at.*WHERE id/i.test(s)) {
+    if (/UPDATE sessions SET revoked_at = NOW\(\) WHERE id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         const row = sessions.find(r => r.id === params![0] && !r.revoked_at);
         if (row) row.revoked_at = new Date();
         return { rows: [], rowCount: row ? 1 : 0 };
     }
 
-    // ── refresh_tokens ───────────────────────────────────────────────────────
     if (/INSERT INTO refresh_tokens/i.test(s)) {
         const [user_id, session_id, token_hash, family_id, expires_at] = params as [number, string, string, string, string];
-        tokens.push({ id: ++tokenSeq, user_id, session_id, token_hash, family_id, expires_at, revoked_at: null, created_at: new Date() });
+        tokens.push({
+            id: ++tokenSeq,
+            user_id,
+            session_id,
+            token_hash,
+            family_id,
+            expires_at,
+            revoked_at: null,
+            created_at: new Date()
+        });
         return { rows: [], rowCount: 1 };
     }
-    if (/SELECT.*FROM refresh_tokens WHERE token_hash/i.test(s)) {
+    if (/SELECT id, user_id, session_id, token_hash, family_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash\s*=\s*\$1/i.test(s)) {
         const row = tokens.find(t => t.token_hash === params![0]) ?? null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
     }
-    // UPDATE refresh_tokens WHERE user_id  ← ANTES que WHERE id/session_id
-    if (/UPDATE refresh_tokens SET revoked_at.*WHERE user_id/i.test(s)) {
+    if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE user_id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         let count = 0;
-        tokens.filter(t => t.user_id === params![0] && !t.revoked_at)
+        tokens
+            .filter(t => t.user_id === params![0] && !t.revoked_at)
             .forEach(t => { t.revoked_at = new Date().toISOString(); count++; });
         return { rows: [], rowCount: count };
     }
-    // UPDATE refresh_tokens WHERE family_id
-    if (/UPDATE refresh_tokens SET revoked_at.*WHERE family_id/i.test(s)) {
+    if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE family_id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         let count = 0;
-        tokens.filter(t => t.family_id === params![0] && !t.revoked_at)
+        tokens
+            .filter(t => t.family_id === params![0] && !t.revoked_at)
             .forEach(t => { t.revoked_at = new Date().toISOString(); count++; });
         return { rows: [], rowCount: count };
     }
-    // UPDATE refresh_tokens WHERE session_id
-    if (/UPDATE refresh_tokens SET revoked_at.*WHERE session_id/i.test(s)) {
+    if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE session_id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         let count = 0;
-        tokens.filter(t => t.session_id === params![0] && !t.revoked_at)
+        tokens
+            .filter(t => t.session_id === params![0] && !t.revoked_at)
             .forEach(t => { t.revoked_at = new Date().toISOString(); count++; });
         return { rows: [], rowCount: count };
     }
-    // UPDATE refresh_tokens WHERE id  ← AL FINAL, el más específico corto
-    if (/UPDATE refresh_tokens SET revoked_at.*WHERE id/i.test(s)) {
+    if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE id\s*=\s*\$1 AND revoked_at IS NULL/i.test(s)) {
         const row = tokens.find(t => t.id === params![0] && !t.revoked_at);
         if (row) row.revoked_at = new Date().toISOString();
         return { rows: [], rowCount: row ? 1 : 0 };
     }
-    // COUNT active tokens (métrica)
-    if (/COUNT\(\*\).*FROM refresh_tokens/i.test(s)) {
+    if (/SELECT COUNT\(\*\) AS total FROM refresh_tokens WHERE revoked_at IS NULL AND expires_at > NOW\(\)/i.test(s)) {
         const total = tokens.filter(t => !t.revoked_at && new Date(t.expires_at) > new Date()).length;
         return { rows: [{ total: String(total) }], rowCount: 1 };
     }
