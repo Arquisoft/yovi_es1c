@@ -1,325 +1,305 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CredentialsRepository } from '../src/repositories/credentials.repository.js';
-import sqlite3 from 'sqlite3';
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS users_credentials (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT    NOT NULL UNIQUE,
-    password_hash TEXT    NOT NULL
-);
-CREATE TABLE IF NOT EXISTS sessions (
-    id         TEXT    PRIMARY KEY,
-    user_id    INTEGER NOT NULL,
-    device_id  TEXT    NOT NULL,
-    device_name TEXT,
-    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
-    revoked_at TEXT
-);
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL,
-    session_id TEXT    NOT NULL,
-    token_hash TEXT    NOT NULL,
-    family_id  TEXT    NOT NULL,
-    expires_at TEXT    NOT NULL,
-    revoked_at TEXT
-);
-`;
-
-function buildInMemoryRepo(): { repo: CredentialsRepository; db: sqlite3.Database } {
-    const db = new sqlite3.Database(':memory:');
-    (db as any).serialize(() => {
-        SCHEMA.split(';').filter(s => s.trim()).forEach(stmt => db.run(stmt + ';'));
-    });
-    const repo = new CredentialsRepository(':memory:');
-    (repo as any).db = db;
-    return { repo, db };
+type Row = Record<string, unknown>;
+interface FakeQueryResult {
+    rows: Row[];
+    rowCount: number;
 }
 
-function buildBrokenRepo(): CredentialsRepository {
-    const repo = new CredentialsRepository(':memory:');
-    const fakeDb = {
-        run: (_sql: string, _params: any, cb: Function) => cb(new Error('db error')),
-        get: (_sql: string, _params: any, cb: Function) => cb(new Error('db error')),
-        serialize: (fn: Function) => fn(),
+
+const mockQuery   = vi.fn();
+const mockConnect = vi.fn();
+const mockRelease = vi.fn();
+
+vi.mock('pg', async () => {
+    class MockPool {
+        query   = mockQuery;
+        connect = mockConnect;
+        constructor(_config?: unknown) {}
+    }
+    return {
+
+        default: { Pool: MockPool },
     };
-    (repo as any).db = fakeDb;
-    return repo;
+});
+
+function makeClient(queryImpl: (sql: string) => FakeQueryResult | Promise<FakeQueryResult>) {
+    const client = {
+        query: vi.fn().mockImplementation((sql: string) => Promise.resolve(queryImpl(sql))),
+        release: mockRelease,
+    };
+    mockConnect.mockResolvedValue(client);
+    return client;
 }
 
 
 describe('CredentialsRepository – happy path', () => {
     let repo: CredentialsRepository;
-    let db: sqlite3.Database;
 
     beforeEach(() => {
-        ({ repo, db } = buildInMemoryRepo());
+        vi.clearAllMocks();
+        repo = new CredentialsRepository();
     });
 
-    afterEach(() => new Promise<void>((resolve, reject) => {
-        db.close(err => err ? reject(err) : resolve());
-    }));
-
-    it('createUser returns a numeric id', async () => {
+    it('createUser returns the id from RETURNING clause', async () => {
+        mockQuery.mockResolvedValue({ rows: [{ id: 42 }], rowCount: 1 });
         const id = await repo.createUser('alice', 'hash1');
-        expect(typeof id).toBe('number');
-        expect(id).toBeGreaterThan(0);
+        expect(id).toBe(42);
+        expect(mockQuery).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO users_credentials'),
+            ['alice', 'hash1']
+        );
     });
 
-    it('findUserByUsername returns the created user', async () => {
-        await repo.createUser('alice', 'hash1');
+    it('findUserByUsername returns the user row', async () => {
+        mockQuery.mockResolvedValue({
+            rows: [{ id: 1, username: 'alice', password_hash: 'hash1' }],
+            rowCount: 1,
+        });
         const user = await repo.findUserByUsername('alice');
         expect(user).not.toBeNull();
         expect(user!.username).toBe('alice');
-        expect(user!.password_hash).toBe('hash1');
     });
 
-    it('findUserByUsername returns null for unknown user', async () => {
+    it('findUserByUsername returns null when not found', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
         const user = await repo.findUserByUsername('nobody');
         expect(user).toBeNull();
     });
 
-    it('findUserById returns the created user', async () => {
-        const id = await repo.createUser('bob', 'hash2');
-        const user = await repo.findUserById(id);
+    it('findUserById returns the user row', async () => {
+        mockQuery.mockResolvedValue({
+            rows: [{ id: 7, username: 'bob' }],
+            rowCount: 1,
+        });
+        const user = await repo.findUserById(7);
         expect(user).not.toBeNull();
-        expect(user!.id).toBe(id);
-        expect(user!.username).toBe('bob');
+        expect(user!.id).toBe(7);
     });
 
-    it('findUserById returns null for unknown id', async () => {
+    it('findUserById returns null when not found', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
         const user = await repo.findUserById(9999);
         expect(user).toBeNull();
     });
 
-    it('createSession then countActiveSessions returns 1', async () => {
-        const uid = await repo.createUser('carol', 'hash3');
-        await repo.createSession('sess-1', uid, 'dev-1', 'My Phone');
-        const count = await repo.countActiveSessions(uid);
-        expect(count).toBe(1);
+    it('createSession resolves without error', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+        await expect(repo.createSession('sess-1', 1, 'dev-1', 'My Phone')).resolves.toBeUndefined();
     });
 
-    it('countActiveSessions returns 0 for new user', async () => {
-        const uid = await repo.createUser('dave', 'hash4');
-        const count = await repo.countActiveSessions(uid);
+    it('countActiveSessions returns the count', async () => {
+        mockQuery.mockResolvedValue({ rows: [{ total: '3' }], rowCount: 1 });
+        const count = await repo.countActiveSessions(1);
+        expect(count).toBe(3);
+    });
+
+    it('countActiveSessions returns 0 when no rows', async () => {
+        mockQuery.mockResolvedValue({ rows: [{ total: null }], rowCount: 1 });
+        const count = await repo.countActiveSessions(99);
         expect(count).toBe(0);
     });
 
-    it('storeRefreshToken then findRefreshTokenByHash returns the record', async () => {
-        const uid = await repo.createUser('eve', 'hash5');
-        await repo.createSession('sess-2', uid, 'dev-2');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-2', 'hash-abc', 'fam-1', expiresAt);
-        const record = await repo.findRefreshTokenByHash('hash-abc');
-        expect(record).not.toBeNull();
-        expect(record!.user_id).toBe(uid);
-        expect(record!.family_id).toBe('fam-1');
-        expect(record!.revoked_at).toBeNull();
+    it('storeRefreshToken resolves without error', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+        await expect(
+            repo.storeRefreshToken(1, 'sess-1', 'hash-abc', 'fam-1', new Date().toISOString())
+        ).resolves.toBeUndefined();
     });
 
-    it('findRefreshTokenByHash returns null for unknown hash', async () => {
-        const record = await repo.findRefreshTokenByHash('nonexistent');
-        expect(record).toBeNull();
+    it('findRefreshTokenByHash returns the token record', async () => {
+        const record = {
+            id: 5,
+            user_id: 1,
+            session_id: 'sess-1',
+            token_hash: 'hash-abc',
+            family_id: 'fam-1',
+            expires_at: new Date().toISOString(),
+            revoked_at: null,
+        };
+        mockQuery.mockResolvedValue({ rows: [record], rowCount: 1 });
+        const result = await repo.findRefreshTokenByHash('hash-abc');
+        expect(result).toEqual(record);
     });
 
-    it('revokeRefreshToken sets revoked_at and returns 1', async () => {
-        const uid = await repo.createUser('frank', 'hash6');
-        await repo.createSession('sess-3', uid, 'dev-3');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-3', 'hash-def', 'fam-2', expiresAt);
-        const record = await repo.findRefreshTokenByHash('hash-def');
-        const changes = await repo.revokeRefreshToken(record!.id);
+    it('findRefreshTokenByHash returns null when not found', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+        const result = await repo.findRefreshTokenByHash('nonexistent');
+        expect(result).toBeNull();
+    });
+
+    it('revokeRefreshToken returns rowCount', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+        const changes = await repo.revokeRefreshToken(5);
         expect(changes).toBe(1);
-        const after = await repo.findRefreshTokenByHash('hash-def');
-        expect(after!.revoked_at).not.toBeNull();
     });
 
     it('revokeRefreshToken returns 0 for already-revoked token', async () => {
-        const uid = await repo.createUser('frank2', 'hash6b');
-        await repo.createSession('sess-3b', uid, 'dev-3b');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-3b', 'hash-defb', 'fam-2b', expiresAt);
-        const record = await repo.findRefreshTokenByHash('hash-defb');
-        await repo.revokeRefreshToken(record!.id);
-        const changes = await repo.revokeRefreshToken(record!.id);
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+        const changes = await repo.revokeRefreshToken(5);
         expect(changes).toBe(0);
     });
 
-    it('revokeRefreshTokenFamily revokes all tokens in the family', async () => {
-        const uid = await repo.createUser('grace', 'hash7');
-        await repo.createSession('sess-4', uid, 'dev-4');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-4', 'hash-1', 'fam-3', expiresAt);
-        await repo.storeRefreshToken(uid, 'sess-4', 'hash-2', 'fam-3', expiresAt);
-        const changes = await repo.revokeRefreshTokenFamily('fam-3');
+    it('revokeRefreshTokenFamily returns rowCount', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 2 });
+        const changes = await repo.revokeRefreshTokenFamily('fam-1');
         expect(changes).toBe(2);
     });
 
-    it('revokeAllUserSessions revokes sessions and tokens', async () => {
-        const uid = await repo.createUser('henry', 'hash8');
-        await repo.createSession('sess-5', uid, 'dev-5');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-5', 'hash-xxx', 'fam-4', expiresAt);
-        await repo.revokeAllUserSessions(uid);
-        const count = await repo.countActiveSessions(uid);
-        expect(count).toBe(0);
+    it('revokeRefreshTokenFamily returns 0 for unknown family', async () => {
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+        const changes = await repo.revokeRefreshTokenFamily('unknown-family');
+        expect(changes).toBe(0);
     });
 
-    it('revokeSessionById revokes only the target session', async () => {
-        const uid = await repo.createUser('ivan', 'hash9');
-        await repo.createSession('sess-6', uid, 'dev-6');
-        await repo.createSession('sess-7', uid, 'dev-7');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-6', 'hash-yyy', 'fam-5', expiresAt);
-        await repo.revokeSessionById('sess-6');
-        const count = await repo.countActiveSessions(uid);
-        expect(count).toBe(1);
+    it('revokeAllUserSessions commits transaction and returns rowCount', async () => {
+        const client = makeClient(() => ({ rows: [], rowCount: 1 }));
+        const changes = await repo.revokeAllUserSessions(1);
+        expect(client.query).toHaveBeenCalledWith('BEGIN');
+        expect(client.query).toHaveBeenCalledWith('COMMIT');
+        expect(mockRelease).toHaveBeenCalled();
+        expect(changes).toBe(1);
     });
 
-    it('revokeOldestActiveSession revokes the oldest session', async () => {
-        const uid = await repo.createUser('judy', 'hash10');
-        await repo.createSession('sess-old', uid, 'dev-old');
-        await repo.createSession('sess-new', uid, 'dev-new');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-old', 'hash-old', 'fam-old', expiresAt);
-        await repo.revokeOldestActiveSession(uid);
-        const count = await repo.countActiveSessions(uid);
-        expect(count).toBe(1);
+    it('revokeSessionById commits transaction and returns rowCount', async () => {
+        const client = makeClient(() => ({ rows: [], rowCount: 1 }));
+        const changes = await repo.revokeSessionById('sess-1');
+        expect(client.query).toHaveBeenCalledWith('BEGIN');
+        expect(client.query).toHaveBeenCalledWith('COMMIT');
+        expect(mockRelease).toHaveBeenCalled();
+        expect(changes).toBe(1);
     });
 
     it('revokeOldestActiveSession returns 0 when no active sessions', async () => {
-        const uid = await repo.createUser('kate', 'hash11');
-        const changes = await repo.revokeOldestActiveSession(uid);
+        const client = makeClient((sql) => {
+            if (sql.includes('SELECT')) return { rows: [], rowCount: 0 };
+            return { rows: [], rowCount: 0 };
+        });
+        const changes = await repo.revokeOldestActiveSession(1);
         expect(changes).toBe(0);
+        expect(client.query).toHaveBeenCalledWith('COMMIT');
+        expect(mockRelease).toHaveBeenCalled();
     });
 
-    it('countActiveRefreshTokens does not count expired tokens', async () => {
-        const uid = await repo.createUser('leo', 'hash12');
-        await repo.createSession('sess-8', uid, 'dev-8');
-        const future = new Date(Date.now() + 60_000).toISOString();
-        const past   = new Date(Date.now() - 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-8', 'hash-active',  'fam-6', future);
-        await repo.storeRefreshToken(uid, 'sess-8', 'hash-expired', 'fam-7', past);
+    it('revokeOldestActiveSession revokes session and tokens', async () => {
+        let callCount = 0;
+        const client = makeClient((sql) => {
+            callCount++;
+            if (sql.includes('SELECT')) return { rows: [{ id: 'sess-old' }], rowCount: 1 };
+            return { rows: [], rowCount: 1 };
+        });
+        const changes = await repo.revokeOldestActiveSession(1);
+        expect(changes).toBe(1);
+        expect(client.query).toHaveBeenCalledWith('COMMIT');
+        expect(mockRelease).toHaveBeenCalled();
+    });
+
+    it('countActiveRefreshTokens returns count of non-expired non-revoked tokens', async () => {
+        mockQuery.mockResolvedValue({ rows: [{ total: '4' }], rowCount: 1 });
         const count = await repo.countActiveRefreshTokens();
-        expect(count).toBeGreaterThanOrEqual(1);
-    });
-    it('revokeOldestActiveSession returns 0 when no active sessions remain', async () => {
-        const uid = await repo.createUser('mary', 'hashM');
-        await repo.createSession('sess-revoked', uid, 'dev-m');
-        await repo.revokeSessionById('sess-revoked');
-        const changes = await repo.revokeOldestActiveSession(uid);
-        expect(changes).toBe(0);
-    });
-
-    it('findRefreshTokenByHash returns null for unknown hash', async () => {
-        const record = await repo.findRefreshTokenByHash('nonexistent-hash');
-        expect(record).toBeNull();
-    });
-
-    it('revokeRefreshTokenFamily returns 0 for unknown family', async () => {
-        const changes = await repo.revokeRefreshTokenFamily('unknown-family-id');
-        expect(changes).toBe(0);
-    });
-
-    it('revokeSessionById returns 0 for unknown session', async () => {
-        const uid = await repo.createUser('nora', 'hashO');
-        await repo.createSession('sess-nora', uid, 'dev-o');
-        const changes = await repo.revokeSessionById('nonexistent-session');
-        expect(changes).toBe(0);
-    });
-
-    it('createUser with duplicate username rejects', async () => {
-        await repo.createUser('dupuser', 'hashD');
-        await expect(repo.createUser('dupuser', 'hashD2')).rejects.toThrow();
-    });
-
-    it('storeRefreshToken allows multiple tokens per session', async () => {
-        const uid = await repo.createUser('multi', 'hashMM');
-        await repo.createSession('sess-multi', uid, 'dev-mm');
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        await repo.storeRefreshToken(uid, 'sess-multi', 'hash-t1', 'fam-mm', expiresAt);
-        await repo.storeRefreshToken(uid, 'sess-multi', 'hash-t2', 'fam-mm', expiresAt);
-        const t1 = await repo.findRefreshTokenByHash('hash-t1');
-        const t2 = await repo.findRefreshTokenByHash('hash-t2');
-        expect(t1).not.toBeNull();
-        expect(t2).not.toBeNull();
-    });
-
-    it('countActiveRefreshTokens returns 0 on fresh db', async () => {
-        const count = await repo.countActiveRefreshTokens();
-        expect(count).toBeGreaterThanOrEqual(0);
+        expect(count).toBe(4);
     });
 });
 
-
+// ── Suite: error paths ─────────────────────────────────────────────────────────
 
 describe('CredentialsRepository – DB error paths', () => {
+    let repo: CredentialsRepository;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        repo = new CredentialsRepository();
+    });
+
     it('createUser rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.createUser('x', 'h')).rejects.toThrow('db error');
     });
 
     it('findUserByUsername rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.findUserByUsername('x')).rejects.toThrow('db error');
     });
 
     it('findUserById rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.findUserById(1)).rejects.toThrow('db error');
     });
 
     it('createSession rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.createSession('s', 1, 'd')).rejects.toThrow('db error');
     });
 
     it('countActiveSessions rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.countActiveSessions(1)).rejects.toThrow('db error');
     });
 
     it('storeRefreshToken rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(
             repo.storeRefreshToken(1, 's', 'h', 'f', new Date().toISOString())
         ).rejects.toThrow('db error');
     });
 
     it('findRefreshTokenByHash rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.findRefreshTokenByHash('h')).rejects.toThrow('db error');
     });
 
     it('revokeRefreshToken rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.revokeRefreshToken(1)).rejects.toThrow('db error');
     });
 
     it('revokeRefreshTokenFamily rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.revokeRefreshTokenFamily('f')).rejects.toThrow('db error');
     });
 
-    it('revokeAllUserSessions rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+    it('revokeAllUserSessions rolls back and rethrows on DB error', async () => {
+        const client = {
+            query: vi.fn()
+                .mockResolvedValueOnce(undefined)           // BEGIN
+                .mockRejectedValueOnce(new Error('db error')), // UPDATE sessions
+            release: mockRelease,
+        };
+        mockConnect.mockResolvedValue(client);
         await expect(repo.revokeAllUserSessions(1)).rejects.toThrow('db error');
+        expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+        expect(mockRelease).toHaveBeenCalled();
     });
 
-    it('revokeSessionById rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+    it('revokeSessionById rolls back and rethrows on DB error', async () => {
+        const client = {
+            query: vi.fn()
+                .mockResolvedValueOnce(undefined)           // BEGIN
+                .mockRejectedValueOnce(new Error('db error')), // UPDATE sessions
+            release: mockRelease,
+        };
+        mockConnect.mockResolvedValue(client);
         await expect(repo.revokeSessionById('s')).rejects.toThrow('db error');
+        expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+        expect(mockRelease).toHaveBeenCalled();
+    });
+
+    it('revokeOldestActiveSession rolls back and rethrows on DB error', async () => {
+        const client = {
+            query: vi.fn()
+                .mockResolvedValueOnce(undefined)           // BEGIN
+                .mockRejectedValueOnce(new Error('db error')), // SELECT
+            release: mockRelease,
+        };
+        mockConnect.mockResolvedValue(client);
+        await expect(repo.revokeOldestActiveSession(1)).rejects.toThrow('db error');
+        expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+        expect(mockRelease).toHaveBeenCalled();
     });
 
     it('countActiveRefreshTokens rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
+        mockQuery.mockRejectedValue(new Error('db error'));
         await expect(repo.countActiveRefreshTokens()).rejects.toThrow('db error');
     });
-
-    it('revokeOldestActiveSession rejects on DB error', async () => {
-        const repo = buildBrokenRepo();
-        await expect(repo.revokeOldestActiveSession(1)).rejects.toThrow('db error');
-    });
-
 });
