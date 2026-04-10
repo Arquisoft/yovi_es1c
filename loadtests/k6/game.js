@@ -1,8 +1,14 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { gameOptions, BASE_URL, TEST_USER } from './config.js';
+import encoding from 'k6/encoding';
 export const options = gameOptions;
 
+function parseJwtSub(token) {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(encoding.b64decode(payload, 'rawurl', 's'));
+    return decoded.sub;
+}
 function registerAndLogin() {
     const headers = { 'Content-Type': 'application/json' };
     const username = `game_vu_${__VU}_${__ITER}`;
@@ -21,9 +27,10 @@ function registerAndLogin() {
     );
 
     if (res.status !== 200) return null;
+    const token = res.json('accessToken');
     return {
-        token: res.json('accessToken'),
-        userId: res.json('userId'),
+        token: token,
+        userId: parseJwtSub(token),
     };
 }
 
@@ -68,6 +75,16 @@ export default function () {
 
     check(moveRes, {
         'move accepted': (r) => r.status === 200 || r.status === 201,
+    });
+
+    const finishRes = http.put(
+        `${BASE_URL}/api/game/matches/${matchId}/finish`,
+        JSON.stringify({ winner: 'USER' }),
+        { headers }
+    );
+
+    check(finishRes, {
+        'finish accepted': (r) => r.status === 200,
     });
 
     const statsRes = http.get(`${BASE_URL}/api/game/stats/${auth.userId}`, { headers });

@@ -8,10 +8,11 @@ function mapWinnerToStatus(winner: string | null): MatchDto['status'] {
   return 'lose';
 }
 
-function normalizeTimestamp(date: string): string {
-  return date.includes('T')
-      ? date
-      : date.replace(' ', 'T') + 'Z';
+function normalizeTimestamp(date: string | Date): string {
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  return date.includes('T') ? date : date.replace(' ', 'T') + 'Z';
 }
 
 export class StatsService {
