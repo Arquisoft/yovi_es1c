@@ -25,19 +25,19 @@ describe('extra coverage', () => {
         expect(json).toHaveBeenCalledWith({ ok: true });
     });
 
-    it('initAuthDatabase surfaces sqlite open errors', async () => {
-        vi.doMock('sqlite3', () => ({
+    it('initAuthDatabase surfaces pg connection errors', async () => {
+        vi.doMock('pg', () => ({
             default: {
-                Database: class {
-                    constructor(_path: string, callback: (err: Error) => void) {
-                        callback(new Error('open-failed'));
-                    }
+                Client: class {
+                    connect() { return Promise.reject(new Error('pg-connect-failed')); }
+                    end()     { return Promise.resolve(); }
+                    query()   { return Promise.resolve({ rows: [] }); }
                 },
             },
         }));
 
         const { initAuthDatabase } = await import('../src/db/init-auth-db.js');
-        await expect(initAuthDatabase('/tmp/whatever.db')).rejects.toThrow('open-failed');
+        await expect(initAuthDatabase()).rejects.toThrow('pg-connect-failed');
     });
 
     it('ensureInitialized caches initialization promise', async () => {
@@ -46,7 +46,7 @@ describe('extra coverage', () => {
         }));
 
         const mod = await import('../src/index.js');
-        const first = mod.ensureInitialized();
+        const first  = mod.ensureInitialized();
         const second = mod.ensureInitialized();
 
         expect(first).toBe(second);

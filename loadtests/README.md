@@ -17,7 +17,7 @@ They do not run automatically on push or PR — they must be triggered manually.
 
 ```bash
 # Auth flows (login, register, refresh)
-docker-compose -f loadtests/docker-compose.loadtest.yml --profile auth up
+docker-compose -f docker-compose.loadtest.yml --profile auth up
 
 # AI match flows (create match, move, stats)
 docker-compose -f docker-compose.loadtest.yml --profile game up
