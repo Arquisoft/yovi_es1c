@@ -7,41 +7,144 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  tests:
+  test-no-db:
+    name: Tests (webapp, users)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [webapp, users]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix ${{ matrix.service }} ci
+      - run: npm --prefix ${{ matrix.service }} run test:coverage
+
+  test-auth-db:
+    name: Tests (auth)
+    runs-on: ubuntu-latest
+    services:
+      postgres-auth:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: authdb
+          POSTGRES_USER: auth_user
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U auth_user -d authdb"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix auth ci
+      - run: npm --prefix auth run test:coverage
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: authdb
+          PGUSER: auth_user
+          PGPASSWORD: changeme
+
+  test-game-db:
+    name: Tests (gameservice)
+    runs-on: ubuntu-latest
+    services:
+      postgres-game:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gamedb
+          POSTGRES_USER: game_user
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U game_user -d gamedb"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix gameservice ci
+      - run: npm --prefix gameservice run test:coverage
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: gamedb
+          PGUSER: game_user
+          PGPASSWORD: changeme
+
+  test-rust:
+    name: Tests (gamey)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt, clippy
+      - name: Generate gamey code coverage
+        run: cd gamey && cargo llvm-cov --lcov --output-path lcov.info
 
+  sonar:
+    name: SonarCloud analysis
+    runs-on: ubuntu-latest
+    needs: [test-no-db, test-auth-db, test-game-db, test-rust]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
 
-      - run: npm --prefix users ci
-      - run: npm --prefix webapp ci
-      - run: npm --prefix auth ci
-
-      - run: npm --prefix users run test:coverage
-      - run: npm --prefix webapp run test:coverage
-      - run: npm --prefix auth run test:coverage
+      - run: npm --prefix users ci && npm --prefix users run test:coverage
+      - run: npm --prefix webapp ci && npm --prefix webapp run test:coverage
+      - run: npm --prefix auth ci && npm --prefix auth run test:coverage
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: authdb
+          PGUSER: auth_user
+          PGPASSWORD: changeme
+      - run: npm --prefix gameservice ci && npm --prefix gameservice run test:coverage
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: gamedb
+          PGUSER: game_user
+          PGPASSWORD: changeme
 
       - name: Fix lcov paths for SonarCloud
         run: |
           sed -i 's|SF:src/|SF:users/src/|g' users/coverage/lcov.info
           sed -i 's|SF:src/|SF:auth/src/|g' auth/coverage/lcov.info
+          sed -i 's|SF:src/|SF:gameservice/src/|g' gameservice/coverage/lcov.info
 
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
-
       - name: Generate gamey code coverage
         run: cd gamey && cargo llvm-cov --lcov --output-path lcov.info
-
       - name: Normalize Rust coverage paths
         run: |
           sed -i "s|SF:${GITHUB_WORKSPACE}/|SF:|g" gamey/lcov.info

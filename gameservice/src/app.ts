@@ -9,21 +9,15 @@ import { StatsService } from "./services/StatsService";
 import { createGameController } from "./controllers/GameController";
 import { errorHandler } from "./middleware/error-handler";
 import { verifyJwtMiddleware } from "./middleware/verify-jwt";
-import { MatchmakingRepository } from "./repositories/MatchmakingRepository";
-import { MatchmakingService } from "./services/MatchmakingService";
-import { BotFallbackService } from "./services/BotFallbackService";
-import { OnlineSessionRepository } from "./repositories/OnlineSessionRepository";
-import { OnlineSessionService } from "./services/OnlineSessionService";
-import { TurnTimerService } from "./services/TurnTimerService";
 import { attachSocketServer } from "./realtime/socketServer";
 import { register } from './metrics';
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[process] Unhandled Promise Rejection (service kept alive):', reason);
+    console.error('[process] Unhandled Promise Rejection (service kept alive):', reason);
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('[process] Uncaught Exception (service kept alive):', err);
+    console.error('[process] Uncaught Exception (service kept alive):', err);
 });
 
 
@@ -34,8 +28,8 @@ app.use(express.json());
  * Endpoint expuesto para prometheus
  */
 app.get('/metrics', async (_req, res) => {
-  res.set('Content-Type', register.contentType);
-  res.end(await register.metrics());
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
 });
 
 (async () => {
@@ -67,5 +61,3 @@ app.get('/metrics', async (_req, res) => {
         console.log("GameService running on port 3002");
     });
 })();
-
-

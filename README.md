@@ -99,7 +99,7 @@ Exposed internally on port `4000`.
 The online game and matchmaking service built with Node.js, Express, and TypeScript.
 
 - Manages the full lifecycle of both AI and online human-vs-human matches.
-- Persists match state and move history in YEN notation in `game.db` (SQLite).
+- Persists match state and move history in YEN notation in PostgreSQL (`gamedb`).
 - Exposes aggregated statistics per player.
 - Implements a **Redis-backed matchmaking queue** to pair online players.
 - Manages **real-time online sessions** via Socket.IO (with `@socket.io/redis-adapter`).
@@ -253,11 +253,9 @@ Create a `.env` file in the root directory before running the project with Docke
 # Secret key used to sign and verify JWT tokens
 JWT_SECRET=yovi_es1c_2526
 
-# Internal path to the auth database file (inside the container)
-AUTH_DB_PATH=/app/auth/data/auth.db
-
-# Internal path to the game service database file (inside the container)
-GAME_DB_PATH=/app/data/game.db
+# PostgreSQL credentials (auth + gameservice)
+AUTH_DB_PASSWORD=changeme
+GAME_DB_PASSWORD=changeme
 
 # Matchmaking and online session timeouts (in seconds)
 MM_TIMEOUT_SEC=30

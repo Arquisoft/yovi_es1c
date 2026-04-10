@@ -8,10 +8,10 @@ function mapWinnerToStatus(winner: string | null): MatchDto['status'] {
   return 'lose';
 }
 
-function toUtcIsoString(sqliteDate: string): string {
-  return sqliteDate.includes('T')
-    ? sqliteDate
-    : sqliteDate.replace(' ', 'T') + 'Z';
+function normalizeTimestamp(date: string): string {
+  return date.includes('T')
+      ? date
+      : date.replace(' ', 'T') + 'Z';
 }
 
 export class StatsService {
@@ -34,7 +34,7 @@ export class StatsService {
 
     const matches: MatchDto[] = history.map((row) => ({
       matchId: String(row.id),
-      createdAt: toUtcIsoString(row.created_at),
+      createdAt: normalizeTimestamp(row.created_at),
       mode: row.mode,
       status: mapWinnerToStatus(row.winner),
     }));

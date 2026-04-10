@@ -82,27 +82,53 @@ services:
     networks:
       - monitor-net
 
+  game-db:
+    image: postgres:16-alpine
+    container_name: game-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gamedb
+      POSTGRES_USER: game_user
+      POSTGRES_PASSWORD: ${GAME_DB_PASSWORD:-changeme}
+    volumes:
+      - game-db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - monitor-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U game_user -d gamedb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   gameservice:
     build: ./gameservice
     container_name: gameservice
     image: ghcr.io/arquisoft/yovi_es1c-gameservice:latest
     environment:
       - JWT_SECRET=${JWT_SECRET}
-      - GAME_DB_PATH=/app/data/game.db
+      - PGHOST=game-db
+      - PGPORT=5432
+      - PGDATABASE=gamedb
+      - PGUSER=game_user
+      - PGPASSWORD=${GAME_DB_PASSWORD:-changeme}
       - AUTH_SERVICE_URL=http://auth:3001
       - REDIS_URL=redis://redis:6379
       - MM_TIMEOUT_SEC=30
       - TURN_TIMEOUT_SEC=25
       - RECONNECT_GRACE_SEC=45
-    volumes:
-      - ./gameservice/data:/app/data
     expose:
       - "3002"
     ports:
       - "3002:3002"
     depends_on:
-      - auth
-      - redis
+      auth:
+        condition: service_started
+      redis:
+        condition: service_started
+      game-db:
+        condition: service_healthy
     networks:
       - monitor-net
 
@@ -155,3 +181,4 @@ networks:
 
 volumes:
   auth-db-data:
+  game-db-data:
