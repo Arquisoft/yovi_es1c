@@ -34,5 +34,15 @@ export const authOptions = {
     },
 };
 
-export const gameOptions = { ...baseOptions };
+export const gameOptions = {
+    ...baseOptions,
+    thresholds: {
+        ...baseOptions.thresholds,
+        'http_req_duration{operation:create}': ['p(95)<500'],
+        'http_req_duration{operation:get_match}': ['p(95)<300'],
+        'http_req_duration{operation:move}': ['p(95)<2000'],
+        'http_req_duration{operation:finish}': ['p(95)<500'],
+        'http_req_duration{operation:stats}': ['p(95)<500'],
+    },
+};
 export const matchmakingOptions = { ...baseOptions };

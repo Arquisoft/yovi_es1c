@@ -6,7 +6,7 @@ Exposed internally on port `3002`, accessible externally only through the Nginx 
 
 ## Responsibilities
 
-- Persists the full lifecycle of both AI and human-vs-human matches in `game.db` (SQLite).
+- Persists the full lifecycle of both AI and human-vs-human matches in PostgreSQL (`gamedb`).
 - Stores move history in YEN notation.
 - Exposes aggregated statistics per player (wins, losses, total games).
 - **Online matchmaking**: Redis-backed queue that pairs human players for online games.
@@ -104,7 +104,11 @@ The same `code` catalog is used in HTTP and Socket.IO `session:error` events.
 | Variable | Description | Default |
 |---|---|---|
 | `JWT_SECRET` | Key used to verify JWT tokens (must match Auth Service) | — |
-| `GAME_DB_PATH` | Path to the SQLite match database file | `/app/data/game.db` |
+| `PGHOST` | PostgreSQL host for gameservice | `game-db` |
+| `PGPORT` | PostgreSQL port for gameservice | `5432` |
+| `PGDATABASE` | PostgreSQL database name | `gamedb` |
+| `PGUSER` | PostgreSQL username | `game_user` |
+| `PGPASSWORD` | PostgreSQL password | `changeme` |
 | `AUTH_SERVICE_URL` | Internal URL of the Auth Service | `http://auth:3001` |
 | `REDIS_URL` | Redis connection URL | `redis://redis:6379` |
 | `MM_TIMEOUT_SEC` | Max seconds to wait in matchmaking queue before bot fallback | `30` |

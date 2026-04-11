@@ -1,62 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { open, Database } from 'sqlite';
-import sqlite3 from 'sqlite3';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Pool } from 'pg';
 import { StatsRepository } from '../src/repositories/StatsRepository';
 
-async function buildTestDb(): Promise<Database> {
-  const db = await open({ filename: ':memory:', driver: sqlite3.Database });
-
-  await db.exec(`
-    CREATE TABLE matches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      board_size INTEGER NOT NULL,
-      difficulty TEXT NOT NULL,
-      status TEXT DEFAULT 'ONGOING',
-      winner TEXT,
-      mode TEXT DEFAULT 'BOT',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  return db;
-}
-
-async function insertMatch(
-  db: Database,
-  userId: number,
-  opts: { status?: string; winner?: string; mode?: string; created_at?: string }
-) {
-  await db.run(
-    `INSERT INTO matches (user_id, board_size, difficulty, status, winner, mode, created_at)
-     VALUES (?, 11, 'easy', ?, ?, ?, ?)`,
-    [
-      userId,
-      opts.status ?? 'FINISHED',
-      opts.winner ?? 'USER',
-      opts.mode ?? 'BOT',
-      opts.created_at ?? new Date().toISOString(),
-    ]
-  );
-}
-
 describe('StatsRepository.getMatchHistory', () => {
-  let db: Database;
+  let pool: Pool;
   let repo: StatsRepository;
 
-  beforeEach(async () => {
-    db = await buildTestDb();
-    repo = new StatsRepository(db);
-  });
+  beforeEach(() => {
+    pool = {
+      query: vi.fn(),
+    } as unknown as Pool;
 
-  afterEach(async () => {
-    await db.close();
+    repo = new StatsRepository(pool);
   });
 
   it('returns finished matches for a user ordered from newest to oldest', async () => {
-    await insertMatch(db, 1, { created_at: '2026-01-01T10:00:00' });
-    await insertMatch(db, 1, { created_at: '2026-01-03T10:00:00' });
-    await insertMatch(db, 1, { created_at: '2026-01-02T10:00:00' });
+    const rows = [
+      { id: 1, board_size: 11, difficulty: 'easy', status: 'FINISHED', winner: 'USER', mode: 'BOT', created_at: '2026-01-03T10:00:00' },
+      { id: 2, board_size: 11, difficulty: 'easy', status: 'FINISHED', winner: 'USER', mode: 'BOT', created_at: '2026-01-02T10:00:00' },
+      { id: 3, board_size: 11, difficulty: 'easy', status: 'FINISHED', winner: 'USER', mode: 'BOT', created_at: '2026-01-01T10:00:00' },
+    ];
+
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows } as never);
 
     const result = await repo.getMatchHistory(1, 10);
 
@@ -67,24 +32,38 @@ describe('StatsRepository.getMatchHistory', () => {
   });
 
   it('returns at most `limit` matches', async () => {
-    for (let i = 0; i < 15; i++) {
-      await insertMatch(db, 1, {});
-    }
+    const rows = Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      board_size: 11,
+      difficulty: 'easy',
+      status: 'FINISHED',
+      winner: 'USER',
+      mode: 'BOT',
+      created_at: `2026-01-${String(i + 1).padStart(2, '0')}T10:00:00`,
+    }));
+
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows } as never);
 
     const result = await repo.getMatchHistory(1, 10);
 
     expect(result).toHaveLength(10);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('LIMIT $2'), [1, 10]);
   });
 
   it('returns an empty array when the user has no finished matches', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [] } as never);
+
     const result = await repo.getMatchHistory(999, 10);
 
     expect(result).toEqual([]);
   });
 
   it('does not include ONGOING matches', async () => {
-    await insertMatch(db, 1, { status: 'FINISHED', winner: 'USER' });
-    await insertMatch(db, 1, { status: 'ONGOING', winner: undefined });
+    vi.mocked(pool.query).mockResolvedValueOnce({
+      rows: [
+        { id: 1, board_size: 11, difficulty: 'easy', status: 'FINISHED', winner: 'USER', mode: 'BOT', created_at: '2026-01-01T10:00:00' },
+      ],
+    } as never);
 
     const result = await repo.getMatchHistory(1, 10);
 
@@ -93,16 +72,20 @@ describe('StatsRepository.getMatchHistory', () => {
   });
 
   it('does not include matches from other users', async () => {
-    await insertMatch(db, 1, {});
-    await insertMatch(db, 2, {});
+    vi.mocked(pool.query).mockResolvedValueOnce({
+      rows: [{ id: 1, board_size: 11, difficulty: 'easy', status: 'FINISHED', winner: 'USER', mode: 'BOT', created_at: '2026-01-01T10:00:00' }],
+    } as never);
 
     const result = await repo.getMatchHistory(1, 10);
 
     expect(result).toHaveLength(1);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('WHERE user_id = $1'), [1, 10]);
   });
 
   it('returns all expected fields on each row', async () => {
-    await insertMatch(db, 1, { winner: 'BOT', mode: 'LOCAL_2P' });
+    vi.mocked(pool.query).mockResolvedValueOnce({
+      rows: [{ id: 1, board_size: 11, difficulty: 'easy', status: 'FINISHED', winner: 'BOT', mode: 'LOCAL_2P', created_at: '2026-01-01T10:00:00' }],
+    } as never);
 
     const [row] = await repo.getMatchHistory(1, 10);
 
