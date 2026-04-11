@@ -301,19 +301,16 @@ jobs:
     outputs:
       deploy_host: ${{ steps.dns.outputs.host }}
     steps:
-      - name: Get IP from DuckDNS API
+      - name: Resolve DuckDNS domain (authoritative)
         id: dns
         run: |
-          RESPONSE=$(curl -s "https://www.duckdns.org/update?domains=${{ secrets.DUCKDNS_DOMAIN }}&token=${{ secrets.DUCKDNS_TOKEN }}&verbose=true")
-          # La respuesta verbose tiene formato: OK\nIP\nIPV6\nCHANGED
-          IP=$(echo "$RESPONSE" | sed -n '2p')
-
-          if [ -z "$IP" ] || [ "$RESPONSE" = "KO" ]; then
-            echo "ERROR: DuckDNS no devolvió IP válida. Respuesta: $RESPONSE"
+          echo "Resolving ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org (authoritative)..."
+          IP=$(dig +short @ns1.duckdns.org ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org | tail -1)
+          if [ -z "$IP" ]; then
+            echo "ERROR: Could not resolve domain against DuckDNS nameserver."
             exit 1
           fi
-
-          echo "IP registrada en DuckDNS: $IP"
+          echo "Resolved IP: $IP"
           echo "host=$IP" >> $GITHUB_OUTPUT
   deploy:
     name: Deploy over SSH
