@@ -11,7 +11,7 @@ export interface MatchRow {
 }
 
 export class StatsRepository {
-  constructor(private db: Pool) {}
+  constructor(private readonly db: Pool) {}
 
   async getUserStats(userId: number) {
     const result = await this.db.query(`SELECT * FROM user_stats WHERE user_id = $1`, [userId]);
@@ -21,10 +21,10 @@ export class StatsRepository {
   async getMatchHistory(userId: number, limit: number): Promise<MatchRow[]> {
     const result = await this.db.query<MatchRow>(
         `SELECT id, board_size, difficulty, status, winner, mode, created_at
-       FROM matches
-       WHERE user_id = $1 AND status = 'FINISHED'
-       ORDER BY created_at DESC
-       LIMIT $2`,
+         FROM matches
+         WHERE user_id = $1 AND status = 'FINISHED'
+         ORDER BY created_at DESC
+           LIMIT $2`,
         [userId, limit],
     );
 

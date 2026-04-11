@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { createServer } from "http";
+import { createServer } from "node:http";
 import { initDB } from "./database/database";
 import { MatchRepository } from "./repositories/MatchRepository";
 import { StatsRepository } from "./repositories/StatsRepository";
@@ -20,10 +20,9 @@ process.on('uncaughtException', (err) => {
     console.error('[process] Uncaught Exception (service kept alive):', err);
 });
 
-
 const app = express();
-app.use(cors());
 app.use(express.json());
+
 /**
  * Endpoint expuesto para prometheus
  */

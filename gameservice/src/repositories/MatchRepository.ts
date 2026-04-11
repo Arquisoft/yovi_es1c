@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 
 export class MatchRepository {
-  constructor(private db: Pool) {}
+  constructor(private readonly db: Pool) {}
 
   async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
     const result = await this.db.query(

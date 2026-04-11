@@ -11,7 +11,7 @@ export class MatchService {
   private readonly botStatus = new Map<number, 'processing' | 'done'>();
   private readonly botTasks = new Map<number, Promise<void>>();
 
-  constructor(private matchRepo: MatchRepository) {}
+  constructor(private readonly matchRepo: MatchRepository) {}
 
   async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
     const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode);
@@ -81,7 +81,7 @@ export class MatchService {
   private async getBotMoveWithTimeout(matchId: number, boardSize: number, moves: MatchMove[]): Promise<string | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 500);
-    const baseUrl = process.env.GAMEY_URL || 'http://gamey:4000';
+    const baseUrl = process.env.GAMEY_SERVICE_URL ?? 'http://gamey:4000';
 
     try {
       const response = await fetch(`${baseUrl}/move`, {
@@ -106,7 +106,7 @@ export class MatchService {
     const occupied = new Set(moves.map((move) => move.position_yen));
     for (let row = 1; row <= boardSize; row += 1) {
       for (let col = 0; col < boardSize; col += 1) {
-        const position = `${String.fromCharCode(97 + col)}${row}`;
+        const position = `${String.fromCodePoint(97 + col)}${row}`;
         if (!occupied.has(position)) return position;
       }
     }
@@ -118,7 +118,7 @@ export class MatchService {
     for (const move of moves) {
       const parsed = /^([a-z])(\d+)$/.exec(move.position_yen.trim().toLowerCase());
       if (!parsed) continue;
-      const col = parsed[1].charCodeAt(0) - 97;
+      const col = parsed[1].codePointAt(0)! - 97;
       const row = Number(parsed[2]) - 1;
       if (row >= 0 && row < boardSize && col >= 0 && col < boardSize) {
         board[row][col] = move.player === 'BOT' ? 'B' : 'U';

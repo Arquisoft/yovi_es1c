@@ -119,6 +119,7 @@ services:
       - PGPASSWORD=${GAME_DB_PASSWORD:-changeme}
       - PGPOOL_MAX=50
       - AUTH_SERVICE_URL=http://auth:3001
+      - GAMEY_SERVICE_URL=http://gamey:4000
       - REDIS_URL=redis://redis:6379
       - MM_TIMEOUT_SEC=30
       - TURN_TIMEOUT_SEC=25
