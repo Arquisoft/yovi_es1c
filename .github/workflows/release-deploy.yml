@@ -301,13 +301,13 @@ jobs:
     outputs:
       deploy_host: ${{ steps.dns.outputs.host }}
     steps:
-      - name: Resolve DuckDNS domain
+      - name: Resolve DuckDNS domain (authoritative)
         id: dns
         run: |
-          echo "Resolving ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org..."
-          IP=$(dig +short ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org | tail -1)
+          echo "Resolving ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org (authoritative)..."
+          IP=$(dig +short @ns1.duckdns.org ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org | tail -1)
           if [ -z "$IP" ]; then
-            echo "ERROR: Could not resolve domain. Is the VM running and DuckDNS updated?"
+            echo "ERROR: Could not resolve domain against DuckDNS nameserver."
             exit 1
           fi
           echo "Resolved IP: $IP"
@@ -319,38 +319,54 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          GAME_DB_PASSWORD: ${{ secrets.GAME_DB_PASSWORD }}
+          AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
+          DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
         with:
           host: ${{ needs.resolve-host.outputs.deploy_host }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN
+          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN,DUCKDNS_TOKEN
+          timeout: 60s
+          command_timeout: 30m
           script: |
-            RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master"
+            set -euo pipefail
+
+            RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/${IMAGE_TAG}"
+            PROJECT_NAME="$(basename "$PWD")"
+            LETSENCRYPT_VOLUME="${PROJECT_NAME}_letsencrypt"
+            DOMAIN="${DUCKDNS_DOMAIN}.duckdns.org"
+
+            echo "Usando proyecto docker-compose: ${PROJECT_NAME}"
+            echo "Usando volumen letsencrypt: ${LETSENCRYPT_VOLUME}"
+            echo "Usando dominio: ${DOMAIN}"
+            echo "Usando release/tag: ${IMAGE_TAG}"
 
             # Crear estructura de directorios
-            mkdir -p nginx
+            mkdir -p nginx/certbot
+            mkdir -p nginx/certs
             mkdir -p monitoring/prometheus
             mkdir -p monitoring/grafana/provisioning/datasources
             mkdir -p monitoring/grafana/provisioning/dashboards
             mkdir -p users/data
-            mkdir -p auth/data
 
             # Ficheros raíz
             wget -q "$RAW/docker-compose.yml" -O docker-compose.yml
 
             # Nginx
             wget -q "$RAW/nginx/nginx.conf" -O nginx/nginx.conf
+            wget -q "$RAW/nginx/certbot/Dockerfile" -O nginx/certbot/Dockerfile
 
             # Prometheus
             wget -q "$RAW/monitoring/prometheus/prometheus.yml" -O monitoring/prometheus/prometheus.yml
 
-            # Grafana — fichero de config principal
+            # Grafana
             wget -q "$RAW/monitoring/grafana/grafana.ini" -O monitoring/grafana/grafana.ini
-
-            # Grafana — datasources
             wget -q "$RAW/monitoring/grafana/provisioning/datasources/datasource.yml" -O monitoring/grafana/provisioning/datasources/datasource.yml
-
-            # Grafana — dashboards config + JSONs
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/dashboard.yml" -O monitoring/grafana/provisioning/dashboards/dashboard.yml
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/dashboard.json" -O monitoring/grafana/provisioning/dashboards/dashboard.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/auth-internals.json" -O monitoring/grafana/provisioning/dashboards/auth-internals.json
@@ -359,23 +375,80 @@ jobs:
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/gamey-overview.json" -O monitoring/grafana/provisioning/dashboards/gamey-overview.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/online-realtime.json" -O monitoring/grafana/provisioning/dashboards/online-realtime.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/yovi-overview.json" -O monitoring/grafana/provisioning/dashboards/yovi-overview.json
-            # CA certificates
-            mkdir -p nginx/certs
-            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/fullchain.pem nginx/certs/fullchain.pem
-            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/privkey.pem nginx/certs/privkey.pem
-                      
-            # Deploy
+
+            # .env a partir de la plantilla
+            wget -q "$RAW/.env.example" -O .env.example
+            grep -Ev '^(JWT_SECRET|AUTH_DB_PASSWORD|GAME_DB_PASSWORD|DUCKDNS_TOKEN|DUCKDNS_DOMAIN|IMAGE_TAG)=' .env.example > .env || true
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET" >> .env
+            printf 'AUTH_DB_PASSWORD=%s\n' "$AUTH_DB_PASSWORD" >> .env
+            printf 'GAME_DB_PASSWORD=%s\n' "$GAME_DB_PASSWORD" >> .env
+            printf 'DUCKDNS_TOKEN=%s\n' "$DUCKDNS_TOKEN" >> .env
+            printf 'DUCKDNS_DOMAIN=%s\n' "$DUCKDNS_DOMAIN" >> .env
+            printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> .env
+
+            find_cert_name() {
+              docker run --rm -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" alpine sh -c "
+                if [ -f \"/letsencrypt/live/${DOMAIN}/fullchain.pem\" ] && [ -f \"/letsencrypt/live/${DOMAIN}/privkey.pem\" ]; then
+                  printf '%s\n' '${DOMAIN}'
+                  exit 0
+                fi
+
+                for f in /letsencrypt/renewal/*.conf; do
+                  [ -e \"\$f\" ] || continue
+                  if grep -q \"domains = .*${DOMAIN}\" \"\$f\"; then
+                    basename \"\$f\" .conf
+                    exit 0
+                  fi
+                done
+
+                exit 0
+              "
+            }
+
+            CERT_NAME="$(find_cert_name || true)"
+
+            if [ -z "$CERT_NAME" ]; then
+              echo "Certificado no encontrado, ejecutando certbot..."
+              docker-compose --profile certbot run --rm certbot
+              CERT_NAME="$(find_cert_name || true)"
+            else
+              echo "Certificado ya existe (cert name: ${CERT_NAME}), saltando certbot."
+            fi
+
+            if [ -z "$CERT_NAME" ]; then
+              echo "ERROR: No he podido localizar un certificado para ${DOMAIN} dentro del volumen ${LETSENCRYPT_VOLUME}"
+              echo "Contenido de /letsencrypt/live:"
+              docker run --rm -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" alpine sh -c 'find /letsencrypt/live -mindepth 1 -maxdepth 1 -type d -printf "%f\n" 2>/dev/null || true'
+              echo "Contenido de /letsencrypt/renewal:"
+              docker run --rm -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" alpine sh -c 'ls -1 /letsencrypt/renewal 2>/dev/null || true'
+              exit 1
+            fi
+
+            echo "Usando cert name: ${CERT_NAME}"
+
+            LOCAL_UID="$(id -u)"
+            LOCAL_GID="$(id -g)"
+            
+            docker run --rm \
+            -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" \
+            -v "$(pwd)/nginx/certs:/certs" \
+            alpine sh -c "
+            cp -L \"/letsencrypt/live/${CERT_NAME}/fullchain.pem\" /certs/fullchain.pem &&
+            cp -L \"/letsencrypt/live/${CERT_NAME}/privkey.pem\" /certs/privkey.pem &&
+            chown ${LOCAL_UID}:${LOCAL_GID} /certs/fullchain.pem /certs/privkey.pem &&
+            chmod 644 /certs/fullchain.pem &&
+            chmod 600 /certs/privkey.pem
+            "
+
+            # Login en GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            export JWT_SECRET="$JWT_SECRET"
-            export IMAGE_TAG="$IMAGE_TAG"
-            export GAME_DB_PASSWORD="$GAME_DB_PASSWORD"
-            export AUTH_DB_PASSWORD="$AUTH_DB_PASSWORD"
-            docker-compose down 
+
+            export JWT_SECRET="${JWT_SECRET}"
+            export IMAGE_TAG="${IMAGE_TAG}"
+            export GAME_DB_PASSWORD="${GAME_DB_PASSWORD}"
+            export AUTH_DB_PASSWORD="${AUTH_DB_PASSWORD}"
+
+            # Deploy
+            docker-compose down
             docker-compose pull
             docker-compose up -d
-        env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          GAME_DB_PASSWORD: ${{ secrets.GAME_DB_PASSWORD }}
-          AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
-          DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
