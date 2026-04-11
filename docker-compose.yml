@@ -166,8 +166,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - letsencrypt:/etc/letsencrypt:ro
-      - ./nginx/certs:/etc/letsencrypt/live/yovi-es1c.duckdns.org:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
       - ./webapp/dist:/usr/share/nginx/html:ro
     depends_on:
       - webapp
@@ -211,4 +210,3 @@ networks:
 volumes:
   auth-db-data:
   game-db-data:
-  letsencrypt:

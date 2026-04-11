@@ -319,7 +319,7 @@ jobs:
           host: ${{ needs.resolve-host.outputs.deploy_host }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD
+          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN
           script: |
             RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master"
 
@@ -355,7 +355,11 @@ jobs:
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/gamey-overview.json" -O monitoring/grafana/provisioning/dashboards/gamey-overview.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/online-realtime.json" -O monitoring/grafana/provisioning/dashboards/online-realtime.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/yovi-overview.json" -O monitoring/grafana/provisioning/dashboards/yovi-overview.json
-
+            # CA certificates
+            mkdir -p nginx/certs
+            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/fullchain.pem nginx/certs/fullchain.pem
+            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/privkey.pem nginx/certs/privkey.pem
+                      
             # Deploy
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             export JWT_SECRET="$JWT_SECRET"
@@ -370,3 +374,4 @@ jobs:
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           GAME_DB_PASSWORD: ${{ secrets.GAME_DB_PASSWORD }}
           AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
+          DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
