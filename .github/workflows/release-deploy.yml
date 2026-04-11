@@ -128,6 +128,13 @@ jobs:
         run: |
           cd webapp
           npm run test:e2e:install-browsers
+      - name: Generate self-signed cert for CI
+        run: |
+            mkdir -p nginx/certs
+            openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+              -keyout nginx/certs/privkey.pem \
+              -out nginx/certs/fullchain.pem \
+              -subj "/CN=localhost"
 
       - name: Build and start all services with Docker Compose
         env:
