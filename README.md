@@ -1,4 +1,4 @@
-## Project deployed [here](http://20.111.39.121/)
+## You can find our project deployed here: [https://yovi-es1c.duckdns.org/](https://yovi-es1c.duckdns.org/)
 
 # Yovi_es1c - Game Y at UniOvi
 
