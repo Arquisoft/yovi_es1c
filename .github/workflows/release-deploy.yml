@@ -128,6 +128,13 @@ jobs:
         run: |
           cd webapp
           npm run test:e2e:install-browsers
+      - name: Generate self-signed cert for CI
+        run: |
+            mkdir -p nginx/certs
+            openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+              -keyout nginx/certs/privkey.pem \
+              -out nginx/certs/fullchain.pem \
+              -subj "/CN=localhost"
 
       - name: Build and start all services with Docker Compose
         env:
@@ -137,17 +144,21 @@ jobs:
 
       - name: Wait for services to be healthy
         run: |
-          echo "Waiting for services to start..."
-          sleep 15
-          echo "Checking Nginx health..."
-          curl --retry 15 --retry-delay 2 --retry-connrefused http://localhost/health || (docker compose logs && exit 1)
-          echo "Waiting for auth service to be ready..."
-          curl --retry 20 --retry-delay 3 --retry-connrefused -X POST http://localhost/api/auth/register \
-            -H "Content-Type: application/json" \
-            -d '{"username":"healthcheck_probe","password":"probe12345"}' \
-            -o /dev/null -s || true
-          sleep 3
-          echo "Services are ready!"
+          echo "Waiting for nginx to be healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' nginx_proxy 2>/dev/null || echo "none")
+            echo "Attempt $i: nginx status = $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Nginx is healthy!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Timeout waiting for nginx"
+              docker compose logs nginx
+              exit 1
+            fi
+            sleep 3
+          done
 
 
       - name: Show running containers
@@ -312,7 +323,7 @@ jobs:
           host: ${{ needs.resolve-host.outputs.deploy_host }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD
+          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN
           script: |
             RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master"
 
@@ -348,7 +359,11 @@ jobs:
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/gamey-overview.json" -O monitoring/grafana/provisioning/dashboards/gamey-overview.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/online-realtime.json" -O monitoring/grafana/provisioning/dashboards/online-realtime.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/yovi-overview.json" -O monitoring/grafana/provisioning/dashboards/yovi-overview.json
-
+            # CA certificates
+            mkdir -p nginx/certs
+            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/fullchain.pem nginx/certs/fullchain.pem
+            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/privkey.pem nginx/certs/privkey.pem
+                      
             # Deploy
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             export JWT_SECRET="$JWT_SECRET"
@@ -363,3 +378,4 @@ jobs:
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           GAME_DB_PASSWORD: ${{ secrets.GAME_DB_PASSWORD }}
           AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
+          DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
