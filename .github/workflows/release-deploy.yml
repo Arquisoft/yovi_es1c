@@ -323,7 +323,7 @@ jobs:
           host: ${{ needs.resolve-host.outputs.deploy_host }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN
+          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN,DUCKDNS_TOKEN
           script: |
             RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master"
 
@@ -359,18 +359,36 @@ jobs:
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/gamey-overview.json" -O monitoring/grafana/provisioning/dashboards/gamey-overview.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/online-realtime.json" -O monitoring/grafana/provisioning/dashboards/online-realtime.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/yovi-overview.json" -O monitoring/grafana/provisioning/dashboards/yovi-overview.json
-            # CA certificates
+
+            # .env — descargar plantilla y rellenar con secrets
+            wget -q "$RAW/.env.example" -O .env
+            sed -i "s|JWT_SECRET=.*|JWT_SECRET=${JWT_SECRET}|" .env
+            sed -i "s|AUTH_DB_PASSWORD=.*|AUTH_DB_PASSWORD=${AUTH_DB_PASSWORD}|" .env
+            sed -i "s|GAME_DB_PASSWORD=.*|GAME_DB_PASSWORD=${GAME_DB_PASSWORD}|" .env
+            sed -i "s|DUCKDNS_TOKEN=.*|DUCKDNS_TOKEN=${DUCKDNS_TOKEN}|" .env
+            sed -i "s|DUCKDNS_DOMAIN=.*|DUCKDNS_DOMAIN=${DUCKDNS_DOMAIN}|" .env
+
+            # Certbot — solo si el certificado no existe todavía
+            CERT_PATH="/var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/${DUCKDNS_DOMAIN}.duckdns.org/fullchain.pem"
+            if [ ! -f "$CERT_PATH" ]; then
+              echo "Certificado no encontrado, ejecutando certbot..."
+              docker-compose --profile certbot run --rm certbot
+            else
+              echo "Certificado ya existe, saltando certbot."
+            fi
+
+            # CA certificates — symlinks al volumen de letsencrypt
             mkdir -p nginx/certs
-            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/fullchain.pem nginx/certs/fullchain.pem
-            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/yovi-es1c.duckdns.org/privkey.pem nginx/certs/privkey.pem
-                      
+            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/${DUCKDNS_DOMAIN}.duckdns.org/fullchain.pem nginx/certs/fullchain.pem
+            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/${DUCKDNS_DOMAIN}.duckdns.org/privkey.pem nginx/certs/privkey.pem
+
             # Deploy
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            export JWT_SECRET="$JWT_SECRET"
-            export IMAGE_TAG="$IMAGE_TAG"
-            export GAME_DB_PASSWORD="$GAME_DB_PASSWORD"
-            export AUTH_DB_PASSWORD="$AUTH_DB_PASSWORD"
-            docker-compose down 
+            export JWT_SECRET="${JWT_SECRET}"
+            export IMAGE_TAG="${IMAGE_TAG}"
+            export GAME_DB_PASSWORD="${GAME_DB_PASSWORD}"
+            export AUTH_DB_PASSWORD="${AUTH_DB_PASSWORD}"
+            docker-compose down
             docker-compose pull
             docker-compose up -d
         env:
@@ -379,3 +397,4 @@ jobs:
           GAME_DB_PASSWORD: ${{ secrets.GAME_DB_PASSWORD }}
           AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
           DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}

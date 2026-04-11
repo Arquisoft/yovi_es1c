@@ -215,3 +215,4 @@ networks:
 volumes:
   auth-db-data:
   game-db-data:
+  letsencrypt:
