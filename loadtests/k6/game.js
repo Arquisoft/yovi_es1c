@@ -17,13 +17,13 @@ function registerAndLogin() {
     http.post(
         `${BASE_URL}/api/auth/register`,
         JSON.stringify({ username, password }),
-        { headers }
+        { headers, tags: { operation: 'register' } }
     );
 
     const res = http.post(
         `${BASE_URL}/api/auth/login`,
         JSON.stringify({ username, password }),
-        { headers }
+        { headers, tags: { operation: 'login' } }
     );
 
     if (res.status !== 200) return null;
@@ -46,7 +46,7 @@ export default function () {
     const createRes = http.post(
         `${BASE_URL}/api/game/matches`,
         JSON.stringify({ boardSize: 5, difficulty: 'medium' }),
-        { headers }
+        { headers, tags: { operation: 'create' } }
     );
 
     check(createRes, {
@@ -58,7 +58,7 @@ export default function () {
 
     const matchId = createRes.json('matchId');
 
-    const getRes = http.get(`${BASE_URL}/api/game/matches/${matchId}`, { headers });
+    const getRes = http.get(`${BASE_URL}/api/game/matches/${matchId}`, { headers, tags: { operation: 'get_match' } });
 
     check(getRes, {
         'get match status 200':   (r) => r.status === 200,
@@ -70,24 +70,24 @@ export default function () {
     const moveRes = http.post(
         `${BASE_URL}/api/game/matches/${matchId}/moves`,
         JSON.stringify({ position_yen: '0,0', player: 'USER', moveNumber: 1 }),
-        { headers }
+        { headers, tags: { operation: 'move' } }
     );
 
     check(moveRes, {
-        'move accepted': (r) => r.status === 200 || r.status === 201,
+        'move accepted': (r) => r.status === 202,
     });
 
     const finishRes = http.put(
         `${BASE_URL}/api/game/matches/${matchId}/finish`,
         JSON.stringify({ winner: 'USER' }),
-        { headers }
+        { headers, tags: { operation: 'finish' } }
     );
 
     check(finishRes, {
         'finish accepted': (r) => r.status === 200,
     });
 
-    const statsRes = http.get(`${BASE_URL}/api/game/stats/${auth.userId}`, { headers });
+    const statsRes = http.get(`${BASE_URL}/api/game/stats/${auth.userId}`, { headers, tags: { operation: 'stats' } });
 
     check(statsRes, {
         'stats status 200': (r) => r.status === 200,

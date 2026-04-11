@@ -27,6 +27,17 @@ export class MatchRepository {
     );
   }
 
+  async listMoves(matchId: number) {
+    const result = await this.db.query(
+        `SELECT id, match_id, position_yen, player, move_number, "timestamp"
+         FROM moves
+         WHERE match_id = $1
+         ORDER BY move_number ASC`,
+        [matchId],
+    );
+    return result.rows;
+  }
+
   async finishMatch(matchId: number, winner: string) {
     await this.db.query(
         `UPDATE matches SET status = 'FINISHED', winner = $1 WHERE id = $2`,

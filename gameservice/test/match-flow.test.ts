@@ -21,7 +21,9 @@ describe('Game match flow integration tests', () => {
     mockMatchService = {
       createMatch: vi.fn(),
       getMatch: vi.fn(),
+      getMatchState: vi.fn(),
       addMove: vi.fn(),
+      queueBotMove: vi.fn(),
       finishMatch: vi.fn().mockResolvedValue(undefined),
     } as unknown as MatchService;
 
@@ -65,6 +67,7 @@ describe('Game match flow integration tests', () => {
         created_at: '2026-03-02T10:00:00Z',
       };
 
+      (mockMatchService.getMatchState as any).mockResolvedValue({ ...mockMatch, botStatus: 'done' });
       (mockMatchService.getMatch as any).mockResolvedValue(mockMatch);
 
       const getMatchResponse = await request(app).get(`/api/game/matches/${matchId}`);
@@ -86,7 +89,7 @@ describe('Game match flow integration tests', () => {
             .post(`/api/game/matches/${matchId}/moves`)
             .send(move);
 
-        expect(moveResponse.status).toBe(201);
+        expect(moveResponse.status).toBe(202);
         expect(mockMatchService.addMove).toHaveBeenCalledWith(
             matchId,
             move.position_yen,
@@ -184,7 +187,7 @@ describe('Game match flow integration tests', () => {
               moveNumber: i,
             });
 
-        expect(response.status).toBe(201);
+        expect(response.status).toBe(202);
       }
 
       expect(mockMatchService.addMove).toHaveBeenCalledTimes(20);
@@ -359,7 +362,7 @@ describe('Game match flow integration tests', () => {
       const responses = await Promise.all(requests);
 
       responses.forEach((response: any) => {
-        expect(response.status).toBe(201);
+        expect(response.status).toBe(202);
       });
 
       expect(mockMatchService.addMove).toHaveBeenCalledTimes(3);
