@@ -430,12 +430,12 @@ jobs:
             LOCAL_GID="$(id -g)"
             
             docker run --rm \
-            --user "${LOCAL_UID}:${LOCAL_GID}" \
             -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" \
             -v "$(pwd)/nginx/certs:/certs" \
             alpine sh -c "
             cp -L \"/letsencrypt/live/${CERT_NAME}/fullchain.pem\" /certs/fullchain.pem &&
             cp -L \"/letsencrypt/live/${CERT_NAME}/privkey.pem\" /certs/privkey.pem &&
+            chown ${LOCAL_UID}:${LOCAL_GID} /certs/fullchain.pem /certs/privkey.pem &&
             chmod 644 /certs/fullchain.pem &&
             chmod 600 /certs/privkey.pem
             "
