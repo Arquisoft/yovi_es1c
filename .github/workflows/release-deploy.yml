@@ -325,7 +325,7 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN,DUCKDNS_TOKEN
           script: |
-            RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/master"
+            RAW="https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.ref_name }}"
 
             # Crear estructura de directorios
             mkdir -p nginx
