@@ -137,14 +137,36 @@ services:
         condition: service_healthy
     networks:
       - monitor-net
+  certbot:
+    build: ./nginx/certbot
+    container_name: certbot
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    environment:
+      - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+    command: >
+      certonly
+      --non-interactive
+      --agree-tos
+      --email ${CERTBOT_EMAIL:-admin@example.com}
+      --authenticator dns-duckdns
+      --dns-duckdns-token ${DUCKDNS_TOKEN}
+      --dns-duckdns-propagation-seconds 60
+      -d ${DUCKDNS_DOMAIN}.duckdns.org
+    profiles:
+      - certbot
+    networks:
+      - monitor-net
 
   nginx:
     image: nginx:alpine
     container_name: nginx_proxy
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - letsencrypt:/etc/letsencrypt:ro
       - ./webapp/dist:/usr/share/nginx/html:ro
     depends_on:
       - webapp
@@ -188,3 +210,4 @@ networks:
 volumes:
   auth-db-data:
   game-db-data:
+  letsencrypt:

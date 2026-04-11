@@ -283,16 +283,33 @@ jobs:
           registry: ghcr.io
           workdir: gameservice
           tags: "latest,${{ env.IMAGE_TAG }}"
-
+  resolve-host:
+    name: Resolve deploy host from DuckDNS
+    runs-on: ubuntu-latest
+    needs: [ docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey, docker-push-gameservice ]
+    outputs:
+      deploy_host: ${{ steps.dns.outputs.host }}
+    steps:
+      - name: Resolve DuckDNS domain
+        id: dns
+        run: |
+          echo "Resolving ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org..."
+          IP=$(dig +short ${{ secrets.DUCKDNS_DOMAIN }}.duckdns.org | tail -1)
+          if [ -z "$IP" ]; then
+            echo "ERROR: Could not resolve domain. Is the VM running and DuckDNS updated?"
+            exit 1
+          fi
+          echo "Resolved IP: $IP"
+          echo "host=$IP" >> $GITHUB_OUTPUT
   deploy:
     name: Deploy over SSH
     runs-on: ubuntu-latest
-    needs: [ docker-push-users, docker-push-auth, docker-push-webapp, docker-push-gamey, docker-push-gameservice ]
+    needs: [ resolve-host ]
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ needs.resolve-host.outputs.deploy_host }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD
@@ -338,9 +355,9 @@ jobs:
             export IMAGE_TAG="$IMAGE_TAG"
             export GAME_DB_PASSWORD="$GAME_DB_PASSWORD"
             export AUTH_DB_PASSWORD="$AUTH_DB_PASSWORD"
-            docker compose down
-            docker compose pull
-            docker compose up -d
+            docker-compose down 
+            docker-compose pull
+            docker-compose up -d
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}

@@ -169,11 +169,17 @@ describe('OnlineSessionService', () => {
   it('handleTurnTimeout performs a random valid move when it is current player turn', async () => {
     const { service } = await setup();
     const moveSpy = vi.spyOn(service, 'handleMove');
-    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+      (array as Uint32Array)[0] = 0;
+      return array as Uint32Array;
+    });
 
     await service.handleTurnTimeout('m1', 1, 0);
 
     expect(moveSpy).toHaveBeenCalledWith('m1', 1, { row: 0, col: 0 }, 0);
+
+    vi.restoreAllMocks();
   });
 
   it('handleTurnTimeout skips when version does not match', async () => {

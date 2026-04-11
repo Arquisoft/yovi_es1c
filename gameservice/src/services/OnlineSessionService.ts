@@ -478,6 +478,12 @@ export class OnlineSessionService {
     await this.handleMove(matchId, userId, randomMove, expectedVersion);
   }
 
+  private secureRandomInt(max: number): number {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    return array[0] % max;
+  }
+
   private pickRandomMove(layout: string): MoveCommand | null {
     const emptyCells: MoveCommand[] = [];
 
@@ -492,7 +498,7 @@ export class OnlineSessionService {
 
     if (emptyCells.length === 0) return null;
 
-    const randomIndex = Math.floor(Math.random() * emptyCells.length);
+    const randomIndex = this.secureRandomInt(emptyCells.length);
     return emptyCells[randomIndex];
   }
 
