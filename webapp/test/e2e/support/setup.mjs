@@ -1,5 +1,5 @@
 import { setWorldConstructor, Before, After, setDefaultTimeout } from '@cucumber/cucumber'
-import { chromium } from 'playwright'
+import { chromium, request } from 'playwright'
 
 setDefaultTimeout(60_000)
 
@@ -11,13 +11,14 @@ class CustomWorld {
 setWorldConstructor(CustomWorld)
 
 Before(async function () {
-  // Allow turning off headless mode and enabling slow motion/devtools via env vars
   const headless = true
   const slowMo = 0
   const devtools = false
 
   this.browser = await chromium.launch({ headless, slowMo, devtools })
-  this.page = await this.browser.newPage()
+
+  const context = await this.browser.newContext({ ignoreHTTPSErrors: true })
+  this.page = await context.newPage()
 })
 
 After(async function () {
