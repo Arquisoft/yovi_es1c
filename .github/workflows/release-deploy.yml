@@ -144,17 +144,21 @@ jobs:
 
       - name: Wait for services to be healthy
         run: |
-          echo "Waiting for services to start..."
-          sleep 15
-          echo "Checking Nginx health..."
-          curl --retry 15 --retry-delay 2 --retry-connrefused http://localhost/health || (docker compose logs && exit 1)
-          echo "Waiting for auth service to be ready..."
-          curl --retry 20 --retry-delay 3 --retry-connrefused -X POST http://localhost/api/auth/register \
-            -H "Content-Type: application/json" \
-            -d '{"username":"healthcheck_probe","password":"probe12345"}' \
-            -o /dev/null -s || true
-          sleep 3
-          echo "Services are ready!"
+          echo "Waiting for nginx to be healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' nginx_proxy 2>/dev/null || echo "none")
+            echo "Attempt $i: nginx status = $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Nginx is healthy!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Timeout waiting for nginx"
+              docker compose logs nginx
+              exit 1
+            fi
+            sleep 3
+          done
 
 
       - name: Show running containers

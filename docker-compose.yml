@@ -164,10 +164,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
-      - ./webapp/dist:/usr/share/nginx/html:ro
     depends_on:
       - webapp
       - users
