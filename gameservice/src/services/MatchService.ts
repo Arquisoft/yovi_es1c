@@ -81,7 +81,7 @@ export class MatchService {
   private async getBotMoveWithTimeout(matchId: number, boardSize: number, moves: MatchMove[]): Promise<string | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 500);
-    const baseUrl = process.env.GAMEY_SERVICE_URL ?? 'http://gamey:4000';
+    const baseUrl = process.env.GAMEY_SERVICE_URL
 
     try {
       const response = await fetch(`${baseUrl}/move`, {
