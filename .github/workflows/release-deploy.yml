@@ -335,13 +335,14 @@ jobs:
             mkdir -p monitoring/grafana/provisioning/datasources
             mkdir -p monitoring/grafana/provisioning/dashboards
             mkdir -p users/data
-            mkdir -p auth/data
 
             # Ficheros raíz
             wget -q "$RAW/docker-compose.yml" -O docker-compose.yml
 
             # Nginx
+            mkdir -p nginx/certbot
             wget -q "$RAW/nginx/nginx.conf" -O nginx/nginx.conf
+            wget -q "$RAW/nginx/certbot/Dockerfile" -O nginx/certbot/Dockerfile
 
             # Prometheus
             wget -q "$RAW/monitoring/prometheus/prometheus.yml" -O monitoring/prometheus/prometheus.yml
@@ -377,13 +378,16 @@ jobs:
               docker-compose --profile certbot run --rm certbot
             else
               echo "Certificado ya existe, saltando certbot."
+            fi  
+            # Verificar que el certificado existe antes de continuar
+            if [ ! -f "$CERT_PATH" ]; then
+            echo "ERROR: El certificado no se generó correctamente. Abortando deploy."
+            exit 1
             fi
-
-            # CA certificates — symlinks al volumen de letsencrypt
+            # CA certificates — copiar ficheros reales desde el volumen letsencrypt
             mkdir -p nginx/certs
-            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/${DUCKDNS_DOMAIN}.duckdns.org/fullchain.pem nginx/certs/fullchain.pem
-            ln -sf /var/lib/docker/volumes/$(basename $PWD)_letsencrypt/_data/live/${DUCKDNS_DOMAIN}.duckdns.org/privkey.pem nginx/certs/privkey.pem
-
+            VOLUME="$(basename $PWD)_letsencrypt"
+            docker run --rm -v ${VOLUME}:/letsencrypt -v $(pwd)/nginx/certs:/certs alpine sh -c "cp -L /letsencrypt/live/${DUCKDNS_DOMAIN}.duckdns.org/fullchain.pem /certs/fullchain.pem && cp -L /letsencrypt/live/${DUCKDNS_DOMAIN}.duckdns.org/privkey.pem /certs/privkey.pem"
             # Deploy
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             export JWT_SECRET="${JWT_SECRET}"
