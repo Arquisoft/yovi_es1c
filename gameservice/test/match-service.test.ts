@@ -210,6 +210,107 @@ describe('MatchService', () => {
       const state = await matchService.getMatchState(1);
       expect(state?.botStatus).toBe('done');
     });
+
+    it.each([
+      {
+        label: 'classic match sends explicit no-extras rules',
+        storedRules: undefined,
+        expectedRules: {
+          pieRule: { enabled: false },
+          honey: { enabled: false, blockedCells: [] },
+        },
+      },
+      {
+        label: 'pie-only match propagates pie rule',
+        storedRules: {
+          pieRule: { enabled: true },
+          honey: { enabled: false, blockedCells: [] },
+        },
+        expectedRules: {
+          pieRule: { enabled: true },
+          honey: { enabled: false, blockedCells: [] },
+        },
+      },
+      {
+        label: 'honey-only match propagates blocked cells',
+        storedRules: {
+          pieRule: { enabled: false },
+          honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+        },
+        expectedRules: {
+          pieRule: { enabled: false },
+          honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+        },
+      },
+      {
+        label: 'both-enabled match propagates both extras',
+        storedRules: {
+          pieRule: { enabled: true },
+          honey: { enabled: true, blockedCells: [{ row: 2, col: 1 }] },
+        },
+        expectedRules: {
+          pieRule: { enabled: true },
+          honey: { enabled: true, blockedCells: [{ row: 2, col: 1 }] },
+        },
+      },
+    ])('$label', async ({ storedRules, expectedRules }) => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        status: 'ONGOING',
+        rules: storedRules,
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: 'a1', player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({ position_yen: 'c1' }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const requestInit = fetchSpy.mock.calls[0][1] as RequestInit;
+      const payload = JSON.parse(String(requestInit.body)) as { rules: MatchRules };
+      expect(payload.rules).toEqual(expectedRules);
+    });
+
+    it('parses persisted JSON-string rules before calling gamey', async () => {
+      const storedRules = JSON.stringify({
+        pieRule: { enabled: true },
+        honey: { enabled: true, blockedCells: [{ row: 0, col: 0 }] },
+      });
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        status: 'ONGOING',
+        rules: storedRules,
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: 'a1', player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({ position_yen: 'c1' }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const requestInit = fetchSpy.mock.calls[0][1] as RequestInit;
+      const payload = JSON.parse(String(requestInit.body)) as { rules: MatchRules };
+      expect(payload.rules).toEqual({
+        pieRule: { enabled: true },
+        honey: { enabled: true, blockedCells: [{ row: 0, col: 0 }] },
+      });
+    });
   });
 
   describe('finishMatch', () => {

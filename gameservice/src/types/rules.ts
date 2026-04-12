@@ -27,3 +27,35 @@ export function cloneDefaultMatchRules(): MatchRules {
         },
     };
 }
+
+export function normalizeMatchRules(rawRules: unknown): MatchRules {
+    const normalized = cloneDefaultMatchRules();
+    if (!rawRules || typeof rawRules !== 'object') return normalized;
+
+    const candidate = rawRules as Record<string, unknown>;
+    const pieRule = candidate.pieRule;
+    const honey = candidate.honey;
+
+    if (pieRule && typeof pieRule === 'object') {
+        const pieEnabled = (pieRule as Record<string, unknown>).enabled;
+        normalized.pieRule.enabled = pieEnabled === true;
+    }
+
+    if (honey && typeof honey === 'object') {
+        const honeyRecord = honey as Record<string, unknown>;
+        normalized.honey.enabled = honeyRecord.enabled === true;
+
+        if (Array.isArray(honeyRecord.blockedCells)) {
+            normalized.honey.blockedCells = honeyRecord.blockedCells
+                .filter((cell): cell is Record<string, unknown> => typeof cell === 'object' && cell !== null)
+                .map((cell) => ({ row: Number(cell.row), col: Number(cell.col) }))
+                .filter((cell) => Number.isInteger(cell.row) && Number.isInteger(cell.col) && cell.row >= 0 && cell.col >= 0);
+        }
+    }
+
+    if (!normalized.honey.enabled) {
+        normalized.honey.blockedCells = [];
+    }
+
+    return normalized;
+}
