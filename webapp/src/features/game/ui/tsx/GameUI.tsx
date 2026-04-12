@@ -142,10 +142,11 @@ export default function GameUI() {
         displayState.turn,
         displayState.players,
         config.mode,
+        t,
     );
 
     const winnerLabel = isOnline
-        ? resolveWinnerLabel(displayState.winner, displayState.players)
+        ? resolveWinnerLabel(displayState.winner, displayState.players, t)
         : state.gameOver
             ? displayState.turn === 1
                 ? t('winnerUser1')

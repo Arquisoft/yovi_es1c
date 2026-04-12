@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface TurnTimerProps {
   timerEndsAt: number;
@@ -8,6 +9,8 @@ interface TurnTimerProps {
 export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerProps>) {
   const [now, setNow] = useState(Date.now());
   const expiredRef = useRef(false);
+  const {t} = useTranslation();
+  
 
   useEffect(() => {
     expiredRef.current = false;
@@ -27,5 +30,5 @@ export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerP
     }
   }, [remaining, onExpire]);
 
-  return <span style={{ color: remaining <= 5 ? 'var(--phosphor-danger)' : 'var(--phosphor-primary)' }}>⏱ {remaining}s</span>;
+  return <span style={{ color: remaining <= 5 ? 'var(--phosphor-danger)' : 'var(--phosphor-primary)' }}>⏱ {remaining} {t('seconds', { count: remaining })}</span>;
 }
