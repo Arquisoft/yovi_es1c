@@ -5,6 +5,7 @@ import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules } from '../type
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
 import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
+import { randomFillSync } from 'crypto';
 export type MoveErrorCode =
     | 'VERSION_CONFLICT'
     | 'NOT_YOUR_TURN'
@@ -529,35 +530,89 @@ export class OnlineSessionService {
     });
   }
   async handleTurnTimeout(matchId: string, userId: number, expectedVersion: number): Promise<void> {
-    const state = await this.getState(matchId);
-    if (!state) return;
-    if (state.winner) return;
-    if (state.version !== expectedVersion) return;
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) return;
+      if (state.winner) return;
+      if (state.version !== expectedVersion) return;
 
-    const currentPlayer = state.players[state.turn];
-    if (currentPlayer.userId !== userId) return;
+      const currentPlayer = state.players[state.turn];
+      if (currentPlayer.userId !== userId) return;
 
-    turnTimeouts.inc();
+      turnTimeouts.inc();
 
-    const randomMove = this.pickRandomMove(state.layout);
-    if (!randomMove) return;
+      // Pie Rule: si el segundo jugador está en ventana de swap (turno 1, exactamente 1 piedra),
+      // hacer swap automático inline (NO llamar handlePieSwap — usaría withMatchLock y causaría deadlock)
+      const pieRuleEnabled = state.rules?.pieRule?.enabled === true;
+      const isSecondTurn = state.turn === 1;
+      const stonesOnBoard = state.layout.split('').filter((c) => c === 'B' || c === 'R').length;
 
-    await this.handleMove(matchId, userId, randomMove, expectedVersion);
+      if (pieRuleEnabled && isSecondTurn && stonesOnBoard === 1) {
+        const swappedPlayers: [typeof state.players[0], typeof state.players[1]] = [
+          { ...state.players[0], symbol: state.players[1].symbol },
+          { ...state.players[1], symbol: state.players[0].symbol },
+        ];
+        const nextState: OnlineSessionState = {
+          ...state,
+          players: swappedPlayers,
+          turn: 1,
+          version: state.version + 1,
+          timerEndsAt: this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
+        };
+        await this.saveState(nextState);
+        onlineMoves.inc();
+        this.emitSessionState(nextState);
+        return;
+      }
+
+      // Movimiento aleatorio respetando celdas bloqueadas (Honey)
+      const randomMove = this.pickRandomMove(state.layout, state.rules);
+      if (!randomMove) return;
+
+      // Aplicar el movimiento directamente — ya estamos dentro del lock,
+      // NO llamar a handleMove porque intentaría adquirir el mismo lock (deadlock)
+      const nextLayout = this.setCell(state.layout, randomMove.row, randomMove.col, currentPlayer.symbol);
+      const winner = this.resolveWinner(nextLayout, state.size);
+      const nextState: OnlineSessionState = {
+        ...state,
+        layout: nextLayout,
+        turn: winner ? state.turn : (state.turn === 0 ? 1 : 0),
+        version: state.version + 1,
+        timerEndsAt: winner
+            ? state.timerEndsAt
+            : this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
+        winner,
+        status: winner ? 'finished' : 'active',
+        closeReason: winner ? 'winner' : null,
+      };
+
+      await this.saveState(nextState);
+      onlineMoves.inc();
+
+      if (winner) {
+        onlineSessionEvents.inc({ event: 'finished' });
+        await this.persistOnlineResult(nextState, winner);
+      }
+
+      this.emitSessionState(nextState);
+    });
   }
 
-  private secureRandomInt(max: number): number {
-    const array = new Uint32Array(1);
-    crypto.getRandomValues(array);
-    return array[0] % max;
-  }
+  private pickRandomMove(layout: string, rules?: MatchRules): MoveCommand | null {
+    const blockedSet = new Set<string>();
 
-  private pickRandomMove(layout: string): MoveCommand | null {
+    if (rules?.honey?.enabled && Array.isArray(rules.honey.blockedCells)) {
+      for (const cell of rules.honey.blockedCells) {
+        blockedSet.add(`${cell.row}-${cell.col}`);
+      }
+    }
+
     const emptyCells: MoveCommand[] = [];
-
     const rows = layout.split('/');
+
     for (let row = 0; row < rows.length; row++) {
       for (let col = 0; col < rows[row].length; col++) {
-        if (rows[row][col] === '.') {
+        if (rows[row][col] === '.' && !blockedSet.has(`${row}-${col}`)) {
           emptyCells.push({ row, col });
         }
       }
@@ -680,5 +735,11 @@ export class OnlineSessionService {
         this.matchLocks.delete(matchId);
       }
     }
+  }
+
+  private secureRandomInt(max: number): number {
+    const array = new Uint32Array(1);
+    randomFillSync(array);
+    return array[0] % max;
   }
 }

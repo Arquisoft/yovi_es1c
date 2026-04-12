@@ -15,7 +15,6 @@ import { useAuth } from '../../../auth';
 import { useGameController, type BotDifficulty } from '../../hooks/useGameController.ts';
 import { useOnlineSession } from '../../hooks/useOnlineSession';
 import { useChatSession } from '../../hooks/useChatSession';
-import { onlineSocketClient } from '../../realtime/onlineSocketClient';
 import type { MatchRulesDto, YenPositionDto } from '../../../../shared/contracts';
 import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
@@ -46,7 +45,6 @@ const modeLabel: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
     ONLINE: 'Online',
 };
 
-// Errores recuperables: se muestran como aviso menor, no bloquean la sesión
 const RECOVERABLE_ERROR_CODES = new Set([
     'VERSION_CONFLICT',
     'NOT_YOUR_TURN',
@@ -92,6 +90,7 @@ export default function GameUI() {
         connectionStatus,
         playMove,
         applyPieSwapOnline,
+        emitTurnTimeout,
         isTerminalError,
     } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
@@ -100,7 +99,6 @@ export default function GameUI() {
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
-    // Navegar fuera solo cuando el error es terminal (sesión irrecuperable)
     useEffect(() => {
         if (config?.mode !== 'ONLINE') return;
         if (!isTerminalError) return;
@@ -141,13 +139,10 @@ export default function GameUI() {
     const onlineGameOver = isOnline && Boolean(sessionState?.winner);
     const gameOver = isOnline ? onlineGameOver : localGameOver;
 
-    // En online: solo mostrar errores terminales o de juego (no los recuperables técnicos)
-    // En local: usar el error del controller
     const errorMessage = isOnline
         ? (onlineError && !RECOVERABLE_ERROR_CODES.has(onlineError.code) ? onlineError.message : null)
         : state.error;
 
-    // Aviso menor para errores recuperables (VERSION_CONFLICT, etc.)
     const recoverableWarning = isOnline && onlineError && RECOVERABLE_ERROR_CODES.has(onlineError.code)
         ? onlineError.message
         : null;
@@ -178,7 +173,6 @@ export default function GameUI() {
     const avatarColor = displayState.turn === 0 ? '#39ff14' : '#8cff68';
     const stonesPlaced = displayState.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
 
-    // Pie Rule en modo local (LOCAL_2P)
     const canUsePieSwapLocal =
         !isOnline
         && config.mode === 'LOCAL_2P'
@@ -187,7 +181,6 @@ export default function GameUI() {
         && stonesPlaced === 1
         && !gameOver;
 
-    // Pie Rule en modo online: el jugador con turno 1 puede swap cuando solo hay 1 piedra
     const canUsePieSwapOnline =
         isOnline
         && sessionState !== null
@@ -286,12 +279,7 @@ export default function GameUI() {
                                             <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Tiempo de turno</Typography>
                                             <TurnTimer
                                                 timerEndsAt={sessionState.timerEndsAt}
-                                                onExpire={() => {
-                                                    onlineSocketClient.emit('turn:timeout', {
-                                                        matchId: sessionState.matchId,
-                                                        version: sessionState.version,
-                                                    });
-                                                }}
+                                                onExpire={emitTurnTimeout}
                                             />
                                         </Box>
                                     </CardContent>
