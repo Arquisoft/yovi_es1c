@@ -133,18 +133,18 @@ describe('Game validation schemas', () => {
             });
         });
 
-        it('should accept honey-only with blocked cells', () => {
+        it('should accept honey-only without blocked cells (generated server-side)', () => {
             const result = validateCreateMatch({
                 boardSize: 8,
                 difficulty: 'easy',
                 rules: {
                     pieRule: { enabled: false },
-                    honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }, { row: 2, col: 1 }] },
+                    honey: { enabled: true, blockedCells: [] },
                 },
             });
             expect(result.rules).toEqual({
                 pieRule: { enabled: false },
-                honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }, { row: 2, col: 1 }] },
+                honey: { enabled: true, blockedCells: [] },
             });
         });
 
@@ -154,12 +154,12 @@ describe('Game validation schemas', () => {
                 difficulty: 'easy',
                 rules: {
                     pieRule: { enabled: true },
-                    honey: { enabled: true, blockedCells: [{ row: 3, col: 2 }] },
+                    honey: { enabled: true, blockedCells: [] },
                 },
             });
             expect(result.rules).toEqual({
                 pieRule: { enabled: true },
-                honey: { enabled: true, blockedCells: [{ row: 3, col: 2 }] },
+                honey: { enabled: true, blockedCells: [] },
             });
         });
 
@@ -173,20 +173,20 @@ describe('Game validation schemas', () => {
                         honey: { enabled: false, blockedCells: [{ row: 0, col: 0 }] },
                     },
                 })
-            ).toThrow('rules.honey.blockedCells requires rules.honey.enabled=true');
+            ).toThrow('rules.honey.blockedCells is generated automatically and cannot be configured manually');
         });
 
-        it('should reject invalid blocked cell coordinates', () => {
+        it('should reject manually configured blocked cell coordinates', () => {
             expect(() =>
                 validateCreateMatch({
                     boardSize: 8,
                     difficulty: 'easy',
                     rules: {
                         pieRule: { enabled: false },
-                        honey: { enabled: true, blockedCells: [{ row: -1, col: 0 }] },
+                        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
                     },
                 })
-            ).toThrow();
+            ).toThrow('rules.honey.blockedCells is generated automatically and cannot be configured manually');
         });
 
         it('should accept all valid modes', () => {

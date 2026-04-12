@@ -33,10 +33,7 @@ const RECOVERABLE_ERROR_CODES = new Set([
   'DUPLICATE_EVENT',
 ]);
 
-const SILENT_ERROR_CODES = new Set([
-  'VERSION_CONFLICT',
-  'DUPLICATE_EVENT',
-]);
+const SILENT_ERROR_CODES = new Set<string>();
 
 export interface OnlineSnapshotPayload {
   matchId: string;
@@ -106,13 +103,16 @@ export function useOnlineSession(matchId: string | null) {
       return;
     }
 
-    const loadSnapshot = async () => {
+    const loadSnapshot = async (preserveCurrentStateOnError = false) => {
       const response = await fetchWithAuth(
           `${API_CONFIG.GAME_SERVICE_API}/online/sessions/${matchId}`,
           { method: 'GET' },
       );
 
       if (!response.ok) {
+        if (preserveCurrentStateOnError) {
+          return;
+        }
         let payload: Partial<SessionErrorPayload> | null = null;
         try {
           payload = (await response.json()) as Partial<SessionErrorPayload>;
@@ -221,6 +221,10 @@ export function useOnlineSession(matchId: string | null) {
           if (SILENT_ERROR_CODES.has(payload.code)) return;
 
           setError(payload);
+
+          if (payload.code === 'VERSION_CONFLICT') {
+            void loadSnapshot(true);
+          }
 
           if (RECOVERABLE_ERROR_CODES.has(payload.code)) {
             setTimeout(() => {

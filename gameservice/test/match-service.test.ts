@@ -61,16 +61,30 @@ describe('MatchService', () => {
       }
     });
 
-    it('accepts explicit rules for extras', async () => {
+    it('generates Honey blocked cells when Honey is enabled without configured cells', async () => {
       vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
       const rules: MatchRules = {
         pieRule: { enabled: true },
-        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+        honey: { enabled: true, blockedCells: [] },
       };
 
       await matchService.createMatch(1, 8, 'easy', 'BOT', rules);
 
-      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', 'BOT', rules);
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(
+          1,
+          8,
+          'easy',
+          'BOT',
+          expect.objectContaining({
+            pieRule: { enabled: true },
+            honey: expect.objectContaining({
+              enabled: true,
+              blockedCells: expect.arrayContaining([
+                expect.objectContaining({ row: expect.any(Number), col: expect.any(Number) }),
+              ]),
+            }),
+          }),
+      );
     });
 
     it('should accept all difficulty levels', async () => {

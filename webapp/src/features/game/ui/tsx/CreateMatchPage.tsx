@@ -14,7 +14,6 @@ import {
     Slider,
     Checkbox,
     FormControlLabel,
-    TextField,
     Divider,
 } from '@mui/material';
 import { useAuth } from '../../../auth';
@@ -35,26 +34,10 @@ export default function CreateMatchPage() {
     const [error, setError] = useState<string | null>(null);
     const [pieRuleEnabled, setPieRuleEnabled] = useState(false);
     const [honeyEnabled, setHoneyEnabled] = useState(false);
-    const [blockedCellsText, setBlockedCellsText] = useState('1,0');
-
-    const parseBlockedCells = (): MatchRulesDto['honey']['blockedCells'] => {
-        if (!honeyEnabled) return [];
-        return blockedCellsText
-            .split(';')
-            .map((entry) => entry.trim())
-            .filter(Boolean)
-            .map((entry) => {
-                const [rowRaw, colRaw] = entry.split(',').map((part) => Number(part.trim()));
-                if (!Number.isInteger(rowRaw) || !Number.isInteger(colRaw) || rowRaw < 0 || colRaw < 0) {
-                    throw new Error(`Coordenada inválida: "${entry}". Usa formato row,col`);
-                }
-                return { row: rowRaw, col: colRaw };
-            });
-    };
 
     const buildRules = (): MatchRulesDto => ({
         pieRule: { enabled: pieRuleEnabled },
-        honey: { enabled: honeyEnabled, blockedCells: honeyEnabled ? parseBlockedCells() : [] },
+        honey: { enabled: honeyEnabled, blockedCells: [] },
     });
 
     const buttonLabel = loading
@@ -70,13 +53,7 @@ export default function CreateMatchPage() {
         }
 
         if (mode === 'ONLINE') {
-            let rules: MatchRulesDto;
-            try {
-                rules = buildRules();
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Configuración de Honey inválida');
-                return;
-            }
+            const rules = buildRules();
             navigate('/online/matchmaking', { state: { boardSize, rules } });
             return;
         }
@@ -98,6 +75,21 @@ export default function CreateMatchPage() {
             }
 
             const data = await res.json();
+            let authoritativeRules = rules;
+
+            try {
+                const stateRes = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${data.matchId}`, {
+                    method: 'GET',
+                });
+                if (stateRes.ok) {
+                    const statePayload = await stateRes.json() as { rules?: MatchRulesDto };
+                    if (statePayload.rules) {
+                        authoritativeRules = statePayload.rules;
+                    }
+                }
+            } catch {
+                authoritativeRules = rules;
+            }
 
             navigate('/gamey', {
                 state: {
@@ -106,7 +98,7 @@ export default function CreateMatchPage() {
                     boardSize,
                     mode,
                     difficulty,
-                    rules,
+                    rules: authoritativeRules,
                 },
             });
         } catch (err) {
@@ -259,17 +251,6 @@ export default function CreateMatchPage() {
                             control={<Checkbox checked={honeyEnabled} onChange={(e) => setHoneyEnabled(e.target.checked)} />}
                             label="Honey (celdas bloqueadas)"
                         />
-                        {honeyEnabled && (
-                            <TextField
-                                label="Bloqueadas (row,col; row,col)"
-                                value={blockedCellsText}
-                                onChange={(e) => setBlockedCellsText(e.target.value)}
-                                fullWidth
-                                size="small"
-                                helperText="Ejemplo: 1,0; 2,1"
-                                sx={{ mt: 1 }}
-                            />
-                        )}
                     </Box>
 
                     {}

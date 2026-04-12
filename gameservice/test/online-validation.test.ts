@@ -17,15 +17,25 @@ describe('online schemas', () => {
       boardSize: 8,
       rules: {
         pieRule: { enabled: true },
-        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+        honey: { enabled: true, blockedCells: [] },
       },
     })).toEqual({
       boardSize: 8,
       rules: {
         pieRule: { enabled: true },
-        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+        honey: { enabled: true, blockedCells: [] },
       },
     });
+  });
+
+  it('rejects manual blocked cells in queue join rules', () => {
+    expect(() => validateQueueJoin({
+      boardSize: 8,
+      rules: {
+        pieRule: { enabled: false },
+        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+      },
+    })).toThrow('rules.honey.blockedCells is generated automatically and cannot be configured manually');
   });
 
   it('validates move payload', () => {

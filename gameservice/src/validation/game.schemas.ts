@@ -90,24 +90,9 @@ function validateMatchRules(data: unknown): MatchRules {
       if (!Array.isArray(honey.blockedCells)) {
         throw new ValidationError('rules.honey.blockedCells must be an array');
       }
-
-      normalized.honey.blockedCells = honey.blockedCells.map((cell, index) => {
-        if (typeof cell !== 'object' || cell === null) {
-          throw new ValidationError(`rules.honey.blockedCells[${index}] must be an object`);
-        }
-        const blocked = cell as Record<string, unknown>;
-        if (
-            typeof blocked.row !== 'number'
-            || !Number.isInteger(blocked.row)
-            || blocked.row < 0
-            || typeof blocked.col !== 'number'
-            || !Number.isInteger(blocked.col)
-            || blocked.col < 0
-        ) {
-          throw new ValidationError(`rules.honey.blockedCells[${index}] requires non-negative integer row and col`);
-        }
-        return { row: blocked.row, col: blocked.col };
-      });
+      if (honey.blockedCells.length > 0) {
+        throw new ValidationError('rules.honey.blockedCells is generated automatically and cannot be configured manually');
+      }
     }
   }
 

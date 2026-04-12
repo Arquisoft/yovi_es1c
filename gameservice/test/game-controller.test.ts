@@ -142,7 +142,7 @@ describe('GameController integration tests', () => {
             mode: 'BOT',
             rules: {
               pieRule: { enabled: true },
-              honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+              honey: { enabled: true, blockedCells: [] },
             },
           });
 
@@ -154,7 +154,7 @@ describe('GameController integration tests', () => {
           'BOT',
           {
             pieRule: { enabled: true },
-            honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+            honey: { enabled: true, blockedCells: [] },
           },
       );
     });

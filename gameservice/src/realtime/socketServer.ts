@@ -1,6 +1,6 @@
 import { Server as HttpServer } from 'http';
 import { MatchmakingService, RedisCommandClient, SocketEmitter as MatchSocketEmitter } from '../services/MatchmakingService';
-import { OnlineSessionService, RedisSessionClient } from '../services/OnlineSessionService';
+import { OnlineSessionError, OnlineSessionService, RedisSessionClient } from '../services/OnlineSessionService';
 import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from '../services/BotFallbackService';
 import { StatsService } from '../services/StatsService';
@@ -100,6 +100,14 @@ function safeAsync<T>(
 ): (payload: T) => void {
     return (payload: T) => {
         fn(payload).catch((err: unknown) => {
+            if (err instanceof OnlineSessionError) {
+                socket.emit(errorEventName, {
+                    code: err.code,
+                    message: err.message,
+                });
+                return;
+            }
+
             console.error('[socket] Unhandled async error:', err);
             const message = err instanceof Error ? err.message : 'Unexpected server error';
             const code = (err as { code?: string }).code ?? 'INTERNAL_ERROR';

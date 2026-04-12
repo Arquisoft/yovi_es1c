@@ -1,47 +1,13 @@
 use crate::core::SetIdx;
 use crate::core::player_set::PlayerSet;
+use crate::core::rules::GameRules;
 use crate::{Coordinates, GameAction, GameYError, Movement, PlayerId, RenderOptions, YEN};
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::Path;
 
 /// A Result type alias for game operations that may fail with a `GameYError`.
 pub type Result<T> = std::result::Result<T, crate::GameYError>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct PieRule {
-    #[serde(default)]
-    pub enabled: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct BlockedCell {
-    pub row: u32,
-    pub col: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct HoneyRule {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default, rename = "blockedCells")]
-    pub blocked_cells: Vec<BlockedCell>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct GameRules {
-    #[serde(default, rename = "pieRule")]
-    pub pie_rule: PieRule,
-    #[serde(default)]
-    pub honey: HoneyRule,
-}
-
-impl GameRules {
-    pub fn classic() -> Self {
-        Self::default()
-    }
-}
 
 /// The main game state for a Y game.
 ///
@@ -380,7 +346,7 @@ impl GameY {
         Ok(())
     }
 
-    fn coords_from_blocked_cell(&self, blocked: &BlockedCell) -> Result<Coordinates> {
+    fn coords_from_blocked_cell(&self, blocked: &crate::BlockedCell) -> Result<Coordinates> {
         let row = blocked.row;
         let col = blocked.col;
         if row >= self.board_size || col > row {

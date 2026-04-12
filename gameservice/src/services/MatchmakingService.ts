@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from './BotFallbackService';
 import { OnlineMatchAssignment, OnlineQueueEntry, OnlineSessionState } from '../types/online';
-import { MatchRules, normalizeMatchRules } from '../types/rules.js';
+import { MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { StatsService } from './StatsService';
 import { matchmakingDuration, matchmakingEvents } from '../metrics';
 
@@ -299,7 +299,7 @@ export class MatchmakingService {
       matchId: assignment.matchId,
       layout,
       size: boardSize,
-      rules: assignment.playerA.rules,
+      rules: resolveRulesForMatch(boardSize, assignment.playerA.rules),
       turn: 0,
       version: 0,
       timerEndsAt: Date.now() + 25_000,

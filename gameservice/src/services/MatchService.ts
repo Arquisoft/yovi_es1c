@@ -1,6 +1,6 @@
 import { MatchRepository } from "../repositories/MatchRepository";
 import { gamesCreated, activeGames, gamesFinished } from '../metrics';
-import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules } from "../types/rules.js";
+import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from "../types/rules.js";
 
 type MatchMove = {
   position_yen: string;
@@ -21,7 +21,8 @@ export class MatchService {
       mode: string = 'BOT',
       rules: MatchRules = cloneDefaultMatchRules(),
   ) {
-    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode, rules);
+    const resolvedRules = resolveRulesForMatch(boardSize, rules);
+    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode, resolvedRules);
     gamesCreated.inc();
     activeGames.inc();
     return match;

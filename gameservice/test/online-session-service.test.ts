@@ -25,6 +25,27 @@ describe('OnlineSessionService', () => {
     await expect(service.playMove('m1', 1, 0, 0, 1)).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
   });
 
+  it('VERSION_CONFLICT emits latest session state so client can resync and continue', async () => {
+    const { service } = await setup();
+    await service.playMove('m1', 1, 0, 0, 0);
+
+    await expect(service.playMove('m1', 2, 1, 0, 0)).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+
+    expect(emit).toHaveBeenCalledWith(
+        'session:state',
+        expect.objectContaining({
+          matchId: 'm1',
+          version: 1,
+          layout: 'B/../...',
+        }),
+    );
+
+    await expect(service.playMove('m1', 2, 1, 0, 1)).resolves.toMatchObject({
+      version: 2,
+      layout: 'B/R./...',
+    });
+  });
+
   it('createSession initializes classic rules when none are provided', async () => {
     const { session } = await setup();
     expect(session.rules).toEqual({
@@ -48,6 +69,31 @@ describe('OnlineSessionService', () => {
     );
 
     expect(session.rules).toEqual(rules);
+  });
+
+  it('createSession auto-generates Honey blocked cells once and keeps them stable', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+    const session = await service.createSession(
+        'honey-generated',
+        8,
+        [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+        'HUMAN',
+        {
+          pieRule: { enabled: false },
+          honey: { enabled: true, blockedCells: [] },
+        },
+    );
+
+    expect(session.rules.honey.enabled).toBe(true);
+    expect(session.rules.honey.blockedCells.length).toBeGreaterThan(0);
+
+    const blocked = session.rules.honey.blockedCells[0];
+    await expect(service.playMove('honey-generated', 1, blocked.row, blocked.col, 0)).rejects.toMatchObject({
+      code: 'INVALID_MOVE',
+    });
+
+    const after = await service.getSnapshot('honey-generated');
+    expect(after?.rules.honey.blockedCells).toEqual(session.rules.honey.blockedCells);
   });
 
   it('rejects move with NOT_YOUR_TURN', async () => {
@@ -194,26 +240,22 @@ describe('OnlineSessionService', () => {
 
   it('handleTurnTimeout performs a random valid move when it is current player turn', async () => {
     const { service } = await setup();
-    const moveSpy = vi.spyOn(service, 'handleMove');
-
-    vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
-      (array as Uint32Array)[0] = 0;
-      return array as Uint32Array;
-    });
+    (service as any).secureRandomInt = vi.fn(() => 0);
 
     await service.handleTurnTimeout('m1', 1, 0);
+    const snapshot = await service.getSnapshot('m1');
+    expect(snapshot?.layout).toBe('B/../...');
+    expect(snapshot?.version).toBe(1);
+    expect(snapshot?.turn).toBe(1);
 
-    expect(moveSpy).toHaveBeenCalledWith('m1', 1, { row: 0, col: 0 }, 0);
-
-    vi.restoreAllMocks();
   });
 
   it('handleTurnTimeout skips when version does not match', async () => {
     const { service } = await setup();
-    const moveSpy = vi.spyOn(service, 'handleMove');
-
     await service.handleTurnTimeout('m1', 1, 99);
-    expect(moveSpy).not.toHaveBeenCalled();
+    const snapshot = await service.getSnapshot('m1');
+    expect(snapshot?.version).toBe(0);
+    expect(snapshot?.layout).toBe('./../...');
   });
 
   it('getSnapshot returns null for missing session', async () => {
@@ -325,14 +367,14 @@ describe('OnlineSessionService', () => {
       emit.mockReset();
     });
 
-    it('intercambia los símbolos de ambos jugadores y emite session:state', async () => {
+    it('mantiene símbolos de jugadores y solo cambia la piedra inicial', async () => {
       const { service, io } = await setupWithPieRule();
 
       const result = await service.handlePieSwap('pie-m1', 2, 1);
 
-      expect(result.players[0].symbol).toBe('R');
-      expect(result.players[1].symbol).toBe('B');
-
+      expect(result.players[0].symbol).toBe('B');
+      expect(result.players[1].symbol).toBe('R');
+      expect(result.layout).toBe('R/../...');
       expect(result.version).toBe(2);
 
       expect(io.to).toHaveBeenCalledWith('pie-m1');
@@ -345,10 +387,10 @@ describe('OnlineSessionService', () => {
       );
     });
 
-    it('mantiene el turno en 1 (el jugador que activó la Pie Rule sigue jugando)', async () => {
+    it('tras swap, el turno pasa al jugador original (turn=0)', async () => {
       const { service } = await setupWithPieRule();
       const result = await service.handlePieSwap('pie-m1', 2, 1);
-      expect(result.turn).toBe(1);
+      expect(result.turn).toBe(0);
     });
 
     it('rechaza con VERSION_CONFLICT si expectedVersion no coincide', async () => {
@@ -436,6 +478,42 @@ describe('OnlineSessionService', () => {
       ).rejects.toMatchObject({ code: 'PIE_RULE_NOT_AVAILABLE' });
     });
   });
+
+  describe('handleTurnTimeout with legal actions', () => {
+    it('can auto-apply Pie swap as a legal timeout action', async () => {
+      const { service } = await setupWithPieRule();
+      (service as any).secureRandomInt = vi.fn(() => 0);
+
+      await service.handleTurnTimeout('pie-m1', 2, 1);
+
+      const snapshot = await service.getSnapshot('pie-m1');
+      expect(snapshot?.players[0].symbol).toBe('B');
+      expect(snapshot?.players[1].symbol).toBe('R');
+      expect(snapshot?.layout).toBe('R/../...');
+      expect(snapshot?.turn).toBe(0);
+      expect(snapshot?.version).toBe(2);
+    });
+
+    it('timeout never selects Honey blocked cells', async () => {
+      const rules: MatchRules = {
+        pieRule: { enabled: false },
+        honey: { enabled: true, blockedCells: [{ row: 0, col: 0 }] },
+      };
+      const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+      await service.createSession(
+          'honey-timeout',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+          rules,
+      );
+      (service as any).secureRandomInt = vi.fn(() => 0);
+
+      await service.handleTurnTimeout('honey-timeout', 1, 0);
+      const snapshot = await service.getSnapshot('honey-timeout');
+
+      expect(snapshot?.layout.startsWith('B')).toBe(false);
+      expect(snapshot?.layout).toBe('./B./...');
+    });
+  });
 });
-
-

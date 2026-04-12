@@ -1,3 +1,5 @@
+import { randomInt } from 'crypto';
+
 export interface BlockedCell {
     row: number;
     col: number;
@@ -58,4 +60,41 @@ export function normalizeMatchRules(rawRules: unknown): MatchRules {
     }
 
     return normalized;
+}
+
+export function resolveRulesForMatch(boardSize: number, rawRules: unknown): MatchRules {
+    const normalized = normalizeMatchRules(rawRules);
+    if (!normalized.honey.enabled) {
+        return normalized;
+    }
+
+    if (normalized.honey.blockedCells.length > 0) {
+        return normalized;
+    }
+
+    return {
+        ...normalized,
+        honey: {
+            ...normalized.honey,
+            blockedCells: generateHoneyBlockedCells(boardSize),
+        },
+    };
+}
+
+function generateHoneyBlockedCells(boardSize: number): BlockedCell[] {
+    const rows = Number.isInteger(boardSize) && boardSize > 1 ? boardSize : 8;
+    const targetCount = Math.max(1, Math.floor(rows / 6));
+    const used = new Set<string>();
+    const blockedCells: BlockedCell[] = [];
+
+    while (blockedCells.length < targetCount) {
+        const row = randomInt(1, rows);
+        const col = randomInt(0, row + 1);
+        const key = `${row}:${col}`;
+        if (used.has(key)) continue;
+        used.add(key);
+        blockedCells.push({ row, col });
+    }
+
+    return blockedCells;
 }

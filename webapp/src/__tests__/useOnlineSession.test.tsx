@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import { useOnlineSession } from '../features/game/hooks/useOnlineSession';
 
 type Handler = (payload?: unknown) => void;
@@ -13,6 +14,8 @@ const socketMock = {
   disconnect: vi.fn(),
 };
 
+const fetchMock = vi.fn();
+
 vi.mock('socket.io-client', () => ({
   io: vi.fn(() => socketMock),
 }));
@@ -24,7 +27,14 @@ describe('useOnlineSession', () => {
     localStorage.clear();
     localStorage.setItem('auth_token', 'token');
     localStorage.setItem('auth_refresh_token', 'refresh');
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 })) as unknown as typeof fetch;
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('receives session state and sends move payload', async () => {
@@ -34,7 +44,7 @@ describe('useOnlineSession', () => {
       expect(socketMock.on).toHaveBeenCalled();
     });
 
-    act(() => {
+    await act(async () => {
       handlers.get('session:state')?.({
         matchId: 'm1',
         layout: '. /..',
@@ -47,8 +57,8 @@ describe('useOnlineSession', () => {
 
     expect(result.current.sessionState?.version).toBe(2);
 
-    act(() => {
-      result.current.playMove(0, 0);
+    await act(async () => {
+      await result.current.playMove(0, 0);
     });
 
     expect(socketMock.emit).toHaveBeenNthCalledWith(2, 'move:play', {
@@ -69,7 +79,7 @@ describe('useOnlineSession', () => {
     const { result } = renderHook(() => useOnlineSession('m1'));
     await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-    act(() => {
+    await act(async () => {
       handlers.get('session:state')?.({
         matchId: 'm2',
         layout: '. /..',
@@ -86,7 +96,7 @@ describe('useOnlineSession', () => {
     const { result } = renderHook(() => useOnlineSession('m1'));
     await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-    act(() => {
+    await act(async () => {
       handlers.get('session:state')?.({
         matchId: 'm1',
         layout: '. /..',
@@ -96,7 +106,7 @@ describe('useOnlineSession', () => {
       });
     });
 
-    act(() => {
+    await act(async () => {
       handlers.get('session:state')?.({
         matchId: 'm1',
         layout: 'B/..',
@@ -119,8 +129,11 @@ describe('useOnlineSession', () => {
     const { result } = renderHook(() => useOnlineSession('m1'));
     await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-    act(() => {
-      handlers.get('session:error')?.({ code: 'NOT_YOUR_TURN', message: 'Wait your turn' });
+    await act(async () => {
+      handlers.get('session:error')?.({
+        code: 'NOT_YOUR_TURN',
+        message: 'Wait your turn',
+      });
     });
 
     expect(result.current.error?.message).toBe('Wait your turn');
@@ -130,7 +143,7 @@ describe('useOnlineSession', () => {
     const { result } = renderHook(() => useOnlineSession('m1'));
     await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-    act(() => {
+    await act(async () => {
       handlers.get('session:state')?.({
         matchId: 'm1',
         layout: 'B/..',
@@ -141,19 +154,19 @@ describe('useOnlineSession', () => {
       });
     });
 
-    act(() => { result.current.playMove(1, 2); });
+    await act(async () => {
+      await result.current.playMove(1, 2);
+    });
 
     expect(socketMock.emit).not.toHaveBeenCalledWith('move:play', expect.anything());
   });
-
-  // ─── Bug 2: VERSION_CONFLICT y errores recuperables ───────────────────────
 
   describe('errores recuperables (VERSION_CONFLICT, NOT_YOUR_TURN, DUPLICATE_EVENT)', () => {
     it('VERSION_CONFLICT: establece el error pero NO marca isTerminalError', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-      act(() => {
+      await act(async () => {
         handlers.get('session:error')?.({
           code: 'VERSION_CONFLICT',
           message: 'Version mismatch',
@@ -166,11 +179,11 @@ describe('useOnlineSession', () => {
 
     it('VERSION_CONFLICT: el error se auto-limpia pasados 3 segundos', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
-      // ✅ waitFor ANTES de activar fake timers, para que el setup del hook no se cuelgue
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
       vi.useFakeTimers();
 
-      act(() => {
+      await act(async () => {
         handlers.get('session:error')?.({
           code: 'VERSION_CONFLICT',
           message: 'Version mismatch',
@@ -179,67 +192,133 @@ describe('useOnlineSession', () => {
 
       expect(result.current.error?.code).toBe('VERSION_CONFLICT');
 
-      await act(async () => { vi.advanceTimersByTime(3000); });
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
 
       expect(result.current.error).toBeNull();
-      vi.useRealTimers();
+    });
+
+    it('VERSION_CONFLICT: triggers snapshot resync fetch', async () => {
+      fetchMock
+          .mockResolvedValueOnce(new Response(JSON.stringify({
+            matchId: 'm1',
+            layout: 'B/..',
+            size: 3,
+            rules: {
+              pieRule: { enabled: false },
+              honey: { enabled: false, blockedCells: [] },
+            },
+            turn: 1,
+            version: 1,
+            timerEndsAt: Date.now() + 1000,
+            players: [
+              { userId: 1, username: 'a', symbol: 'B' },
+              { userId: 2, username: 'b', symbol: 'R' },
+            ],
+            winner: null,
+          }), { status: 200 }))
+          .mockResolvedValueOnce(new Response(JSON.stringify({
+            matchId: 'm1',
+            layout: 'B/R.',
+            size: 3,
+            rules: {
+              pieRule: { enabled: false },
+              honey: { enabled: false, blockedCells: [] },
+            },
+            turn: 0,
+            version: 2,
+            timerEndsAt: Date.now() + 2000,
+            players: [
+              { userId: 1, username: 'a', symbol: 'B' },
+              { userId: 2, username: 'b', symbol: 'R' },
+            ],
+            winner: null,
+          }), { status: 200 }));
+
+      const { result } = renderHook(() => useOnlineSession('m1'));
+      await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'VERSION_CONFLICT',
+          message: 'Version mismatch',
+        });
+      });
+
+      await waitFor(() => expect(result.current.sessionState?.version).toBe(2));
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     });
 
     it('NOT_YOUR_TURN: se auto-limpia pasados 3 segundos', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
       vi.useFakeTimers();
 
-      act(() => {
-        handlers.get('session:error')?.({ code: 'NOT_YOUR_TURN', message: 'Wait your turn' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'NOT_YOUR_TURN',
+          message: 'Wait your turn',
+        });
       });
 
       expect(result.current.error?.code).toBe('NOT_YOUR_TURN');
 
-      await act(async () => { vi.advanceTimersByTime(3000); });
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
 
       expect(result.current.error).toBeNull();
-      vi.useRealTimers();
     });
 
     it('DUPLICATE_EVENT: se auto-limpia pasados 3 segundos', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
       vi.useFakeTimers();
 
-      act(() => {
-        handlers.get('session:error')?.({ code: 'DUPLICATE_EVENT', message: 'Already processed' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'DUPLICATE_EVENT',
+          message: 'Already processed',
+        });
       });
 
       expect(result.current.error?.code).toBe('DUPLICATE_EVENT');
 
-      await act(async () => { vi.advanceTimersByTime(3000); });
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
 
       expect(result.current.error).toBeNull();
-      vi.useRealTimers();
     });
 
     it('error recuperable NO se limpia antes de los 3 segundos', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
       vi.useFakeTimers();
 
-      act(() => {
-        handlers.get('session:error')?.({ code: 'VERSION_CONFLICT', message: 'Version mismatch' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'VERSION_CONFLICT',
+          message: 'Version mismatch',
+        });
       });
 
-      await act(async () => { vi.advanceTimersByTime(1500); });
+      await act(async () => {
+        vi.advanceTimersByTime(1500);
+      });
 
       expect(result.current.error?.code).toBe('VERSION_CONFLICT');
-      vi.useRealTimers();
     });
 
     it('playMove limpia un error recuperable previo antes de emitir', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-      // Primero recibimos estado para tener sessionState
-      act(() => {
+      await act(async () => {
         handlers.get('session:state')?.({
           matchId: 'm1',
           layout: 'B/..',
@@ -249,28 +328,34 @@ describe('useOnlineSession', () => {
         });
       });
 
-      // Luego llega un error recuperable
-      act(() => {
-        handlers.get('session:error')?.({ code: 'VERSION_CONFLICT', message: 'Version mismatch' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'VERSION_CONFLICT',
+          message: 'Version mismatch',
+        });
       });
 
       expect(result.current.error?.code).toBe('VERSION_CONFLICT');
 
-      // Al intentar un nuevo movimiento, el error debe limpiarse
-      act(() => { result.current.playMove(1, 0); });
+      await act(async () => {
+        await result.current.playMove(1, 0);
+      });
 
       expect(result.current.error).toBeNull();
-      expect(socketMock.emit).toHaveBeenCalledWith('move:play', expect.objectContaining({
-        matchId: 'm1',
-        move: { row: 1, col: 0 },
-      }));
+      expect(socketMock.emit).toHaveBeenCalledWith(
+          'move:play',
+          expect.objectContaining({
+            matchId: 'm1',
+            move: { row: 1, col: 0 },
+          }),
+      );
     });
 
     it('playMove NO limpia un error terminal', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-      act(() => {
+      await act(async () => {
         handlers.get('session:state')?.({
           matchId: 'm1',
           layout: 'B/..',
@@ -280,15 +365,19 @@ describe('useOnlineSession', () => {
         });
       });
 
-      act(() => {
-        handlers.get('session:error')?.({ code: 'SESSION_NOT_FOUND', message: 'Not found' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'SESSION_NOT_FOUND',
+          message: 'Not found',
+        });
       });
 
       expect(result.current.error?.code).toBe('SESSION_NOT_FOUND');
 
-      act(() => { result.current.playMove(1, 0); });
+      await act(async () => {
+        await result.current.playMove(1, 0);
+      });
 
-      // El error terminal NO se limpia
       expect(result.current.error?.code).toBe('SESSION_NOT_FOUND');
     });
 
@@ -296,13 +385,16 @@ describe('useOnlineSession', () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
 
-      act(() => {
-        handlers.get('session:error')?.({ code: 'VERSION_CONFLICT', message: 'Version mismatch' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'VERSION_CONFLICT',
+          message: 'Version mismatch',
+        });
       });
 
       expect(result.current.error?.code).toBe('VERSION_CONFLICT');
 
-      act(() => {
+      await act(async () => {
         handlers.get('session:state')?.({
           matchId: 'm1',
           layout: 'BR/..',
@@ -318,18 +410,23 @@ describe('useOnlineSession', () => {
     it('SESSION_NOT_FOUND marca isTerminalError y NO se auto-limpia', async () => {
       const { result } = renderHook(() => useOnlineSession('m1'));
       await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
       vi.useFakeTimers();
 
-      act(() => {
-        handlers.get('session:error')?.({ code: 'SESSION_NOT_FOUND', message: 'Not found' });
+      await act(async () => {
+        handlers.get('session:error')?.({
+          code: 'SESSION_NOT_FOUND',
+          message: 'Not found',
+        });
       });
 
       expect(result.current.isTerminalError).toBe(true);
 
-      await act(async () => { vi.advanceTimersByTime(5000); });
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
 
       expect(result.current.error?.code).toBe('SESSION_NOT_FOUND');
-      vi.useRealTimers();
     });
   });
 });

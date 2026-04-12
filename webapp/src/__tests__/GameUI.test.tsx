@@ -186,13 +186,14 @@ describe('GameUI Component', () => {
 
     it('renders online session data and chat in ONLINE mode', () => {
         const playMove = vi.fn();
+        const applyPieSwapOnline = vi.fn();
         const sendMessage = vi.fn();
         vi.mocked(useOnlineSession).mockReturnValue({
             sessionState: {
                 matchId: 'online-1',
-                layout: '. /..'.replace(/ /g, ''),
+                layout: 'B/..',
                 size: 2,
-                rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+                rules: { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
                 turn: 1,
                 version: 0,
                 timerEndsAt: Date.now() + 10000,
@@ -202,6 +203,8 @@ describe('GameUI Component', () => {
             error: null,
             connectionStatus: 'CONNECTED',
             playMove,
+            applyPieSwapOnline,
+            emitTurnTimeout: vi.fn(),
         } as any);
         vi.mocked(useChatSession).mockReturnValue({
             messages: [{ userId: 2, username: 'rival', text: 'hola', timestamp: 1 }],
@@ -214,6 +217,8 @@ describe('GameUI Component', () => {
         expect(screen.getByText('Chat')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'BoardMock' }));
         expect(playMove).toHaveBeenCalledWith(0, 0);
+        fireEvent.click(screen.getByRole('button', { name: /Aplicar Pie Rule/i }));
+        expect(applyPieSwapOnline).toHaveBeenCalled();
     });
 
     describe('resolveCurrentTurnLabel', () => {
@@ -363,6 +368,9 @@ describe('GameUI Component', () => {
 
     it('emits turn:timeout when online timer expires', () => {
         vi.mocked(useOnlineSession).mockReturnValue({
+            emitTurnTimeout: () => {
+                onlineSocketClient.emit('turn:timeout', { matchId: 'online-1', version: 7 });
+            },
             sessionState: {
                 matchId: 'online-1',
                 layout: '. /..'.replace(/ /g, ''),

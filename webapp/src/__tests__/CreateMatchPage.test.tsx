@@ -72,6 +72,20 @@ describe("CreateMatchPage Component", () => {
                 headers: new Headers({ 'Content-Type': 'application/json' }),
             } as Response)
         );
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                }),
+                text: () => Promise.resolve(""),
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            } as Response)
+        );
 
         renderWithProviders(<CreateMatchPage />);
 
@@ -349,12 +363,25 @@ describe("CreateMatchPage Component", () => {
                 headers: new Headers({ 'Content-Type': 'application/json' }),
             } as Response),
         );
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: true, blockedCells: [{ row: 2, col: 1 }] },
+                    },
+                }),
+                text: () => Promise.resolve(""),
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            } as Response),
+        );
 
         renderWithProviders(<CreateMatchPage />);
 
         fireEvent.click(screen.getByLabelText(/Pie Rule/i));
         fireEvent.click(screen.getByLabelText(/Honey \(celdas bloqueadas\)/i));
-        fireEvent.change(screen.getByRole('textbox', { name: /Bloqueadas/i }), { target: { value: "1,0;2,1" } });
         fireEvent.click(screen.getByRole("button", { name: /CREAR PARTIDA/i }));
 
         await waitFor(() => {
@@ -362,8 +389,19 @@ describe("CreateMatchPage Component", () => {
             const requestBody = JSON.parse(callArgs[1].body);
             expect(requestBody.rules).toEqual({
                 pieRule: { enabled: true },
-                honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }, { row: 2, col: 1 }] },
+                honey: { enabled: true, blockedCells: [] },
             });
+        });
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalledWith("/gamey", expect.objectContaining({
+                state: expect.objectContaining({
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: true, blockedCells: [{ row: 2, col: 1 }] },
+                    },
+                }),
+            }));
         });
     });
 

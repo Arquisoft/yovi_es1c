@@ -42,21 +42,9 @@ function validateQueueRules(data: unknown): MatchRules {
 
     if (honey.blockedCells !== undefined) {
       if (!Array.isArray(honey.blockedCells)) throw new ValidationError('rules.honey.blockedCells must be an array');
-      normalized.honey.blockedCells = honey.blockedCells.map((cell, index) => {
-        if (typeof cell !== 'object' || cell === null) {
-          throw new ValidationError(`rules.honey.blockedCells[${index}] must be an object`);
-        }
-        const blocked = cell as Record<string, unknown>;
-        if (
-            !Number.isInteger(blocked.row)
-            || Number(blocked.row) < 0
-            || !Number.isInteger(blocked.col)
-            || Number(blocked.col) < 0
-        ) {
-          throw new ValidationError(`rules.honey.blockedCells[${index}] requires non-negative integer row and col`);
-        }
-        return { row: Number(blocked.row), col: Number(blocked.col) };
-      });
+      if (honey.blockedCells.length > 0) {
+        throw new ValidationError('rules.honey.blockedCells is generated automatically and cannot be configured manually');
+      }
     }
   }
 
