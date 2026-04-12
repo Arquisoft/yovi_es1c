@@ -316,6 +316,7 @@ describe('GameUI Component', () => {
             sessionState: null,
             error: { code: 'RECONNECT_EXPIRED', message: 'expired' },
             connectionStatus: 'DISCONNECTED',
+            isTerminalError: true,
             playMove: vi.fn(),
         } as any);
         renderWithConfig({ boardSize: 8, mode: 'ONLINE', difficulty: 'easy', matchId: 'm5' });
@@ -461,6 +462,93 @@ describe('GameUI Component', () => {
         fireEvent.click(screen.getByRole('button', { name: 'WinnerOverlayHome' }));
 
         expect(screen.getByText('CreateMatchPage')).toBeInTheDocument();
+    });
+
+    describe('manejo de VERSION_CONFLICT en modo ONLINE', () => {
+        const onlineConfig = { boardSize: 3, mode: 'ONLINE', difficulty: 'easy', matchId: 'online-err' };
+
+        const onlineSession = (errorCode: string | null, msg = 'err msg') => ({
+            sessionState: {
+                matchId: 'online-err',
+                layout: 'B/..',
+                size: 3,
+                rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+                turn: 1,
+                version: 2,
+                timerEndsAt: Date.now() + 10000,
+                players: [
+                    { userId: 1, username: 'yo', symbol: 'B' as const },
+                    { userId: 2, username: 'rival', symbol: 'R' as const },
+                ],
+                winner: null,
+            },
+            error: errorCode ? { code: errorCode, message: msg } : null,
+            connectionStatus: 'CONNECTED' as const,
+            isTerminalError: ['SESSION_NOT_FOUND', 'RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'UNAUTHORIZED'].includes(errorCode ?? ''),
+            playMove: vi.fn(),
+            applyPieSwapOnline: vi.fn(),
+        });
+
+        it('VERSION_CONFLICT: muestra aviso menor (warning) y NO el error principal', () => {
+            vi.mocked(useOnlineSession).mockReturnValue(onlineSession('VERSION_CONFLICT', 'Version mismatch') as any);
+            renderWithConfig(onlineConfig);
+
+            // El aviso recuperable sí aparece (como caption en el Paper warning)
+            expect(screen.getByText('Version mismatch')).toBeInTheDocument();
+
+            // Pero NO aparece como error principal bloqueante (Paper con color error.main)
+            // Solo hay un elemento con ese texto, y es el Paper de warning (border warning)
+            const warningEl = screen.getByText('Version mismatch');
+            expect(warningEl.tagName).toBe('SPAN'); // MUI Typography variant="caption"
+        });
+
+        it('NOT_YOUR_TURN: muestra aviso menor y NO navega fuera', async () => {
+            const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+            vi.mocked(useOnlineSession).mockReturnValue(onlineSession('NOT_YOUR_TURN', 'Wait your turn') as any);
+            renderWithConfig(onlineConfig);
+
+            expect(screen.getByText('Wait your turn')).toBeInTheDocument();
+            await waitFor(() => {}, { timeout: 200 });
+            expect(alertSpy).not.toHaveBeenCalled();
+            alertSpy.mockRestore();
+        });
+
+        it('DUPLICATE_EVENT: muestra aviso menor y NO navega fuera', async () => {
+            const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+            vi.mocked(useOnlineSession).mockReturnValue(onlineSession('DUPLICATE_EVENT', 'Already processed') as any);
+            renderWithConfig(onlineConfig);
+
+            expect(screen.getByText('Already processed')).toBeInTheDocument();
+            await waitFor(() => {}, { timeout: 200 });
+            expect(alertSpy).not.toHaveBeenCalled();
+            alertSpy.mockRestore();
+        });
+
+        it('INVALID_MOVE: se muestra como error principal (Paper rojo), no como warning', () => {
+            vi.mocked(useOnlineSession).mockReturnValue(onlineSession('INVALID_MOVE', 'Movimiento inválido') as any);
+            renderWithConfig(onlineConfig);
+
+            expect(screen.getByText('Movimiento inválido')).toBeInTheDocument();
+            // No aparece con variant="caption" (no es un aviso menor)
+            expect(screen.getByText('Movimiento inválido').tagName).not.toBe('SPAN');
+        });
+
+        it('sin error: no se renderiza ningún Paper de error ni warning', () => {
+            vi.mocked(useOnlineSession).mockReturnValue(onlineSession(null) as any);
+            renderWithConfig(onlineConfig);
+
+            // No hay mensaje de error de ningún tipo
+            expect(screen.queryByText('err msg')).not.toBeInTheDocument();
+        });
+
+        it('RECONNECT_EXPIRED: navega a /create-match y muestra alert (terminal)', async () => {
+            const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+            vi.mocked(useOnlineSession).mockReturnValue(onlineSession('RECONNECT_EXPIRED', 'Reconexión expirada') as any);
+            renderWithConfigAndRoutes(onlineConfig);
+
+            await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('La partida ya no está disponible'));
+            alertSpy.mockRestore();
+        });
     });
 
 });

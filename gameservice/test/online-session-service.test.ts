@@ -292,4 +292,150 @@ describe('OnlineSessionService', () => {
     const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService());
     await expect(service.ensureNotDuplicateEvent('m1', 1, 'evt-no-redis')).resolves.toBeUndefined();
   });
+
+
+  async function setupWithPieRule() {
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+    const rules: MatchRules = {
+      pieRule: { enabled: true },
+      honey: { enabled: false, blockedCells: [] },
+    };
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+    );
+    const session = await service.createSession(
+        'pie-m1',
+        3,
+        [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+        'HUMAN',
+        rules,
+    );
+    await service.playMove('pie-m1', 1, 0, 0, 0);
+    return { service, session, io };
+  }
+
+  describe('handlePieSwap', () => {
+    beforeEach(() => {
+      emit.mockReset();
+    });
+
+    it('intercambia los símbolos de ambos jugadores y emite session:state', async () => {
+      const { service, io } = await setupWithPieRule();
+
+      const result = await service.handlePieSwap('pie-m1', 2, 1);
+
+      expect(result.players[0].symbol).toBe('R');
+      expect(result.players[1].symbol).toBe('B');
+
+      expect(result.version).toBe(2);
+
+      expect(io.to).toHaveBeenCalledWith('pie-m1');
+      expect(emit).toHaveBeenCalledWith(
+          'session:state',
+          expect.objectContaining({
+            matchId: 'pie-m1',
+            version: 2,
+          }),
+      );
+    });
+
+    it('mantiene el turno en 1 (el jugador que activó la Pie Rule sigue jugando)', async () => {
+      const { service } = await setupWithPieRule();
+      const result = await service.handlePieSwap('pie-m1', 2, 1);
+      expect(result.turn).toBe(1);
+    });
+
+    it('rechaza con VERSION_CONFLICT si expectedVersion no coincide', async () => {
+      const { service } = await setupWithPieRule();
+      await expect(
+          service.handlePieSwap('pie-m1', 2, 99),
+      ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+    });
+
+    it('rechaza con NOT_YOUR_TURN si no es el jugador del turno actual', async () => {
+      const { service } = await setupWithPieRule();
+      await expect(
+          service.handlePieSwap('pie-m1', 1, 1),
+      ).rejects.toMatchObject({ code: 'NOT_YOUR_TURN' });
+    });
+
+    it('rechaza con SESSION_NOT_FOUND para un matchId inexistente', async () => {
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+      );
+      await expect(
+          service.handlePieSwap('no-existe', 2, 0),
+      ).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
+    });
+
+    it('rechaza con SESSION_TERMINAL si la sesión ya terminó', async () => {
+      const { service } = await setupWithPieRule();
+      await service.abandon('pie-m1', 1);
+      await expect(
+          service.handlePieSwap('pie-m1', 2, 2),
+      ).rejects.toMatchObject({ code: 'SESSION_TERMINAL' });
+    });
+
+    it('rechaza con PIE_RULE_NOT_AVAILABLE si Pie Rule está desactivada', async () => {
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+      );
+      await service.createSession(
+          'no-pie',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+      await service.playMove('no-pie', 1, 0, 0, 0); // version pasa a 1
+      await expect(
+          service.handlePieSwap('no-pie', 2, 1),
+      ).rejects.toMatchObject({ code: 'PIE_RULE_NOT_AVAILABLE' });
+    });
+
+    it('rechaza con PIE_RULE_NOT_AVAILABLE si hay más de una piedra en el tablero', async () => {
+      const { service } = await setupWithPieRule();
+      // Jugador 2 coloca una piedra normal en vez de usar Pie Rule → 2 piedras en tablero
+      await service.playMove('pie-m1', 2, 1, 0, 1); // version=2, turn vuelve a 0
+      // Ahora el turno es del jugador 1 con 2 piedras → la Pie Rule ya no es válida
+      await service.playMove('pie-m1', 1, 2, 0, 2); // version=3, turn=1
+      await expect(
+          service.handlePieSwap('pie-m1', 2, 3),
+      ).rejects.toMatchObject({ code: 'PIE_RULE_NOT_AVAILABLE' });
+    });
+
+    it('rechaza con PIE_RULE_NOT_AVAILABLE si se intenta en el primer turno (turn=0)', async () => {
+      const io = { to: vi.fn(() => ({ emit })) };
+      const rules: MatchRules = {
+        pieRule: { enabled: true },
+        honey: { enabled: false, blockedCells: [] },
+      };
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          { io },
+      );
+      await service.createSession(
+          'pie-first-turn',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+          rules,
+      );
+      await expect(
+          service.handlePieSwap('pie-first-turn', 1, 0),
+      ).rejects.toMatchObject({ code: 'PIE_RULE_NOT_AVAILABLE' });
+    });
+  });
 });
+
+

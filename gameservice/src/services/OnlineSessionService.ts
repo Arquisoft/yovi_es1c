@@ -227,7 +227,6 @@ export class OnlineSessionService {
         throw error;
       }
 
-      // Solo el jugador del turno 1 (el segundo en jugar) puede activar la Pie Rule
       const currentPlayer = state.players[state.turn];
       if (currentPlayer.userId !== userId) {
         const error = new OnlineSessionError('NOT_YOUR_TURN', 'Not your turn');
@@ -236,7 +235,6 @@ export class OnlineSessionService {
         throw error;
       }
 
-      // Validar condiciones: Pie Rule habilitada, turno 1, exactamente 1 piedra colocada
       const pieRuleEnabled = state.rules?.pieRule?.enabled === true;
       const isSecondTurn = state.turn === 1;
       const stonesOnBoard = state.layout.split('').filter(c => c === 'B' || c === 'R').length;
@@ -250,7 +248,6 @@ export class OnlineSessionService {
         throw error;
       }
 
-      // Intercambiar symbols entre los dos jugadores
       const swappedPlayers: [typeof state.players[0], typeof state.players[1]] = [
         { ...state.players[0], symbol: state.players[1].symbol },
         { ...state.players[1], symbol: state.players[0].symbol },
@@ -259,7 +256,7 @@ export class OnlineSessionService {
       const nextState: OnlineSessionState = {
         ...state,
         players: swappedPlayers,
-        turn: 1,  // el jugador que activó la Pie Rule ahora juega en este turno
+        turn: 1,
         version: state.version + 1,
         timerEndsAt: this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
       };

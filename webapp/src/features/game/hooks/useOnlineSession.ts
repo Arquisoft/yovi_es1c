@@ -198,7 +198,6 @@ export function useOnlineSession(matchId: string | null) {
     const unsubscribeError = onlineSocketClient.on<SessionErrorPayload>('session:error', (payload) => {
       setError(payload);
 
-      // Los errores recuperables se auto-limpian a los 3s para no bloquear la UI
       if (RECOVERABLE_ERROR_CODES.has(payload.code)) {
         setTimeout(() => {
           if (!isMounted) return;
@@ -227,7 +226,6 @@ export function useOnlineSession(matchId: string | null) {
   const playMove = async (row: number, col: number) => {
     if (!sessionState || sessionState.winner) return;
 
-    // Limpiar errores recuperables al intentar un nuevo movimiento
     setError((prev) => (prev && RECOVERABLE_ERROR_CODES.has(prev.code) ? null : prev));
 
     onlineSocketClient.emit('move:play', {
@@ -238,7 +236,6 @@ export function useOnlineSession(matchId: string | null) {
     });
   };
 
-  // Emite el evento de Pie Rule al servidor
   const applyPieSwapOnline = () => {
     if (!sessionState || sessionState.winner) return;
     onlineSocketClient.emit('pie:swap', {
