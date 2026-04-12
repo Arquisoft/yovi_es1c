@@ -5,10 +5,25 @@ import { AUTH_STORAGE_KEYS } from '../../auth/constants/storage';
 import { onlineSocketClient } from '../realtime/onlineSocketClient';
 import type { ConnectionBadgeState } from '../realtime/onlineEvents';
 import { v4 as uuidv4 } from 'uuid';
+import type { MatchRulesDto } from '../../../shared/contracts';
+
+const CLASSIC_RULES: MatchRulesDto = {
+  pieRule: { enabled: false },
+  honey: { enabled: false, blockedCells: [] },
+};
+
+const normalizeRules = (rules?: MatchRulesDto): MatchRulesDto => ({
+  pieRule: { enabled: rules?.pieRule?.enabled === true },
+  honey: {
+    enabled: rules?.honey?.enabled === true,
+    blockedCells: rules?.honey?.enabled ? [...(rules?.honey?.blockedCells ?? [])] : [],
+  },
+});
 export interface OnlineSnapshotPayload {
   matchId: string;
   layout: string;
   size: number;
+  rules: MatchRulesDto;
   turn: 0 | 1;
   version: number;
   timerEndsAt: number;
@@ -38,6 +53,7 @@ interface SessionStateSocketPayload {
   matchId: string;
   layout: string;
   size?: number;
+  rules?: MatchRulesDto;
   turn: 0 | 1;
   version: number;
   timerEndsAt: number;
@@ -102,7 +118,10 @@ export function useOnlineSession(matchId: string | null) {
       const payload = (await response.json()) as OnlineSnapshotPayload;
       if (!isMounted) return;
 
-      setSessionState(payload);
+      setSessionState({
+        ...payload,
+        rules: normalizeRules(payload.rules),
+      });
       setError(null);
     };
 
@@ -128,6 +147,7 @@ export function useOnlineSession(matchId: string | null) {
             matchId: payload.matchId,
             layout: payload.layout,
             size: payload.size ?? 8,
+            rules: normalizeRules(payload.rules ?? CLASSIC_RULES),
             turn: payload.turn,
             version: payload.version,
             timerEndsAt: payload.timerEndsAt,
@@ -146,6 +166,7 @@ export function useOnlineSession(matchId: string | null) {
           ...prev,
           layout: payload.layout,
           size: payload.size ?? prev.size,
+          rules: normalizeRules(payload.rules ?? prev.rules),
           turn: payload.turn,
           version: payload.version,
           timerEndsAt: payload.timerEndsAt,

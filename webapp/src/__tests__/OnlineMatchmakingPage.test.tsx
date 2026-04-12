@@ -102,7 +102,15 @@ describe('OnlineMatchmakingPage', () => {
 
         await waitFor(() => {
             expect(navigateMock).toHaveBeenCalledWith('/gamey', {
-                state: { boardSize: 8, mode: 'BOT', difficulty: 'medium' },
+                state: {
+                    boardSize: 8,
+                    mode: 'BOT',
+                    difficulty: 'medium',
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                },
             });
         });
     });

@@ -85,7 +85,11 @@ describe("CreateMatchPage Component", () => {
                     initialYEN: fakeData.initialYEN,
                     boardSize: 8,
                     mode: "BOT",
-                    difficulty: "medium"
+                    difficulty: "medium",
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
                 },
             });
         });
@@ -279,6 +283,10 @@ describe("CreateMatchPage Component", () => {
                 boardSize: 8,
                 difficulty: "medium",
                 mode: "LOCAL_2P",
+                rules: {
+                    pieRule: { enabled: false },
+                    honey: { enabled: false, blockedCells: [] },
+                },
             });
         });
     });
@@ -321,6 +329,62 @@ describe("CreateMatchPage Component", () => {
                     boardSize: 32,
                     mode: "BOT",
                     difficulty: "easy",
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                },
+            });
+        });
+    });
+
+    it("sends explicit extras in rules payload", async () => {
+        setupAuthenticatedUser();
+        fetchMock.mockResolvedValueOnce(
+            Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ matchId: "777", initialYEN: {} }),
+                text: () => Promise.resolve(""),
+                headers: new Headers({ 'Content-Type': 'application/json' }),
+            } as Response),
+        );
+
+        renderWithProviders(<CreateMatchPage />);
+
+        fireEvent.click(screen.getByLabelText(/Pie Rule/i));
+        fireEvent.click(screen.getByLabelText(/Honey \(celdas bloqueadas\)/i));
+        fireEvent.change(screen.getByRole('textbox', { name: /Bloqueadas/i }), { target: { value: "1,0;2,1" } });
+        fireEvent.click(screen.getByRole("button", { name: /CREAR PARTIDA/i }));
+
+        await waitFor(() => {
+            const callArgs = fetchMock.mock.calls[0];
+            const requestBody = JSON.parse(callArgs[1].body);
+            expect(requestBody.rules).toEqual({
+                pieRule: { enabled: true },
+                honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }, { row: 2, col: 1 }] },
+            });
+        });
+    });
+
+    it("passes rules state when navigating to online matchmaking", async () => {
+        setupAuthenticatedUser();
+        renderWithProviders(<CreateMatchPage />);
+
+        const modeButton = screen.getByLabelText("Modo de juego") || screen.getByText("VS BOT");
+        fireEvent.mouseDown(modeButton!);
+        fireEvent.click(await screen.findByRole("option", { name: "ONLINE" }));
+        fireEvent.click(screen.getByLabelText(/Pie Rule/i));
+        fireEvent.click(screen.getByRole("button", { name: /BUSCAR RIVAL/i }));
+
+        await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalledWith("/online/matchmaking", {
+                state: {
+                    boardSize: 8,
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
                 },
             });
         });

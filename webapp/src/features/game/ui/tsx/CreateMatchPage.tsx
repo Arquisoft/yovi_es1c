@@ -12,11 +12,16 @@ import {
     Stack,
     Typography,
     Slider,
+    Checkbox,
+    FormControlLabel,
+    TextField,
+    Divider,
 } from '@mui/material';
 import { useAuth } from '../../../auth';
 import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../../../../config/api.config';
 import type { BotDifficulty } from '../../hooks/useGameController';
+import type { MatchRulesDto } from '../../../../shared/contracts';
 
 type CreateMatchMode = 'BOT' | 'LOCAL_2P' | 'ONLINE';
 
@@ -28,6 +33,29 @@ export default function CreateMatchPage() {
     const [mode, setMode] = useState<CreateMatchMode>('BOT');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pieRuleEnabled, setPieRuleEnabled] = useState(false);
+    const [honeyEnabled, setHoneyEnabled] = useState(false);
+    const [blockedCellsText, setBlockedCellsText] = useState('1,0');
+
+    const parseBlockedCells = (): MatchRulesDto['honey']['blockedCells'] => {
+        if (!honeyEnabled) return [];
+        return blockedCellsText
+            .split(';')
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+            .map((entry) => {
+                const [rowRaw, colRaw] = entry.split(',').map((part) => Number(part.trim()));
+                if (!Number.isInteger(rowRaw) || !Number.isInteger(colRaw) || rowRaw < 0 || colRaw < 0) {
+                    throw new Error(`Coordenada inválida: "${entry}". Usa formato row,col`);
+                }
+                return { row: rowRaw, col: colRaw };
+            });
+    };
+
+    const buildRules = (): MatchRulesDto => ({
+        pieRule: { enabled: pieRuleEnabled },
+        honey: { enabled: honeyEnabled, blockedCells: honeyEnabled ? parseBlockedCells() : [] },
+    });
 
     const buttonLabel = loading
         ? 'INICIALIZANDO...'
@@ -42,7 +70,14 @@ export default function CreateMatchPage() {
         }
 
         if (mode === 'ONLINE') {
-            navigate('/online/matchmaking', { state: { boardSize } });
+            let rules: MatchRulesDto;
+            try {
+                rules = buildRules();
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Configuración de Honey inválida');
+                return;
+            }
+            navigate('/online/matchmaking', { state: { boardSize, rules } });
             return;
         }
 
@@ -50,10 +85,11 @@ export default function CreateMatchPage() {
         setError(null);
 
         try {
+            const rules = buildRules();
             const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ boardSize, difficulty, mode }),
+                body: JSON.stringify({ boardSize, difficulty, mode, rules }),
             });
 
             if (!res.ok) {
@@ -70,6 +106,7 @@ export default function CreateMatchPage() {
                     boardSize,
                     mode,
                     difficulty,
+                    rules,
                 },
             });
         } catch (err) {
@@ -208,6 +245,32 @@ export default function CreateMatchPage() {
                             </Select>
                         </FormControl>
                     )}
+
+                    <Divider />
+                    <Box>
+                        <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
+                            Extras de partida
+                        </Typography>
+                        <FormControlLabel
+                            control={<Checkbox checked={pieRuleEnabled} onChange={(e) => setPieRuleEnabled(e.target.checked)} />}
+                            label="Pie Rule"
+                        />
+                        <FormControlLabel
+                            control={<Checkbox checked={honeyEnabled} onChange={(e) => setHoneyEnabled(e.target.checked)} />}
+                            label="Honey (celdas bloqueadas)"
+                        />
+                        {honeyEnabled && (
+                            <TextField
+                                label="Bloqueadas (row,col; row,col)"
+                                value={blockedCellsText}
+                                onChange={(e) => setBlockedCellsText(e.target.value)}
+                                fullWidth
+                                size="small"
+                                helperText="Ejemplo: 1,0; 2,1"
+                                sx={{ mt: 1 }}
+                            />
+                        )}
+                    </Box>
 
                     {}
                     <Button

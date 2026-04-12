@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderWithProviders, setupAuthenticatedUser, clearAuth, screen } from './test-utils';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { fireEvent, waitFor } from '@testing-library/react';
-import GameUI from '../features/game/ui/tsx/GameUI.tsx';
+import GameUI from '../features/game/ui/tsx/GameUI';
 import * as useGameControllerModule from '../features/game/hooks/useGameController';
-import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from '../features/game/index.ts';
+import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from '../features/game';
 import { onlineSocketClient } from '../features/game/realtime/onlineSocketClient';
 import { useOnlineSession } from '../features/game/hooks/useOnlineSession';
 import { useChatSession } from '../features/game/hooks/useChatSession';
@@ -12,7 +12,12 @@ vi.mock('../features/game/hooks/useGameController');
 vi.mock('../features/game/hooks/useOnlineSession', () => ({ useOnlineSession: vi.fn() }));
 vi.mock('../features/game/hooks/useChatSession', () => ({ useChatSession: vi.fn() }));
 vi.mock('../features/game/ui/tsx/Board.tsx', () => ({
-    Board: ({ onCellClick }: any) => <button onClick={() => onCellClick(0, 0)}>BoardMock</button>,
+    Board: ({ onCellClick, blockedCells }: any) => (
+        <div>
+            <button onClick={() => onCellClick(0, 0)}>BoardMock</button>
+            <span data-testid="blocked-cells-count">{blockedCells?.length ?? 0}</span>
+        </div>
+    ),
 }));
 vi.mock('../features/game/ui/tsx/TurnTimer', () => ({
     default: ({ onExpire }: { onExpire: () => void }) => (
@@ -60,6 +65,7 @@ describe('GameUI Component', () => {
         handleCellClick: vi.fn(),
         selectMode: vi.fn(),
         changeSize: vi.fn(),
+        applyPieSwap: vi.fn(),
     };
 
     const mockState = {
@@ -69,6 +75,10 @@ describe('GameUI Component', () => {
             size: 8,
             turn: 0,
             players: ['B', 'R'],
+            rules: {
+                pieRule: { enabled: false },
+                honey: { enabled: false, blockedCells: [] },
+            },
         },
         loading: false,
         error: null,
@@ -130,6 +140,50 @@ describe('GameUI Component', () => {
         expect(mockActions.handleCellClick).toHaveBeenCalledWith(0, 0);
     });
 
+    it('shows pie action button only when pie rule can be used in LOCAL_2P', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameMode: 'LOCAL_2P',
+                gameState: {
+                    ...mockState.gameState,
+                    layout: 'B/../...',
+                    turn: 1,
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                },
+            },
+            actions: { ...mockActions, applyPieSwap: vi.fn() } as any,
+        });
+        renderWithConfig({ boardSize: 3, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
+        expect(screen.getByRole('button', { name: /Aplicar Pie Rule/i })).toBeInTheDocument();
+    });
+
+    it('passes honey blocked cells to board rendering', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameState: {
+                    ...mockState.gameState,
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+                    },
+                },
+            },
+            actions: mockActions as any,
+        });
+        renderWithConfig({ boardSize: 3, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+        expect(screen.getByTestId('blocked-cells-count')).toHaveTextContent('1');
+    });
+
+    it('does not show pie action button outside eligible flow', () => {
+        renderWithConfig({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+        expect(screen.queryByRole('button', { name: /Aplicar Pie Rule/i })).not.toBeInTheDocument();
+    });
+
     it('renders online session data and chat in ONLINE mode', () => {
         const playMove = vi.fn();
         const sendMessage = vi.fn();
@@ -138,6 +192,7 @@ describe('GameUI Component', () => {
                 matchId: 'online-1',
                 layout: '. /..'.replace(/ /g, ''),
                 size: 2,
+                rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
                 turn: 1,
                 version: 0,
                 timerEndsAt: Date.now() + 10000,
@@ -311,6 +366,7 @@ describe('GameUI Component', () => {
                 matchId: 'online-1',
                 layout: '. /..'.replace(/ /g, ''),
                 size: 2,
+                rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
                 turn: 1,
                 version: 7,
                 timerEndsAt: Date.now() + 10000,

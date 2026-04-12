@@ -16,7 +16,7 @@ import { useGameController, type BotDifficulty } from '../../hooks/useGameContro
 import { useOnlineSession } from '../../hooks/useOnlineSession';
 import { useChatSession } from '../../hooks/useChatSession';
 import { onlineSocketClient } from '../../realtime/onlineSocketClient';
-import type { YenPositionDto } from '../../../../shared/contracts';
+import type { MatchRulesDto, YenPositionDto } from '../../../../shared/contracts';
 import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
@@ -30,6 +30,7 @@ type GameConfig = {
     difficulty: BotDifficulty;
     mode: 'BOT' | 'LOCAL_2P' | 'ONLINE';
     initialYEN?: YenPositionDto;
+    rules?: MatchRulesDto;
 } | null;
 
 const difficultyLabels: Record<BotDifficulty, string> = {
@@ -75,6 +76,7 @@ export default function GameUI() {
         config?.initialYEN,
         config?.matchId,
         config?.difficulty || 'easy',
+        config?.rules,
     );
 
     const { sessionState, error: onlineError, connectionStatus, playMove } = useOnlineSession(
@@ -108,12 +110,14 @@ export default function GameUI() {
             turn: sessionState.turn,
             winner: sessionState.winner ?? null,
             players: sessionState.players,
+            rules: sessionState.rules ?? config.rules ?? { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
         }
         : {
             layout: localState.layout,
             size: localState.size,
             turn: localState.turn,
             winner: null,
+            rules: localState.rules ?? config.rules ?? { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
             players: [
                 { userId: 0, username: 'Jugador 1', symbol: 'B' as const },
                 { userId: 1, username: config.mode === 'BOT' ? 'Bot' : 'Jugador 2', symbol: 'R' as const },
@@ -150,6 +154,14 @@ export default function GameUI() {
     };
 
     const avatarColor = displayState.turn === 0 ? '#39ff14' : '#8cff68';
+    const stonesPlaced = displayState.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
+    const canUsePieSwap =
+        !isOnline
+        && config.mode === 'LOCAL_2P'
+        && displayState.rules?.pieRule?.enabled
+        && displayState.turn === 1
+        && stonesPlaced === 1
+        && !gameOver;
 
     return (
         <Box className={styles.container}>
@@ -197,6 +209,22 @@ export default function GameUI() {
                                     </Typography>
                                 </CardContent>
                             </Card>
+                        )}
+
+                        <Card className={styles.cardStatic}>
+                            <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
+                                <Typography variant="subtitle2" color="primary">Extras</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {displayState.rules?.pieRule?.enabled ? 'Pie ON' : 'Pie OFF'} ·{' '}
+                                    {displayState.rules?.honey?.enabled ? 'Honey ON' : 'Honey OFF'}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+
+                        {canUsePieSwap && (
+                            <Button variant="contained" color="warning" onClick={actions.applyPieSwap}>
+                                Aplicar Pie Rule
+                            </Button>
                         )}
 
                         {isOnline && sessionState && (
@@ -304,6 +332,7 @@ export default function GameUI() {
                                 size={displayState.size}
                                 onCellClick={handleBoardClick}
                                 currentPlayer={displayState.turn}
+                                blockedCells={displayState.rules?.honey?.enabled ? displayState.rules.honey.blockedCells : []}
                             />
                         </Paper>
 
