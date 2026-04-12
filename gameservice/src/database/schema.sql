@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS matches (
                                        status TEXT DEFAULT 'ONGOING',
                                        winner TEXT,
                                        mode TEXT DEFAULT 'BOT',
+                                       rules JSONB NOT NULL DEFAULT '{"pieRule":{"enabled":false},"honey":{"enabled":false,"blockedCells":[]}}'::jsonb,
                                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 

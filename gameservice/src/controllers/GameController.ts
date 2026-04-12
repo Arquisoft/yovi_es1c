@@ -42,7 +42,7 @@ export function createGameController(
       }
 
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode, validated.rules);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);

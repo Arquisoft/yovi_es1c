@@ -56,7 +56,16 @@ describe('GameController integration tests', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ matchId });
-      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(
+          1,
+          8,
+          'medium',
+          'BOT',
+          {
+            pieRule: { enabled: false },
+            honey: { enabled: false, blockedCells: [] },
+          },
+      );
     });
 
     it('should validate boardSize', async () => {
@@ -111,7 +120,43 @@ describe('GameController integration tests', () => {
           });
 
       expect(response.status).toBe(201);
-      expect(mockMatchService.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(
+          1,
+          8,
+          'medium',
+          'BOT',
+          {
+            pieRule: { enabled: false },
+            honey: { enabled: false, blockedCells: [] },
+          },
+      );
+    });
+
+    it('should pass explicit rules when provided', async () => {
+      vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);
+      const response = await request(app)
+          .post('/api/game/matches')
+          .send({
+            boardSize: 8,
+            difficulty: 'medium',
+            mode: 'BOT',
+            rules: {
+              pieRule: { enabled: true },
+              honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+            },
+          });
+
+      expect(response.status).toBe(201);
+      expect(mockMatchService.createMatch).toHaveBeenCalledWith(
+          1,
+          8,
+          'medium',
+          'BOT',
+          {
+            pieRule: { enabled: true },
+            honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+          },
+      );
     });
 
     it('should reject request without required fields', async () => {

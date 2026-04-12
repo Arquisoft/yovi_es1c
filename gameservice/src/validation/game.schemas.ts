@@ -1,9 +1,11 @@
 import { ValidationError } from "../errors/domain-errors.js";
+import { cloneDefaultMatchRules, MatchRules } from "../types/rules.js";
 
 export interface CreateMatchRequest {
   boardSize: number;
   difficulty: string;
   mode: string;
+  rules: MatchRules;
 }
 
 const VALID_MODES = ['BOT', 'ONLINE', 'LOCAL_2P'] as const;
@@ -46,7 +48,74 @@ export function validateCreateMatch(data: unknown): CreateMatchRequest {
     throw new ValidationError('mode must be BOT, ONLINE or LOCAL_2P');
   }
 
-  return { boardSize, difficulty: normalizedDifficulty, mode: normalizedMode };
+  const rules = validateMatchRules(body.rules);
+
+  return { boardSize, difficulty: normalizedDifficulty, mode: normalizedMode, rules };
+}
+
+function validateMatchRules(data: unknown): MatchRules {
+  if (data === undefined) {
+    return cloneDefaultMatchRules();
+  }
+
+  if (typeof data !== 'object' || data === null) {
+    throw new ValidationError('rules must be an object');
+  }
+
+  const raw = data as Record<string, unknown>;
+  const normalized = cloneDefaultMatchRules();
+
+  if (raw.pieRule !== undefined) {
+    if (typeof raw.pieRule !== 'object' || raw.pieRule === null) {
+      throw new ValidationError('rules.pieRule must be an object');
+    }
+    const pieRule = raw.pieRule as Record<string, unknown>;
+    if (pieRule.enabled !== undefined && typeof pieRule.enabled !== 'boolean') {
+      throw new ValidationError('rules.pieRule.enabled must be a boolean');
+    }
+    normalized.pieRule.enabled = pieRule.enabled === true;
+  }
+
+  if (raw.honey !== undefined) {
+    if (typeof raw.honey !== 'object' || raw.honey === null) {
+      throw new ValidationError('rules.honey must be an object');
+    }
+    const honey = raw.honey as Record<string, unknown>;
+    if (honey.enabled !== undefined && typeof honey.enabled !== 'boolean') {
+      throw new ValidationError('rules.honey.enabled must be a boolean');
+    }
+    normalized.honey.enabled = honey.enabled === true;
+
+    if (honey.blockedCells !== undefined) {
+      if (!Array.isArray(honey.blockedCells)) {
+        throw new ValidationError('rules.honey.blockedCells must be an array');
+      }
+
+      normalized.honey.blockedCells = honey.blockedCells.map((cell, index) => {
+        if (typeof cell !== 'object' || cell === null) {
+          throw new ValidationError(`rules.honey.blockedCells[${index}] must be an object`);
+        }
+        const blocked = cell as Record<string, unknown>;
+        if (
+            typeof blocked.row !== 'number'
+            || !Number.isInteger(blocked.row)
+            || blocked.row < 0
+            || typeof blocked.col !== 'number'
+            || !Number.isInteger(blocked.col)
+            || blocked.col < 0
+        ) {
+          throw new ValidationError(`rules.honey.blockedCells[${index}] requires non-negative integer row and col`);
+        }
+        return { row: blocked.row, col: blocked.col };
+      });
+    }
+  }
+
+  if (!normalized.honey.enabled && normalized.honey.blockedCells.length > 0) {
+    throw new ValidationError('rules.honey.blockedCells requires rules.honey.enabled=true');
+  }
+
+  return normalized;
 }
 
 export function validateAddMove(data: unknown): AddMoveRequest {

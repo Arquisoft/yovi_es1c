@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MatchRepository } from '../src/repositories/MatchRepository';
 import type { Pool, QueryResult } from 'pg';
+import { MatchRules } from '../src/types/rules';
+
+const classicRules: MatchRules = {
+    pieRule: { enabled: false },
+    honey: { enabled: false, blockedCells: [] },
+};
 
 function makePool(rows: unknown[] = []): Pool {
     return {
@@ -30,6 +36,7 @@ describe('MatchRepository', () => {
             await repo.createMatch(1, 9, 'EASY');
             const call = (pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
             expect(call[1]).toContain('BOT');
+            expect(call[1]).toContain(JSON.stringify(classicRules));
         });
 
         it('accepts a custom mode', async () => {
@@ -38,6 +45,17 @@ describe('MatchRepository', () => {
             expect(id).toBe(5);
             const call = (pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
             expect(call[1]).toContain('HUMAN');
+        });
+
+        it('persists explicit rules as JSON', async () => {
+            (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ rows: [{ id: 9 }] });
+            const rules: MatchRules = {
+                pieRule: { enabled: true },
+                honey: { enabled: true, blockedCells: [{ row: 2, col: 1 }] },
+            };
+            await repo.createMatch(4, 11, 'MEDIUM', 'BOT', rules);
+            const call = (pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
+            expect(call[1]).toContain(JSON.stringify(rules));
         });
 
         it('propagates DB errors', async () => {

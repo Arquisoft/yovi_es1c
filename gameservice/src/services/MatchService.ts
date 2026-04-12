@@ -1,5 +1,6 @@
 import { MatchRepository } from "../repositories/MatchRepository";
 import { gamesCreated, activeGames, gamesFinished } from '../metrics';
+import { cloneDefaultMatchRules, MatchRules } from "../types/rules.js";
 
 type MatchMove = {
   position_yen: string;
@@ -13,8 +14,14 @@ export class MatchService {
 
   constructor(private readonly matchRepo: MatchRepository) {}
 
-  async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
-    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode);
+  async createMatch(
+      userId: number,
+      boardSize: number,
+      difficulty: string,
+      mode: string = 'BOT',
+      rules: MatchRules = cloneDefaultMatchRules(),
+  ) {
+    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode, rules);
     gamesCreated.inc();
     activeGames.inc();
     return match;

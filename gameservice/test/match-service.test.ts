@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MatchService } from '../src/services/MatchService';
 import { MatchRepository } from '../src/repositories/MatchRepository';
+import { MatchRules } from '../src/types/rules';
+
+const classicRules: MatchRules = {
+  pieRule: { enabled: false },
+  honey: { enabled: false, blockedCells: [] },
+};
 
 describe('MatchService', () => {
   let matchService: MatchService;
@@ -31,7 +37,7 @@ describe('MatchService', () => {
       const result = await matchService.createMatch(userId, boardSize, difficulty, mode);
 
       expect(result).toBe(expectedId);
-      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(userId, boardSize, difficulty, mode);
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(userId, boardSize, difficulty, mode, classicRules);
       expect(mockMatchRepository.createMatch).toHaveBeenCalledTimes(1);
     });
 
@@ -40,7 +46,7 @@ describe('MatchService', () => {
 
       await matchService.createMatch(1, 8, 'medium');
 
-      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT');
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT', classicRules);
     });
 
     it('should accept all valid modes', async () => {
@@ -51,8 +57,20 @@ describe('MatchService', () => {
 
         await matchService.createMatch(1, 8, 'easy', mode);
 
-        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', mode);
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', mode, classicRules);
       }
+    });
+
+    it('accepts explicit rules for extras', async () => {
+      vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);
+      const rules: MatchRules = {
+        pieRule: { enabled: true },
+        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+      };
+
+      await matchService.createMatch(1, 8, 'easy', 'BOT', rules);
+
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', 'BOT', rules);
     });
 
     it('should accept all difficulty levels', async () => {
@@ -63,7 +81,7 @@ describe('MatchService', () => {
 
         await matchService.createMatch(1, 8, difficulty, 'BOT');
 
-        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty, 'BOT');
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty, 'BOT', classicRules);
       }
     });
 
