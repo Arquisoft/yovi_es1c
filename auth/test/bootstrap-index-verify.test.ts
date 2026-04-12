@@ -2,6 +2,31 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import path from 'node:path';
 import supertest from 'supertest';
 
+vi.mock('pg', async () => {
+    class MockClient {
+        async connect() { return undefined; }
+        async end()     { return undefined; }
+        async query()   { return { rows: [], rowCount: 0 }; }
+    }
+    class MockPool {
+        async query(sql: string) {
+            if (/CREATE TABLE|CREATE INDEX/i.test(sql)) return { rows: [], rowCount: 0 };
+            return { rows: [], rowCount: 0 };
+        }
+        async connect() {
+            return {
+                query: async (sql: string) => {
+                    const s = sql.trim().toUpperCase();
+                    if (s === 'BEGIN' || s === 'COMMIT' || s === 'ROLLBACK') return { rows: [], rowCount: 0 };
+                    return { rows: [], rowCount: 0 };
+                },
+                release: vi.fn(),
+            };
+        }
+    }
+    return { default: { Pool: MockPool, Client: MockClient } };
+});
+
 const indexPath = path.resolve(process.cwd(), 'src/index.ts');
 
 describe('bootstrap/index/verify coverage', () => {
@@ -9,14 +34,10 @@ describe('bootstrap/index/verify coverage', () => {
         vi.resetModules();
         vi.restoreAllMocks();
         delete process.env.JWT_SECRET;
-        delete process.env.AUTH_DB_PATH;
     });
 
-    it('getAuthDbPath default and getAuthService before init', async () => {
+    it('getAuthService throws before init', async () => {
         const context = await import('../src/bootstrap/auth-context.js');
-        expect(context.getAuthDbPath()).toBe('/app/auth/data/auth.db');
-        process.env.AUTH_DB_PATH = ' /tmp/auth-custom.db ';
-        expect(context.getAuthDbPath()).toBe('/tmp/auth-custom.db');
         expect(() => context.getAuthService()).toThrow('Auth context is not initialized');
     });
 
@@ -35,7 +56,6 @@ describe('bootstrap/index/verify coverage', () => {
 
     it('startServer listens when initialized', async () => {
         process.env.JWT_SECRET = 'ok-secret';
-        process.env.AUTH_DB_PATH = `/tmp/asw-auth-index-${Date.now()}.db`;
 
         const { app, startServer } = await import('../src/index.js');
         const listenSpy = vi.spyOn(app, 'listen').mockImplementation(((_port: any, cb?: any) => {
@@ -52,7 +72,7 @@ describe('bootstrap/index/verify coverage', () => {
 
     it('direct run path handles startup failures', async () => {
         const previousArgv = [...process.argv];
-        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+        const exitSpy  = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
         process.argv[1] = indexPath;

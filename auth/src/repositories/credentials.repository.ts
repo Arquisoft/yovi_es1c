@@ -1,5 +1,7 @@
-import sqlite3 from 'sqlite3';
+import pg from 'pg';
 import { startDbOperationTimer, type DbOperation } from '../metrics.js';
+
+const { Pool } = pg;
 
 export type RefreshTokenRecord = {
     id: number;
@@ -11,34 +13,18 @@ export type RefreshTokenRecord = {
     revoked_at: string | null;
 };
 
-type SqlRunContext = {
-    lastID?: number;
-    changes?: number;
-};
-
-type PromiseCallbacks = {
-    resolve: (value: number) => void;
-    reject: (reason: unknown) => void;
-};
-
-// ── Helper: crea un callback para db.run que resuelve/rechaza la Promise ──
-function makeRunCallback(
-    { resolve, reject }: PromiseCallbacks,
-    getValue: (ctx: SqlRunContext) => number = (ctx) => ctx.changes ?? 0
-): (this: SqlRunContext, err: Error | null) => void {
-    return function(this: SqlRunContext, err: Error | null) {
-        if (err) reject(err);
-        else resolve(getValue(this));
-    };
-}
+const pool = new Pool({
+    host:     process.env.PGHOST     ?? 'localhost',
+    port:     Number(process.env.PGPORT ?? 5432),
+    database: process.env.PGDATABASE ?? 'authdb',
+    user:     process.env.PGUSER     ?? 'auth_user',
+    password: process.env.PGPASSWORD ?? 'changeme',
+    max: 20,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 2_000,
+});
 
 export class CredentialsRepository {
-    private db: sqlite3.Database;
-
-    constructor(dbPath: string) {
-        this.db = new sqlite3.Database(dbPath);
-    }
-
     private async withDbMetrics<T>(operation: DbOperation, action: () => Promise<T>): Promise<T> {
         const endTimer = startDbOperationTimer(operation);
         try {
@@ -51,187 +37,200 @@ export class CredentialsRepository {
         }
     }
 
-    private revokeTokensBySessionId(sessionId: string, callbacks: PromiseCallbacks): void {
-        this.db.run(
-            `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
-             WHERE session_id = ? AND revoked_at IS NULL`,
-            [sessionId],
-            makeRunCallback(callbacks)
-        );
-    }
-
     async createUser(username: string, passwordHash: string): Promise<number> {
-        return this.withDbMetrics('create_user', () => new Promise((resolve, reject) => {
-            this.db.run(
-                'INSERT INTO users_credentials (username, password_hash) VALUES (?, ?)',
-                [username, passwordHash],
-                makeRunCallback({ resolve, reject }, (ctx) => ctx.lastID ?? 0)
+        return this.withDbMetrics('create_user', async () => {
+            const res = await pool.query(
+                'INSERT INTO users_credentials (username, password_hash) VALUES ($1, $2) RETURNING id',
+                [username, passwordHash]
             );
-        }));
+            return res.rows[0].id as number;
+        });
     }
 
     async findUserByUsername(username: string): Promise<{ id: number; username: string; password_hash: string } | null> {
-        return this.withDbMetrics('find_user_by_username', () => new Promise((resolve, reject) => {
-            this.db.get(
-                'SELECT id, username, password_hash FROM users_credentials WHERE username = ?',
-                [username],
-                (err, row: any) => { if (err) reject(err); else resolve(row || null); }
+        return this.withDbMetrics('find_user_by_username', async () => {
+            const res = await pool.query(
+                'SELECT id, username, password_hash FROM users_credentials WHERE username = $1',
+                [username]
             );
-        }));
+            return res.rows[0] ?? null;
+        });
     }
 
     async findUserById(userId: number): Promise<{ id: number; username: string } | null> {
-        return this.withDbMetrics('find_user_by_id', () => new Promise((resolve, reject) => {
-            this.db.get(
-                'SELECT id, username FROM users_credentials WHERE id = ?',
-                [userId],
-                (err, row: any) => { if (err) reject(err); else resolve(row || null); }
+        return this.withDbMetrics('find_user_by_id', async () => {
+            const res = await pool.query(
+                'SELECT id, username FROM users_credentials WHERE id = $1',
+                [userId]
             );
-        }));
+            return res.rows[0] ?? null;
+        });
     }
 
     async createSession(sessionId: string, userId: number, deviceId: string, deviceName?: string): Promise<void> {
-        return this.withDbMetrics('store_refresh_token', () => new Promise((resolve, reject) => {
-            this.db.run(
-                `INSERT INTO sessions (id, user_id, device_id, device_name) VALUES (?, ?, ?, ?)`,
-                [sessionId, userId, deviceId, deviceName ?? null],
-                (err) => { if (err) reject(err); else resolve(); }
+        return this.withDbMetrics('store_refresh_token', async () => {
+            await pool.query(
+                'INSERT INTO sessions (id, user_id, device_id, device_name) VALUES ($1, $2, $3, $4)',
+                [sessionId, userId, deviceId, deviceName ?? null]
             );
-        }));
+        });
     }
 
     async countActiveSessions(userId: number): Promise<number> {
-        return this.withDbMetrics('count_active_refresh_tokens', () => new Promise((resolve, reject) => {
-            this.db.get(
-                `SELECT COUNT(*) AS total FROM sessions WHERE user_id = ? AND revoked_at IS NULL`,
-                [userId],
-                (err, row: any) => { if (err) reject(err); else resolve(Number(row?.total ?? 0)); }
+        return this.withDbMetrics('count_active_refresh_tokens', async () => {
+            const res = await pool.query(
+                'SELECT COUNT(*) AS total FROM sessions WHERE user_id = $1 AND revoked_at IS NULL',
+                [userId]
             );
-        }));
+            return Number(res.rows[0]?.total ?? 0);
+        });
     }
 
     async revokeOldestActiveSession(userId: number): Promise<number> {
-        return this.withDbMetrics('revoke_all_user_sessions', () => new Promise((resolve, reject) => {
-            this.db.serialize(() => {
-                this.db.get(
-                    `SELECT id FROM sessions WHERE user_id = ? AND revoked_at IS NULL
-                     ORDER BY datetime(created_at) ASC LIMIT 1`,
-                    [userId],
-                    (selectErr, row: any) => {
-                        if (selectErr) { reject(selectErr); return; }
-                        const sessionId = row?.id;
-                        if (!sessionId) { resolve(0); return; }
-                        this.revokeOldestSessionAndTokens(sessionId, { resolve, reject });
-                    }
+        return this.withDbMetrics('revoke_all_user_sessions', async () => {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const sel = await client.query(
+                    `SELECT id FROM sessions
+                     WHERE user_id = $1 AND revoked_at IS NULL
+                     ORDER BY created_at ASC LIMIT 1`,
+                    [userId]
                 );
-            });
-        }));
-    }
-
-    private revokeOldestSessionAndTokens(sessionId: string, callbacks: PromiseCallbacks): void {
-        this.db.run(
-            `UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP
-             WHERE id = ? AND revoked_at IS NULL`,
-            [sessionId],
-            function(this: SqlRunContext, updateErr: Error | null) {
-                if (updateErr) { callbacks.reject(updateErr); return; }
-                if ((this.changes ?? 0) === 0) { callbacks.resolve(0); return; }
+                const sessionId = sel.rows[0]?.id;
+                if (!sessionId) {
+                    await client.query('COMMIT');
+                    return 0;
+                }
+                await client.query(
+                    `UPDATE sessions SET revoked_at = NOW()
+                     WHERE id = $1 AND revoked_at IS NULL`,
+                    [sessionId]
+                );
+                const upd = await client.query(
+                    `UPDATE refresh_tokens SET revoked_at = NOW()
+                     WHERE session_id = $1 AND revoked_at IS NULL`,
+                    [sessionId]
+                );
+                await client.query('COMMIT');
+                return upd.rowCount ?? 0;
+            } catch (e) {
+                await client.query('ROLLBACK');
+                throw e;
+            } finally {
+                client.release();
             }
-        );
-        this.revokeTokensBySessionId(sessionId, callbacks);
+        });
     }
 
-    async storeRefreshToken(userId: number, sessionId: string, tokenHash: string, familyId: string, expiresAt: string): Promise<void> {
-        return this.withDbMetrics('store_refresh_token', () => new Promise((resolve, reject) => {
-            this.db.run(
-                `INSERT INTO refresh_tokens (user_id, session_id, token_hash, family_id, expires_at) VALUES (?, ?, ?, ?, ?)`,
-                [userId, sessionId, tokenHash, familyId, expiresAt],
-                (err) => { if (err) reject(err); else resolve(); }
+    async storeRefreshToken(
+        userId: number,
+        sessionId: string,
+        tokenHash: string,
+        familyId: string,
+        expiresAt: string
+    ): Promise<void> {
+        return this.withDbMetrics('store_refresh_token', async () => {
+            await pool.query(
+                `INSERT INTO refresh_tokens (user_id, session_id, token_hash, family_id, expires_at)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [userId, sessionId, tokenHash, familyId, expiresAt]
             );
-        }));
+        });
     }
 
     async findRefreshTokenByHash(tokenHash: string): Promise<RefreshTokenRecord | null> {
-        return this.withDbMetrics('find_refresh_token_by_hash', () => new Promise((resolve, reject) => {
-            this.db.get(
+        return this.withDbMetrics('find_refresh_token_by_hash', async () => {
+            const res = await pool.query(
                 `SELECT id, user_id, session_id, token_hash, family_id, expires_at, revoked_at
-                 FROM refresh_tokens WHERE token_hash = ?`,
-                [tokenHash],
-                (err, row: any) => { if (err) reject(err); else resolve(row || null); }
+                 FROM refresh_tokens WHERE token_hash = $1`,
+                [tokenHash]
             );
-        }));
+            return res.rows[0] ?? null;
+        });
     }
 
     async revokeRefreshToken(tokenId: number): Promise<number> {
-        return this.withDbMetrics('revoke_refresh_token', () => new Promise((resolve, reject) => {
-            this.db.run(
-                'UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL',
-                [tokenId],
-                makeRunCallback({ resolve, reject })
+        return this.withDbMetrics('revoke_refresh_token', async () => {
+            const res = await pool.query(
+                `UPDATE refresh_tokens SET revoked_at = NOW()
+                 WHERE id = $1 AND revoked_at IS NULL`,
+                [tokenId]
             );
-        }));
+            return res.rowCount ?? 0;
+        });
     }
 
     async revokeRefreshTokenFamily(familyId: string): Promise<number> {
-        return this.withDbMetrics('revoke_refresh_token_family', () => new Promise((resolve, reject) => {
-            this.db.run(
-                `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
-                 WHERE family_id = ? AND revoked_at IS NULL`,
-                [familyId],
-                makeRunCallback({ resolve, reject })
+        return this.withDbMetrics('revoke_refresh_token_family', async () => {
+            const res = await pool.query(
+                `UPDATE refresh_tokens SET revoked_at = NOW()
+                 WHERE family_id = $1 AND revoked_at IS NULL`,
+                [familyId]
             );
-        }));
+            return res.rowCount ?? 0;
+        });
     }
 
     async revokeAllUserSessions(userId: number): Promise<number> {
-        return this.withDbMetrics('revoke_all_user_sessions', () => new Promise((resolve, reject) => {
-            this.db.serialize(() => {
-                this.db.run(
-                    `UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP
-                     WHERE user_id = ? AND revoked_at IS NULL`,
-                    [userId],
-                    (sessionErr) => {
-                        if (sessionErr) { reject(sessionErr); return; }
-                        this.revokeTokensByUserId(userId, { resolve, reject });
-                    }
+        return this.withDbMetrics('revoke_all_user_sessions', async () => {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query(
+                    `UPDATE sessions SET revoked_at = NOW()
+                     WHERE user_id = $1 AND revoked_at IS NULL`,
+                    [userId]
                 );
-            });
-        }));
-    }
-
-    private revokeTokensByUserId(userId: number, callbacks: PromiseCallbacks): void {
-        this.db.run(
-            `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
-             WHERE user_id = ? AND revoked_at IS NULL`,
-            [userId],
-            makeRunCallback(callbacks)
-        );
+                const res = await client.query(
+                    `UPDATE refresh_tokens SET revoked_at = NOW()
+                     WHERE user_id = $1 AND revoked_at IS NULL`,
+                    [userId]
+                );
+                await client.query('COMMIT');
+                return res.rowCount ?? 0;
+            } catch (e) {
+                await client.query('ROLLBACK');
+                throw e;
+            } finally {
+                client.release();
+            }
+        });
     }
 
     async revokeSessionById(sessionId: string): Promise<number> {
-        return this.withDbMetrics('revoke_all_user_sessions', () => new Promise((resolve, reject) => {
-            this.db.serialize(() => {
-                this.db.run(
-                    `UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP
-                     WHERE id = ? AND revoked_at IS NULL`,
-                    [sessionId],
-                    (sessionErr) => {
-                        if (sessionErr) { reject(sessionErr); return; }
-                        this.revokeTokensBySessionId(sessionId, { resolve, reject });
-                    }
+        return this.withDbMetrics('revoke_all_user_sessions', async () => {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query(
+                    `UPDATE sessions SET revoked_at = NOW()
+                     WHERE id = $1 AND revoked_at IS NULL`,
+                    [sessionId]
                 );
-            });
-        }));
+                const res = await client.query(
+                    `UPDATE refresh_tokens SET revoked_at = NOW()
+                     WHERE session_id = $1 AND revoked_at IS NULL`,
+                    [sessionId]
+                );
+                await client.query('COMMIT');
+                return res.rowCount ?? 0;
+            } catch (e) {
+                await client.query('ROLLBACK');
+                throw e;
+            } finally {
+                client.release();
+            }
+        });
     }
 
     async countActiveRefreshTokens(): Promise<number> {
-        return this.withDbMetrics('count_active_refresh_tokens', () => new Promise((resolve, reject) => {
-            this.db.get(
+        return this.withDbMetrics('count_active_refresh_tokens', async () => {
+            const res = await pool.query(
                 `SELECT COUNT(*) AS total FROM refresh_tokens
-                 WHERE revoked_at IS NULL AND datetime(expires_at) > datetime('now')`,
-                [],
-                (err, row: any) => { if (err) reject(err); else resolve(Number(row?.total ?? 0)); }
+                 WHERE revoked_at IS NULL AND expires_at > NOW()`
             );
-        }));
+            return Number(res.rows[0]?.total ?? 0);
+        });
     }
 }

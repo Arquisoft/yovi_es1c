@@ -1,52 +1,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import sqlite3 from 'sqlite3';
+import pg from 'pg';
 
-function openDatabase(dbPath: string): Promise<sqlite3.Database> {
-    return new Promise((resolve, reject) => {
-        const db = new sqlite3.Database(dbPath, (err) => {
-            if (err) {
-                reject(err);
-                return;
-            }
+const { Client } = pg;
 
-            resolve(db);
-        });
+export async function initAuthDatabase(): Promise<void> {
+    const client = new Client({
+        host:     process.env.PGHOST     ?? 'localhost',
+        port:     Number(process.env.PGPORT ?? 5432),
+        database: process.env.PGDATABASE ?? 'authdb',
+        user:     process.env.PGUSER     ?? 'auth_user',
+        password: process.env.PGPASSWORD ?? 'changeme',
     });
-}
 
-function exec(db: sqlite3.Database, sql: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        db.exec(sql, (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-function close(db: sqlite3.Database): Promise<void> {
-    return new Promise((resolve, reject) => {
-        db.close((err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-export async function initAuthDatabase(dbPath: string): Promise<void> {
-    const dir = path.dirname(dbPath);
-    if (dir && dir !== '.') {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const db = await openDatabase(dbPath);
+    await client.connect();
 
     try {
         const sqlPath = path.resolve(process.cwd(), 'scripts/init-auth-db.sql');
         const initSql = fs.readFileSync(sqlPath, 'utf8');
-
-        await exec(db, initSql);
+        await client.query(initSql);
     } finally {
-        await close(db);
+        await client.end();
     }
 }

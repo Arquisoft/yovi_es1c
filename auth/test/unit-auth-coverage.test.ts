@@ -69,9 +69,10 @@ describe('auth unit coverage', () => {
         expect(status2).toHaveBeenCalledWith(418);
     });
 
-    it('covers register unexpected error and refresh without token', async () => {
+    it('covers register unexpected error (non-unique-constraint) and refresh without token', async () => {
         process.env.JWT_SECRET = 'unit-secret';
         const repo = buildRepoMock();
+        // Código distinto a '23505' → debe llegar a UnexpectedError
         repo.createUser.mockRejectedValue({ code: 'SOMETHING_ELSE' });
 
         const service = new AuthService(repo as any);

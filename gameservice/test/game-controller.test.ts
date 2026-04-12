@@ -21,7 +21,9 @@ describe('GameController integration tests', () => {
     mockMatchService = {
       createMatch: vi.fn(),
       getMatch: vi.fn(),
+      getMatchState: vi.fn(),
       addMove: vi.fn(),
+      queueBotMove: vi.fn(),
       finishMatch: vi.fn(),
     } as unknown as MatchService;
 
@@ -151,17 +153,17 @@ describe('GameController integration tests', () => {
         created_at: '2026-03-02T10:00:00Z',
       };
 
-      vi.spyOn(mockMatchService, 'getMatch').mockResolvedValue(mockMatch);
+      vi.spyOn(mockMatchService, 'getMatchState').mockResolvedValue({ ...mockMatch, botStatus: 'done' });
 
       const response = await request(app).get('/api/game/matches/1');
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual(mockMatch);
-      expect(mockMatchService.getMatch).toHaveBeenCalledWith(1);
+      expect(response.body).toEqual({ ...mockMatch, botStatus: 'done' });
+      expect(mockMatchService.getMatchState).toHaveBeenCalledWith(1);
     });
 
     it('should return 404 when match does not exist', async () => {
-      vi.spyOn(mockMatchService, 'getMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchService, 'getMatchState').mockResolvedValue(undefined);
 
       const response = await request(app).get('/api/game/matches/999');
 
@@ -193,7 +195,9 @@ describe('GameController integration tests', () => {
           winner: null,
           created_at: '2026-03-02T10:00:00Z',
         }),
+        getMatchState: vi.fn(),
         addMove: vi.fn().mockResolvedValue(undefined),
+        queueBotMove: vi.fn(),
         finishMatch: vi.fn(),
       } as unknown as MatchService;
 
@@ -218,9 +222,10 @@ describe('GameController integration tests', () => {
             moveNumber: 1,
           });
 
-      expect(response.status).toBe(201);
-      expect(response.body).toEqual({ message: 'Move added' });
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'processing', matchId: 1 });
       expect(localMockMatchService.addMove).toHaveBeenCalledWith(1, 'a1', 'USER', 1);
+      expect(localMockMatchService.queueBotMove).toHaveBeenCalledWith(1);
     });
 
     it('should reject move with invalid position_yen', async () => {
@@ -310,7 +315,7 @@ describe('GameController integration tests', () => {
             moveNumber: 1,
           });
 
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(202);
       expect(localMockMatchService.addMove).toHaveBeenCalledWith(1, 'a1', 'BOT', 1);
     });
   });

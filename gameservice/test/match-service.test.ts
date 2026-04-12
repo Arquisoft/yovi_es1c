@@ -10,6 +10,7 @@ describe('MatchService', () => {
     mockMatchRepository = {
       createMatch: vi.fn(),
       getMatchById: vi.fn(),
+      listMoves: vi.fn(),
       addMove: vi.fn(),
       finishMatch: vi.fn(),
     } as unknown as MatchRepository;
@@ -137,6 +138,59 @@ describe('MatchService', () => {
       await expect(
           matchService.addMove(1, 'a1', 'USER', 1)
       ).rejects.toThrow('Move validation failed');
+    });
+  });
+
+  describe('queueBotMove', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('uses fallback move when bot call times out', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1, user_id: 1, board_size: 3, status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: 'a1', player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      vi.spyOn(globalThis, 'fetch' as any).mockImplementation(
+          async (...args: any[]) =>
+              new Promise((_, reject) => {
+                const options = args[1] as RequestInit | undefined;
+                (options?.signal as AbortSignal).addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+              }),
+      );
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 650));
+
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, 'b1', 'BOT', 2);
+      const state = await matchService.getMatchState(1);
+      expect(state?.botStatus).toBe('done');
+    });
+
+    it('applies bot move when bot responds within timeout', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1, user_id: 1, board_size: 3, status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: 'a1', player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({ position_yen: 'c1' }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, 'c1', 'BOT', 2);
+      const state = await matchService.getMatchState(1);
+      expect(state?.botStatus).toBe('done');
     });
   });
 
