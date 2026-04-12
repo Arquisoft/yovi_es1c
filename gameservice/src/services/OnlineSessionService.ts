@@ -1,18 +1,19 @@
 import { SessionStatePayload } from '../realtime/events/session.events';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { OnlineChatMessage, OnlineSessionState } from '../types/online';
+import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules } from '../types/rules.js';
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
 import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
 export type MoveErrorCode =
-  | 'VERSION_CONFLICT'
-  | 'NOT_YOUR_TURN'
-  | 'INVALID_MOVE'
-  | 'SESSION_NOT_FOUND'
-  | 'RECONNECT_EXPIRED'
-  | 'SESSION_TERMINAL'
-  | 'UNAUTHORIZED'
-  | 'DUPLICATE_EVENT';
+    | 'VERSION_CONFLICT'
+    | 'NOT_YOUR_TURN'
+    | 'INVALID_MOVE'
+    | 'SESSION_NOT_FOUND'
+    | 'RECONNECT_EXPIRED'
+    | 'SESSION_TERMINAL'
+    | 'UNAUTHORIZED'
+    | 'DUPLICATE_EVENT';
 
 export interface RedisSessionClient {
   get(key: string): Promise<string | null>;
@@ -59,13 +60,15 @@ export class OnlineSessionService {
       matchId: string,
       size: number,
       players: [{ userId: number; username: string }, { userId: number; username: string }],
-      opponentType: 'HUMAN' | 'BOT'
+      opponentType: 'HUMAN' | 'BOT',
+      rules: MatchRules = cloneDefaultMatchRules(),
   ): Promise<OnlineSessionState> {
     const layout = Array.from({ length: size }, (_, idx) => '.'.repeat(idx + 1)).join('/');
     const state: OnlineSessionState = {
       matchId,
       size,
       layout,
+      rules: normalizeMatchRules(rules),
       turn: 0,
       version: 0,
       timerEndsAt: this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
@@ -440,6 +443,7 @@ export class OnlineSessionService {
       matchId: state.matchId,
       layout: state.layout,
       size: state.size,
+      rules: state.rules,
       turn: state.turn,
       version: state.version,
       timerEndsAt: state.timerEndsAt,
@@ -508,18 +512,18 @@ export class OnlineSessionService {
     this.persistedSessions.add(state.matchId);
 
     await Promise.all(
-      state.players.map(async (player) => {
-        try {
-          const matchId = await this.matchService!.createMatch(
-            player.userId, state.size, 'medium', 'ONLINE'
-          );
-          if (matchId == null) return;
-          const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
-          await this.matchService!.finishMatch(matchId, winner);
-        } catch (err) {
-          console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
-        }
-      })
+        state.players.map(async (player) => {
+          try {
+            const matchId = await this.matchService!.createMatch(
+                player.userId, state.size, 'medium', 'ONLINE'
+            );
+            if (matchId == null) return;
+            const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
+            await this.matchService!.finishMatch(matchId, winner);
+          } catch (err) {
+            console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
+          }
+        })
     );
   }
 
@@ -533,9 +537,9 @@ export class OnlineSessionService {
 
   private isTerminal(state: OnlineSessionState): boolean {
     return state.status === 'finished'
-      || state.status === 'abandoned'
-      || state.status === 'expired'
-      || state.status === 'cancelled';
+        || state.status === 'abandoned'
+        || state.status === 'expired'
+        || state.status === 'cancelled';
   }
 
   async abandon(matchId: string, userId: number): Promise<OnlineSessionState | null> {
@@ -578,7 +582,10 @@ export class OnlineSessionService {
     try {
       const parsed = JSON.parse(raw) as unknown;
       if (!this.isOnlineSessionState(parsed)) return null;
-      return parsed;
+      return {
+        ...parsed,
+        rules: normalizeMatchRules((parsed as Partial<OnlineSessionState>).rules),
+      };
     } catch {
       return null;
     }
@@ -588,9 +595,9 @@ export class OnlineSessionService {
     if (!value || typeof value !== 'object') return false;
     const state = value as Partial<OnlineSessionState>;
     return typeof state.matchId === 'string'
-      && typeof state.size === 'number'
-      && Array.isArray(state.players)
-      && typeof state.status === 'string';
+        && typeof state.size === 'number'
+        && Array.isArray(state.players)
+        && typeof state.status === 'string';
   }
 
   private async withMatchLock<T>(matchId: string, fn: () => Promise<T>): Promise<T> {

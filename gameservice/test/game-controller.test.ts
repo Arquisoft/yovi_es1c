@@ -528,6 +528,16 @@ describe('GameController online routes', () => {
     const response = await request(app).post('/api/game/online/queue').send({ boardSize: 8 });
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ queued: true, joinedAt: 123 });
+    expect(matchmakingService.joinQueue).toHaveBeenCalledWith({
+      userId: 5,
+      username: 'alice',
+      boardSize: 8,
+      rules: {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+      },
+      socketId: 'http:5',
+    });
   });
 
   it('GET /online/queue/match creates session when missing snapshot', async () => {
@@ -542,8 +552,18 @@ describe('GameController online routes', () => {
     const matchmakingService = {
       tryMatch: vi.fn().mockResolvedValue({
         matchId: 'online-1',
-        playerA: { userId: 1, username: 'alice', boardSize: 8 },
-        playerB: { userId: 2, username: 'bob', boardSize: 8 },
+        playerA: {
+          userId: 1,
+          username: 'alice',
+          boardSize: 8,
+          rules: { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
+        },
+        playerB: {
+          userId: 2,
+          username: 'bob',
+          boardSize: 8,
+          rules: { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
+        },
         revealAfterGame: false,
       }),
     } as any;
@@ -565,7 +585,16 @@ describe('GameController online routes', () => {
     const response = await request(app).get('/api/game/online/queue/match');
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ matched: true, matchId: 'online-1', opponent: 'bob', revealAfterGame: false });
-    expect(onlineSessionService.createSession).toHaveBeenCalled();
+    expect(onlineSessionService.createSession).toHaveBeenCalledWith(
+        'online-1',
+        8,
+        [
+          { userId: 1, username: 'alice' },
+          { userId: 2, username: 'bob' },
+        ],
+        'HUMAN',
+        { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
+    );
   });
 
   it('POST /online/sessions/:matchId/moves validates payload', async () => {
@@ -725,8 +754,18 @@ describe('GameController online routes', () => {
     matchmakingService.tryMatch.mockResolvedValue({
       matchId: 'm-1',
       revealAfterGame: true,
-      playerA: { userId: 1, username: 'alice', boardSize: 8 },
-      playerB: { userId: 2, username: 'bob', boardSize: 8 },
+      playerA: {
+        userId: 1,
+        username: 'alice',
+        boardSize: 8,
+        rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      },
+      playerB: {
+        userId: 2,
+        username: 'bob',
+        boardSize: 8,
+        rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      },
     });
     onlineSessionService.getSnapshot.mockResolvedValue({
       players: [

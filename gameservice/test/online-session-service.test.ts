@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnlineSessionRepository } from '../src/repositories/OnlineSessionRepository';
 import { OnlineSessionService } from '../src/services/OnlineSessionService';
 import { TurnTimerService } from '../src/services/TurnTimerService';
+import { MatchRules } from '../src/types/rules';
 
 describe('OnlineSessionService', () => {
   const emit = vi.fn();
@@ -22,6 +23,31 @@ describe('OnlineSessionService', () => {
   it('rejects move with VERSION_CONFLICT', async () => {
     const { service } = await setup();
     await expect(service.playMove('m1', 1, 0, 0, 1)).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+  });
+
+  it('createSession initializes classic rules when none are provided', async () => {
+    const { session } = await setup();
+    expect(session.rules).toEqual({
+      pieRule: { enabled: false },
+      honey: { enabled: false, blockedCells: [] },
+    });
+  });
+
+  it('createSession stores explicit extras in state', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+    const rules: MatchRules = {
+      pieRule: { enabled: true },
+      honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+    };
+    const session = await service.createSession(
+        'rules-match',
+        4,
+        [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+        'HUMAN',
+        rules,
+    );
+
+    expect(session.rules).toEqual(rules);
   });
 
   it('rejects move with NOT_YOUR_TURN', async () => {

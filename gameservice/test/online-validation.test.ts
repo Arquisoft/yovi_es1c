@@ -3,7 +3,29 @@ import { validateMovePlay, validateQueueJoin } from '../src/validation/online.sc
 
 describe('online schemas', () => {
   it('validates queue join payload', () => {
-    expect(validateQueueJoin({ boardSize: 8 })).toEqual({ boardSize: 8 });
+    expect(validateQueueJoin({ boardSize: 8 })).toEqual({
+      boardSize: 8,
+      rules: {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+      },
+    });
+  });
+
+  it('validates queue join payload with explicit rules', () => {
+    expect(validateQueueJoin({
+      boardSize: 8,
+      rules: {
+        pieRule: { enabled: true },
+        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+      },
+    })).toEqual({
+      boardSize: 8,
+      rules: {
+        pieRule: { enabled: true },
+        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+      },
+    });
   });
 
   it('validates move payload', () => {

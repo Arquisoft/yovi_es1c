@@ -1,3 +1,5 @@
+import { MatchRules } from './rules.js';
+
 export type OpponentType = 'HUMAN' | 'BOT';
 export type ConnectionState = 'CONNECTED' | 'DISCONNECTED';
 export type SessionStatus = 'created' | 'active' | 'waiting_reconnect' | 'finished' | 'abandoned' | 'expired' | 'cancelled';
@@ -6,6 +8,7 @@ export interface OnlineQueueEntry {
   userId: number;
   username: string;
   boardSize: number;
+  rules: MatchRules;
   skillBand: number;
   joinedAt: number;
   socketId: string;
@@ -37,6 +40,7 @@ export interface OnlineSessionState {
   matchId: string;
   layout: string;
   size: number;
+  rules: MatchRules;
   turn: 0 | 1;
   version: number;
   timerEndsAt: number;

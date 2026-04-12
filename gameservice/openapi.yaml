@@ -259,6 +259,8 @@ paths:
                 boardSize:
                   type: integer
                   example: 11
+                rules:
+                  $ref: '#/components/schemas/MatchRules'
       responses:
         '201':
           description: Queued
