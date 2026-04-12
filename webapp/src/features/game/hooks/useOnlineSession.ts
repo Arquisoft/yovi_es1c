@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import { fetchWithAuth } from '../../../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../../../config/api.config';
 import { AUTH_STORAGE_KEYS } from '../../auth/constants/storage';
@@ -85,6 +85,10 @@ export function useOnlineSession(matchId: string | null) {
   const [sessionState, setSessionState] = useState<OnlineSnapshotPayload | null>(null);
   const [error, setError] = useState<SessionErrorPayload | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const sessionStateRef = useRef<OnlineSnapshotPayload | null>(null);
+  useEffect(() => {
+    sessionStateRef.current = sessionState;
+  }, [sessionState]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -167,12 +171,10 @@ export function useOnlineSession(matchId: string | null) {
             turn: payload.turn,
             version: payload.version,
             timerEndsAt: payload.timerEndsAt,
-            players:
-                payload.players ??
-                [
-                  { userId: 0, username: 'Player 1', symbol: 'B' },
-                  { userId: 0, username: 'Player 2', symbol: 'R' },
-                ],
+            players: payload.players ?? [
+              { userId: 0, username: 'Player 1', symbol: 'B' },
+              { userId: 0, username: 'Player 2', symbol: 'R' },
+            ],
             winner: payload.winner ?? null,
             connectionStatus: payload.connectionStatus ?? 'CONNECTED',
           };
@@ -224,26 +226,26 @@ export function useOnlineSession(matchId: string | null) {
   }, [matchId]);
 
   const playMove = async (row: number, col: number) => {
-    if (!sessionState || sessionState.winner) return;
+    const current = sessionStateRef.current;
+    if (!current || current.winner) return;
 
     setError((prev) => (prev && RECOVERABLE_ERROR_CODES.has(prev.code) ? null : prev));
 
     onlineSocketClient.emit('move:play', {
-      matchId: sessionState.matchId,
+      matchId: current.matchId,
       move: { row, col },
-      expectedVersion: sessionState.version,
+      expectedVersion: current.version,
       clientEventId: uuidv4(),
     });
   };
 
-  const applyPieSwapOnline = () => {
-    if (!sessionState || sessionState.winner) return;
-    onlineSocketClient.emit('pie:swap', {
+  const applyPieSwapOnline = useCallback(() => {
+    if (!sessionState) return;
+    onlineSocketClient.emit('move:pie_swap', {
       matchId: sessionState.matchId,
-      expectedVersion: sessionState.version,
-      clientEventId: uuidv4(),
+      expectedVersion: sessionStateRef.current?.version ?? sessionState.version,
     });
-  };
+  }, [sessionState]);
 
   const connectionStatus = useMemo<ConnectionBadgeState>(() => {
     if (!sessionState?.connectionStatus) {
