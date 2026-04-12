@@ -7,7 +7,7 @@ import { StatsService } from '../services/StatsService';
 import { MatchService } from '../services/MatchService';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { TurnTimerService as TurnTimerSvc } from '../services/TurnTimerService';
-import { MovePayload } from '../types/online';
+import { MovePayload, PieSwapPayload } from '../types/online';
 import { MatchRules, normalizeMatchRules } from '../types/rules.js';
 import { activeSocketConnections } from '../metrics';
 import { AuthVerifyClient } from '../services/AuthVerifyClient';
@@ -267,7 +267,18 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
                 );
             }),
         );
-
+        socket.on(
+            'pie:swap',
+            safeAsync<PieSwapPayload | undefined>(socket, async (payload) => {
+                if (!payload) return;
+                await sessionService.ensureNotDuplicateEvent(payload.matchId, user.userId, payload.clientEventId);
+                await sessionService.handlePieSwap(
+                    payload.matchId,
+                    user.userId,
+                    payload.expectedVersion,
+                );
+            }),
+        );
         socket.on(
             'turn:timeout',
             safeAsync<{ matchId: string; version: number } | undefined>(socket, async (payload) => {

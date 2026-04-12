@@ -66,3 +66,8 @@ export interface MovePayload {
   expectedVersion: number;
   clientEventId?: string;
 }
+export interface PieSwapPayload {
+  matchId: string;
+  expectedVersion: number;
+  clientEventId?: string;
+}

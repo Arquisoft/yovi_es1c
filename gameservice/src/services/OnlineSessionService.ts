@@ -13,7 +13,8 @@ export type MoveErrorCode =
     | 'RECONNECT_EXPIRED'
     | 'SESSION_TERMINAL'
     | 'UNAUTHORIZED'
-    | 'DUPLICATE_EVENT';
+    | 'DUPLICATE_EVENT'
+    | 'PIE_RULE_NOT_AVAILABLE';
 
 export interface RedisSessionClient {
   get(key: string): Promise<string | null>;
@@ -200,6 +201,71 @@ export class OnlineSessionService {
         await this.persistOnlineResult(nextState, winner);
       }
 
+      this.emitSessionState(nextState);
+      return nextState;
+    });
+  }
+  async handlePieSwap(matchId: string, userId: number, expectedVersion: number): Promise<OnlineSessionState> {
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) {
+        const error = new OnlineSessionError('SESSION_NOT_FOUND', 'Session not found');
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
+
+      if (this.isTerminal(state)) {
+        const error = new OnlineSessionError('SESSION_TERMINAL', 'Session already finished');
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
+
+      if (expectedVersion !== state.version) {
+        const error = new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
+
+      // Solo el jugador del turno 1 (el segundo en jugar) puede activar la Pie Rule
+      const currentPlayer = state.players[state.turn];
+      if (currentPlayer.userId !== userId) {
+        const error = new OnlineSessionError('NOT_YOUR_TURN', 'Not your turn');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
+
+      // Validar condiciones: Pie Rule habilitada, turno 1, exactamente 1 piedra colocada
+      const pieRuleEnabled = state.rules?.pieRule?.enabled === true;
+      const isSecondTurn = state.turn === 1;
+      const stonesOnBoard = state.layout.split('').filter(c => c === 'B' || c === 'R').length;
+
+      if (!pieRuleEnabled || !isSecondTurn || stonesOnBoard !== 1) {
+        const error = new OnlineSessionError(
+            'PIE_RULE_NOT_AVAILABLE',
+            'Pie Rule cannot be applied at this point',
+        );
+        this.emitSessionError(matchId, userId, error);
+        throw error;
+      }
+
+      // Intercambiar symbols entre los dos jugadores
+      const swappedPlayers: [typeof state.players[0], typeof state.players[1]] = [
+        { ...state.players[0], symbol: state.players[1].symbol },
+        { ...state.players[1], symbol: state.players[0].symbol },
+      ];
+
+      const nextState: OnlineSessionState = {
+        ...state,
+        players: swappedPlayers,
+        turn: 1,  // el jugador que activó la Pie Rule ahora juega en este turno
+        version: state.version + 1,
+        timerEndsAt: this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
+      };
+
+      await this.saveState(nextState);
+      onlineMoves.inc();
       this.emitSessionState(nextState);
       return nextState;
     });

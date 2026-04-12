@@ -21,7 +21,7 @@ import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
-import { resolveCurrentTurnLabel,  resolveWinnerLabel} from './gameUIHelpers.ts';
+import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
 import WinnerOverlay from './WinnerOverlay';
 
 type GameConfig = {
@@ -45,6 +45,13 @@ const modeLabel: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
     LOCAL_2P: '2 Jugadores',
     ONLINE: 'Online',
 };
+
+// Errores recuperables: se muestran como aviso menor, no bloquean la sesión
+const RECOVERABLE_ERROR_CODES = new Set([
+    'VERSION_CONFLICT',
+    'NOT_YOUR_TURN',
+    'DUPLICATE_EVENT',
+]);
 
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
     return (
@@ -79,22 +86,27 @@ export default function GameUI() {
         config?.rules,
     );
 
-    const { sessionState, error: onlineError, connectionStatus, playMove } = useOnlineSession(
+    const {
+        sessionState,
+        error: onlineError,
+        connectionStatus,
+        playMove,
+        applyPieSwapOnline,
+        isTerminalError,
+    } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
     const { messages, sendMessage } = useChatSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
+    // Navegar fuera solo cuando el error es terminal (sesión irrecuperable)
     useEffect(() => {
         if (config?.mode !== 'ONLINE') return;
-        if (!onlineError?.code) return;
-        if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
-            return;
-        }
+        if (!isTerminalError) return;
         globalThis.alert('La partida ya no está disponible');
         navigate('/create-match');
-    }, [config?.mode, navigate, onlineError?.code]);
+    }, [config?.mode, navigate, isTerminalError]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;
@@ -128,7 +140,17 @@ export default function GameUI() {
     const localGameOver = state.gameOver;
     const onlineGameOver = isOnline && Boolean(sessionState?.winner);
     const gameOver = isOnline ? onlineGameOver : localGameOver;
-    const error = isOnline ? onlineError?.message ?? null : state.error;
+
+    // En online: solo mostrar errores terminales o de juego (no los recuperables técnicos)
+    // En local: usar el error del controller
+    const errorMessage = isOnline
+        ? (onlineError && !RECOVERABLE_ERROR_CODES.has(onlineError.code) ? onlineError.message : null)
+        : state.error;
+
+    // Aviso menor para errores recuperables (VERSION_CONFLICT, etc.)
+    const recoverableWarning = isOnline && onlineError && RECOVERABLE_ERROR_CODES.has(onlineError.code)
+        ? onlineError.message
+        : null;
 
     const currentTurnLabel = resolveCurrentTurnLabel(
         isOnline,
@@ -155,13 +177,34 @@ export default function GameUI() {
 
     const avatarColor = displayState.turn === 0 ? '#39ff14' : '#8cff68';
     const stonesPlaced = displayState.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
-    const canUsePieSwap =
+
+    // Pie Rule en modo local (LOCAL_2P)
+    const canUsePieSwapLocal =
         !isOnline
         && config.mode === 'LOCAL_2P'
         && displayState.rules?.pieRule?.enabled
         && displayState.turn === 1
         && stonesPlaced === 1
         && !gameOver;
+
+    // Pie Rule en modo online: el jugador con turno 1 puede swap cuando solo hay 1 piedra
+    const canUsePieSwapOnline =
+        isOnline
+        && sessionState !== null
+        && displayState.rules?.pieRule?.enabled
+        && displayState.turn === 1
+        && stonesPlaced === 1
+        && !gameOver;
+
+    const canUsePieSwap = canUsePieSwapLocal || canUsePieSwapOnline;
+
+    const handlePieSwap = () => {
+        if (canUsePieSwapOnline) {
+            applyPieSwapOnline();
+        } else {
+            actions.applyPieSwap();
+        }
+    };
 
     return (
         <Box className={styles.container}>
@@ -222,7 +265,7 @@ export default function GameUI() {
                         </Card>
 
                         {canUsePieSwap && (
-                            <Button variant="contained" color="warning" onClick={actions.applyPieSwap}>
+                            <Button variant="contained" color="warning" onClick={handlePieSwap}>
                                 Aplicar Pie Rule
                             </Button>
                         )}
@@ -304,9 +347,17 @@ export default function GameUI() {
                         ¡Tu partida de Y!
                     </Typography>
 
-                    {error && (
+                    {/* Error terminal o de juego: bloquea visualmente con color rojo */}
+                    {errorMessage && (
                         <Paper sx={{ p: 2, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'error.main', color: 'error.main' }}>
-                            {error}
+                            {errorMessage}
+                        </Paper>
+                    )}
+
+                    {/* Aviso menor para errores recuperables (VERSION_CONFLICT, etc.) */}
+                    {recoverableWarning && (
+                        <Paper sx={{ p: 1.5, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'warning.main', color: 'warning.main', border: '1px solid' }}>
+                            <Typography variant="caption">{recoverableWarning}</Typography>
                         </Paper>
                     )}
 
@@ -321,7 +372,7 @@ export default function GameUI() {
                             display: 'flex',
                             flexDirection: 'column',
                             flexGrow: 1,
-                            minHeight: 0, // Firefox: required so flex children can shrink and remain visible with backdrop/overflow clipping.
+                            minHeight: 0,
                             alignItems: 'center',
                             width: '100%',
                         }}
@@ -342,7 +393,7 @@ export default function GameUI() {
                                 onNewGame={() => {
                                     actions.newGame();
                                 }}
-                                onNavigateHome={() => navigate('/create-match')} // vuelve al menú
+                                onNavigateHome={() => navigate('/create-match')}
                             />
                         )}
 

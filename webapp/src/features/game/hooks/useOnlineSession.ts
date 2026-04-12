@@ -19,6 +19,22 @@ const normalizeRules = (rules?: MatchRulesDto): MatchRulesDto => ({
     blockedCells: rules?.honey?.enabled ? [...(rules?.honey?.blockedCells ?? [])] : [],
   },
 });
+
+// Errores que indican que la sesión ha terminado de forma irreversible
+const TERMINAL_ERROR_CODES = new Set([
+  'SESSION_NOT_FOUND',
+  'RECONNECT_EXPIRED',
+  'SESSION_TERMINAL',
+  'UNAUTHORIZED',
+]);
+
+// Errores recuperables: se muestran brevemente pero no bloquean la sesión
+const RECOVERABLE_ERROR_CODES = new Set([
+  'VERSION_CONFLICT',
+  'NOT_YOUR_TURN',
+  'DUPLICATE_EVENT',
+]);
+
 export interface OnlineSnapshotPayload {
   matchId: string;
   layout: string;
@@ -181,6 +197,14 @@ export function useOnlineSession(matchId: string | null) {
 
     const unsubscribeError = onlineSocketClient.on<SessionErrorPayload>('session:error', (payload) => {
       setError(payload);
+
+      // Los errores recuperables se auto-limpian a los 3s para no bloquear la UI
+      if (RECOVERABLE_ERROR_CODES.has(payload.code)) {
+        setTimeout(() => {
+          if (!isMounted) return;
+          setError((prev) => (prev?.code === payload.code ? null : prev));
+        }, 3000);
+      }
     });
 
     socket.on('connect', handleConnect);
@@ -203,9 +227,22 @@ export function useOnlineSession(matchId: string | null) {
   const playMove = async (row: number, col: number) => {
     if (!sessionState || sessionState.winner) return;
 
+    // Limpiar errores recuperables al intentar un nuevo movimiento
+    setError((prev) => (prev && RECOVERABLE_ERROR_CODES.has(prev.code) ? null : prev));
+
     onlineSocketClient.emit('move:play', {
       matchId: sessionState.matchId,
       move: { row, col },
+      expectedVersion: sessionState.version,
+      clientEventId: uuidv4(),
+    });
+  };
+
+  // Emite el evento de Pie Rule al servidor
+  const applyPieSwapOnline = () => {
+    if (!sessionState || sessionState.winner) return;
+    onlineSocketClient.emit('pie:swap', {
+      matchId: sessionState.matchId,
       expectedVersion: sessionState.version,
       clientEventId: uuidv4(),
     });
@@ -224,5 +261,7 @@ export function useOnlineSession(matchId: string | null) {
     isConnected,
     connectionStatus,
     playMove,
+    applyPieSwapOnline,
+    isTerminalError: error !== null && TERMINAL_ERROR_CODES.has(error.code),
   };
 }
