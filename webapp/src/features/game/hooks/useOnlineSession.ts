@@ -33,7 +33,6 @@ const RECOVERABLE_ERROR_CODES = new Set([
   'DUPLICATE_EVENT',
 ]);
 
-const SILENT_ERROR_CODES = new Set<string>();
 
 export interface OnlineSnapshotPayload {
   matchId: string;
@@ -218,7 +217,6 @@ export function useOnlineSession(matchId: string | null) {
     const unsubscribeError = onlineSocketClient.on<SessionErrorPayload>(
         'session:error',
         (payload) => {
-          if (SILENT_ERROR_CODES.has(payload.code)) return;
 
           setError(payload);
 
