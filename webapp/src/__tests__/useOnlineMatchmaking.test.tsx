@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOnlineMatchmaking } from '../features/game/hooks/useOnlineMatchmaking';
 import { onlineSocketClient } from '../features/game/realtime/onlineSocketClient';
 
+const classicRules = {
+  pieRule: { enabled: false },
+  honey: { enabled: false, blockedCells: [] },
+};
+
 describe('useOnlineMatchmaking', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -26,7 +31,7 @@ describe('useOnlineMatchmaking', () => {
     const emitSpy = vi.spyOn(onlineSocketClient, 'emit').mockImplementation(() => undefined);
     vi.spyOn(onlineSocketClient, 'on').mockImplementation(() => () => {});
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -41,6 +46,7 @@ describe('useOnlineMatchmaking', () => {
 
     const joinCalls = emitSpy.mock.calls.filter(([event]) => event === 'queue:join');
     expect(joinCalls).toHaveLength(1);
+    expect(joinCalls[0][1]).toEqual({ boardSize: 8, rules: classicRules });
   });
 
   it('component unmount before connect cleans connect listener', async () => {
@@ -54,7 +60,7 @@ describe('useOnlineMatchmaking', () => {
     vi.spyOn(onlineSocketClient, 'emit').mockImplementation(() => undefined);
     vi.spyOn(onlineSocketClient, 'on').mockImplementation(() => () => {});
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     let cleanup: (() => void) | undefined;
     await act(async () => {
@@ -76,7 +82,7 @@ describe('useOnlineMatchmaking', () => {
     const emitSpy = vi.spyOn(onlineSocketClient, 'emit').mockImplementation(() => undefined);
     vi.spyOn(onlineSocketClient, 'on').mockImplementation(() => () => {});
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -100,7 +106,7 @@ describe('useOnlineMatchmaking', () => {
       return () => {};
     });
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -130,7 +136,7 @@ describe('useOnlineMatchmaking', () => {
       return () => {};
     });
 
-    const { result, unmount } = renderHook(() => useOnlineMatchmaking(8));
+    const { result, unmount } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -151,7 +157,7 @@ describe('useOnlineMatchmaking', () => {
 
   it('returns auth error when token is missing', async () => {
     localStorage.removeItem('auth_token');
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -166,7 +172,7 @@ describe('useOnlineMatchmaking', () => {
     vi.spyOn(onlineSocketClient, 'on').mockImplementation(() => () => {});
     vi.spyOn(onlineSocketClient, 'emit').mockImplementation(() => undefined);
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -185,7 +191,7 @@ describe('useOnlineMatchmaking', () => {
       return () => {};
     });
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();
@@ -204,7 +210,7 @@ describe('useOnlineMatchmaking', () => {
     expect(result.current.waiting).toBe(false);
   });
   it('keeps joinQueue reference stable across rerenders with same board size', () => {
-    const { result, rerender } = renderHook(({ size }) => useOnlineMatchmaking(size), {
+    const { result, rerender } = renderHook(({ size }) => useOnlineMatchmaking(size, classicRules), {
       initialProps: { size: 8 },
     });
 
@@ -220,7 +226,7 @@ describe('useOnlineMatchmaking', () => {
     vi.spyOn(onlineSocketClient, 'on').mockImplementation(() => () => {});
     vi.spyOn(onlineSocketClient, 'emit').mockImplementation(() => undefined);
 
-    const { result } = renderHook(() => useOnlineMatchmaking(8));
+    const { result } = renderHook(() => useOnlineMatchmaking(8, classicRules));
 
     await act(async () => {
       await result.current.joinQueue();

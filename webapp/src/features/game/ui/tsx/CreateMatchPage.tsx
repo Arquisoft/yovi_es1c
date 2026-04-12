@@ -12,11 +12,15 @@ import {
     Stack,
     Typography,
     Slider,
+    Checkbox,
+    FormControlLabel,
+    Divider,
 } from '@mui/material';
 import { useAuth } from '../../../auth';
 import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../../../../config/api.config';
 import type { BotDifficulty } from '../../hooks/useGameController';
+import type { MatchRulesDto } from '../../../../shared/contracts';
 
 type CreateMatchMode = 'BOT' | 'LOCAL_2P' | 'ONLINE';
 
@@ -28,6 +32,13 @@ export default function CreateMatchPage() {
     const [mode, setMode] = useState<CreateMatchMode>('BOT');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pieRuleEnabled, setPieRuleEnabled] = useState(false);
+    const [honeyEnabled, setHoneyEnabled] = useState(false);
+
+    const buildRules = (): MatchRulesDto => ({
+        pieRule: { enabled: pieRuleEnabled },
+        honey: { enabled: honeyEnabled, blockedCells: [] },
+    });
 
     const buttonLabel = loading
         ? 'INICIALIZANDO...'
@@ -42,7 +53,8 @@ export default function CreateMatchPage() {
         }
 
         if (mode === 'ONLINE') {
-            navigate('/online/matchmaking', { state: { boardSize } });
+            const rules = buildRules();
+            navigate('/online/matchmaking', { state: { boardSize, rules } });
             return;
         }
 
@@ -50,10 +62,11 @@ export default function CreateMatchPage() {
         setError(null);
 
         try {
+            const rules = buildRules();
             const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ boardSize, difficulty, mode }),
+                body: JSON.stringify({ boardSize, difficulty, mode, rules }),
             });
 
             if (!res.ok) {
@@ -62,6 +75,21 @@ export default function CreateMatchPage() {
             }
 
             const data = await res.json();
+            let authoritativeRules = rules;
+
+            try {
+                const stateRes = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${data.matchId}`, {
+                    method: 'GET',
+                });
+                if (stateRes.ok) {
+                    const statePayload = await stateRes.json() as { rules?: MatchRulesDto };
+                    if (statePayload.rules) {
+                        authoritativeRules = statePayload.rules;
+                    }
+                }
+            } catch {
+                authoritativeRules = rules;
+            }
 
             navigate('/gamey', {
                 state: {
@@ -70,6 +98,7 @@ export default function CreateMatchPage() {
                     boardSize,
                     mode,
                     difficulty,
+                    rules: authoritativeRules,
                 },
             });
         } catch (err) {
@@ -208,6 +237,21 @@ export default function CreateMatchPage() {
                             </Select>
                         </FormControl>
                     )}
+
+                    <Divider />
+                    <Box>
+                        <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
+                            Extras de partida
+                        </Typography>
+                        <FormControlLabel
+                            control={<Checkbox checked={pieRuleEnabled} onChange={(e) => setPieRuleEnabled(e.target.checked)} />}
+                            label="Pie Rule"
+                        />
+                        <FormControlLabel
+                            control={<Checkbox checked={honeyEnabled} onChange={(e) => setHoneyEnabled(e.target.checked)} />}
+                            label="Honey (celdas bloqueadas)"
+                        />
+                    </Box>
 
                     {}
                     <Button

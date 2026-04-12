@@ -18,6 +18,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "vite.config.ts"],
-  "exclude": ["node_modules","dist","src/__tests__","**/*.test.ts","**/*.test.tsx"]
+  "include": ["src", "vite.config.ts", "src/setupTests.ts"],
 }

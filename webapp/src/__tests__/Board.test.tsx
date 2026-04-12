@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Board } from '../features/game/ui/tsx/Board.tsx';
+import { Board } from '../features/game/ui/tsx/Board';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 describe('Board Component', () => {
@@ -10,6 +10,7 @@ describe('Board Component', () => {
         size: 3,
         onCellClick: mockOnCellClick,
         currentPlayer: 0,
+        blockedCells: [] as Array<{ row: number; col: number }>,
     };
 
     beforeEach(() => {
@@ -62,5 +63,13 @@ describe('Board Component', () => {
         const { container } = render(<Board {...defaultProps} />);
         const totalCells = container.querySelectorAll('.cell');
         expect(totalCells.length).toBe(6);
+    });
+
+    it('renders blocked cells and prevents interaction', () => {
+        render(<Board {...defaultProps} layout={'./../...'} blockedCells={[{ row: 1, col: 0 }]} />);
+        const blocked = screen.getByLabelText('blocked-1-0');
+        expect(blocked).toBeDisabled();
+        fireEvent.click(blocked);
+        expect(mockOnCellClick).not.toHaveBeenCalled();
     });
 });

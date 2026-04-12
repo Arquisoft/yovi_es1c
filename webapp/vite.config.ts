@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
-
+import '@testing-library/jest-dom/vitest';
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -25,14 +25,6 @@ export default defineConfig({
         'src/setupTests.ts',
         '**/index.ts',
         'src/main.tsx',
-
-        /*Se excluyen de momento porque ahora mismo no tienen funcionalidad alguna.
-            Quitar cuando se implementen para probarlas.
-        */
-        'src/features/game/api/gameyClient.ts',
-        'src/features/botApi/ui/BotApiUI.tsx',
-        'src/features/stats/ui/StatsUI.tsx',
-        'src/shared/contracts/**',
       ],
     },
     css: {

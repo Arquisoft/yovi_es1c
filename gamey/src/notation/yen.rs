@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::GameRules;
 
 /// Y Exchange Notation (YEN) - a compact format for representing Y game states.
 ///
@@ -34,6 +35,9 @@ pub struct YEN {
     /// Rows are separated by '/', with cells represented by player symbols
     /// or '.' for empty cells. Example: "B/..R/.B.R"
     layout: String,
+    /// Optional per-match rules metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rules: Option<GameRules>,
 }
 
 impl YEN {
@@ -50,6 +54,7 @@ impl YEN {
             turn,
             players,
             layout,
+            rules: None,
         }
     }
 
@@ -72,11 +77,20 @@ impl YEN {
     pub fn players(&self) -> &[char] {
         &self.players
     }
+
+    pub fn rules(&self) -> Option<&GameRules> {
+        self.rules.as_ref()
+    }
+
+    pub fn set_rules(&mut self, rules: Option<GameRules>) {
+        self.rules = rules;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{BlockedCell, GameRules, HoneyRule, PieRule};
 
     #[test]
     fn test_new() {
@@ -143,5 +157,21 @@ mod tests {
         assert_eq!(original.turn(), restored.turn());
         assert_eq!(original.layout(), restored.layout());
         assert_eq!(original.players(), restored.players());
+    }
+
+    #[test]
+    fn test_rules_roundtrip_serialization() {
+        let mut original = YEN::new(4, 1, vec!['B', 'R'], "B/.R/BBR/....".to_string());
+        original.set_rules(Some(GameRules {
+            pie_rule: PieRule { enabled: true },
+            honey: HoneyRule {
+                enabled: true,
+                blocked_cells: vec![BlockedCell { row: 1, col: 0 }],
+            },
+        }));
+
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: YEN = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.rules(), original.rules());
     }
 }

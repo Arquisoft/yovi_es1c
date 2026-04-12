@@ -1,7 +1,8 @@
 use crate::core::SetIdx;
 use crate::core::player_set::PlayerSet;
+use crate::core::rules::GameRules;
 use crate::{Coordinates, GameAction, GameYError, Movement, PlayerId, RenderOptions, YEN};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::Path;
 
@@ -30,6 +31,8 @@ pub struct GameY {
     sets: Vec<PlayerSet>,
 
     available_cells: Vec<u32>,
+    blocked_cells: HashSet<Coordinates>,
+    rules: GameRules,
 }
 
 /// Represents the state of a single cell on the board.
@@ -44,8 +47,13 @@ pub enum Cell {
 impl GameY {
     /// Creates a new game with the specified board size and number of players.
     pub fn new(board_size: u32) -> Self {
+        Self::with_rules(board_size, GameRules::classic())
+            .expect("classic rules should always be valid")
+    }
+
+    pub fn with_rules(board_size: u32, rules: GameRules) -> Result<Self> {
         let total_cells = (board_size * (board_size + 1)) / 2;
-        Self {
+        let mut game = Self {
             board_size,
             board_map: HashMap::new(),
             history: Vec::new(),
@@ -54,7 +62,11 @@ impl GameY {
                 next_player: PlayerId::new(0),
             },
             available_cells: (0..total_cells).collect(),
-        }
+            blocked_cells: HashSet::new(),
+            rules,
+        };
+        game.apply_honey_blocked_cells()?;
+        Ok(game)
     }
 
     pub fn get_board_map(&self) -> &HashMap<Coordinates, (SetIdx, PlayerId)> {
@@ -96,6 +108,10 @@ impl GameY {
     /// Returns the list of available cell indices where pieces can be placed.
     pub fn available_cells(&self) -> &Vec<u32> {
         &self.available_cells
+    }
+
+    pub fn rules(&self) -> &GameRules {
+        &self.rules
     }
 
     /// Returns the total number of cells on the board.
@@ -188,7 +204,7 @@ impl GameY {
                 self.handle_placement(*player, *coords)?;
             }
             Movement::Action { player, action } => {
-                self.handle_action(*player, action);
+                self.handle_action(*player, action)?;
             }
         }
         self.history.push(movement);
@@ -251,7 +267,7 @@ impl GameY {
     }
 
     /// Handles non-placement actions (Resign, Swap, etc.)
-    fn handle_action(&mut self, player: PlayerId, action: &GameAction) {
+    fn handle_action(&mut self, player: PlayerId, action: &GameAction) -> Result<()> {
         match action {
             GameAction::Resign => {
                 self.status = GameStatus::Finished {
@@ -259,11 +275,14 @@ impl GameY {
                 };
             }
             GameAction::Swap => {
+                self.validate_swap_action(player)?;
+                self.swap_players();
                 self.status = GameStatus::Ongoing {
                     next_player: GameY::other_player(player),
                 };
             }
         }
+        Ok(())
     }
 
     /// Handles validation logic (Game Over checks and Occupancy)
@@ -274,6 +293,12 @@ impl GameY {
 
         if self.board_map.contains_key(&coords) {
             return Err(GameYError::Occupied {
+                coordinates: coords,
+                player,
+            });
+        }
+        if self.blocked_cells.contains(&coords) {
+            return Err(GameYError::BlockedCell {
                 coordinates: coords,
                 player,
             });
@@ -305,6 +330,79 @@ impl GameY {
     /// Returns the size of the board (length of one side of the triangle).
     pub fn board_size(&self) -> u32 {
         self.board_size
+    }
+
+    fn apply_honey_blocked_cells(&mut self) -> Result<()> {
+        if !self.rules.honey.enabled {
+            return Ok(());
+        }
+
+        for blocked in self.rules.honey.blocked_cells.clone() {
+            let coords = self.coords_from_blocked_cell(&blocked)?;
+            self.blocked_cells.insert(coords);
+            let idx = coords.to_index(self.board_size);
+            self.available_cells.retain(|&cell| cell != idx);
+        }
+        Ok(())
+    }
+
+    fn coords_from_blocked_cell(&self, blocked: &crate::BlockedCell) -> Result<Coordinates> {
+        let row = blocked.row;
+        let col = blocked.col;
+        if row >= self.board_size || col > row {
+            return Err(GameYError::InvalidBlockedCellCoordinates {
+                row,
+                col,
+                board_size: self.board_size,
+            });
+        }
+        let x = self.board_size - 1 - row;
+        let y = col;
+        let z = row - col;
+        Ok(Coordinates::new(x, y, z))
+    }
+
+    fn validate_swap_action(&self, player: PlayerId) -> Result<()> {
+        if let GameStatus::Ongoing { next_player } = self.status {
+            if next_player != player {
+                return Err(GameYError::InvalidSwapAction {
+                    player,
+                    reason: format!("swap attempted out of turn (expected player {})", next_player),
+                });
+            }
+        }
+        if !self.rules.pie_rule.enabled {
+            return Err(GameYError::InvalidSwapAction {
+                player,
+                reason: "pie rule is disabled".to_string(),
+            });
+        }
+        if player.id() != 1 {
+            return Err(GameYError::InvalidSwapAction {
+                player,
+                reason: "only player 1 can invoke pie swap".to_string(),
+            });
+        }
+        if self.history.len() != 1 {
+            return Err(GameYError::InvalidSwapAction {
+                player,
+                reason: "swap is only allowed immediately after the opening move".to_string(),
+            });
+        }
+        let opening_move_is_placement = matches!(self.history[0], Movement::Placement { .. });
+        if !opening_move_is_placement {
+            return Err(GameYError::InvalidSwapAction {
+                player,
+                reason: "swap requires an opening placement".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    fn swap_players(&mut self) {
+        for (_, (_, owner)) in self.board_map.iter_mut() {
+            *owner = GameY::other_player(*owner);
+        }
     }
 
     /// Returns the neighboring coordinates for a given cell.
@@ -524,7 +622,8 @@ impl TryFrom<YEN> for GameY {
     type Error = GameYError;
 
     fn try_from(game: YEN) -> Result<Self> {
-        let mut ygame = GameY::new(game.size());
+        let rules = game.rules().cloned().unwrap_or_else(GameRules::classic);
+        let mut ygame = GameY::with_rules(game.size(), rules)?;
         let rows: Vec<&str> = game.layout().split('/').collect();
         if rows.len() as u32 != game.size() {
             return Err(GameYError::InvalidYENLayout {
@@ -546,6 +645,12 @@ impl TryFrom<YEN> for GameY {
                 let y = col as u32;
                 let z = game.size() - 1 - x - y;
                 let coords = Coordinates::new(x, y, z);
+                if ygame.blocked_cells.contains(&coords) && *cell != '.' {
+                    return Err(GameYError::BlockedCell {
+                        coordinates: coords,
+                        player: PlayerId::new(0),
+                    });
+                }
                 match cell {
                     'B' => {
                         ygame.add_move(Movement::Placement {
@@ -596,7 +701,9 @@ impl From<&GameY> for YEN {
                 layout.push('/');
             }
         }
-        YEN::new(size, turn, players, layout)
+        let mut yen = YEN::new(size, turn, players, layout);
+        yen.set_rules(Some(game.rules.clone()));
+        yen
     }
 }
 

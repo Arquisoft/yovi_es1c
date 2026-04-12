@@ -60,6 +60,15 @@ pub enum GameYError {
         player: PlayerId,
     },
 
+    /// Attempted to place a piece on a blocked cell (Honey rule).
+    #[error("Player {player} tries to place a stone on blocked position: {coordinates}")]
+    BlockedCell {
+        /// The coordinates of the blocked cell.
+        coordinates: Coordinates,
+        /// The player who attempted the placement.
+        player: PlayerId,
+    },
+
     /// Invalid character found in a YEN layout string.
     #[error("Invalid character '{char}' in layout at row {row}, column {col}")]
     InvalidCharInLayout {
@@ -89,6 +98,23 @@ pub enum GameYError {
         expected: PlayerId,
         /// The player who attempted to move.
         found: PlayerId,
+    },
+
+    /// Swap action is not allowed in the current state/rules configuration.
+    #[error("Invalid swap action for player {player}: {reason}")]
+    InvalidSwapAction {
+        /// The player trying to swap.
+        player: PlayerId,
+        /// Human-readable reason.
+        reason: String,
+    },
+
+    /// Honey rule blocked cell coordinates are invalid for current board size.
+    #[error("Invalid blocked cell coordinates ({row}, {col}) for board size {board_size}")]
+    InvalidBlockedCellCoordinates {
+        row: u32,
+        col: u32,
+        board_size: u32,
     },
 
     /// Invalid number of players specified.
@@ -200,6 +226,40 @@ mod tests {
         let msg = format!("{}", err);
         assert!(msg.contains("Expected player 0"));
         assert!(msg.contains("found player 1"));
+    }
+
+    #[test]
+    fn test_blocked_cell_display() {
+        let err = GameYError::BlockedCell {
+            coordinates: Coordinates::new(1, 1, 1),
+            player: PlayerId::new(0),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("blocked"));
+        assert!(msg.contains("Player 0"));
+    }
+
+    #[test]
+    fn test_invalid_swap_action_display() {
+        let err = GameYError::InvalidSwapAction {
+            player: PlayerId::new(1),
+            reason: "pie rule disabled".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Invalid swap action"));
+        assert!(msg.contains("pie rule disabled"));
+    }
+
+    #[test]
+    fn test_invalid_blocked_cell_coordinates_display() {
+        let err = GameYError::InvalidBlockedCellCoordinates {
+            row: 10,
+            col: 3,
+            board_size: 5,
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("(10, 3)"));
+        assert!(msg.contains("board size 5"));
     }
 
     #[test]

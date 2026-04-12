@@ -31,6 +31,10 @@
     flex-shrink: 0;
 }
 
+.blocked {
+    cursor: not-allowed;
+}
+
 @media (max-width: 600px) {
     .board-outer-container {
         justify-content: flex-start;

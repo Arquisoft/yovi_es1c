@@ -25,6 +25,13 @@ paths:
             example:
               boardSize: 8
               difficulty: medium
+              mode: BOT
+              rules:
+                pieRule:
+                  enabled: false
+                honey:
+                  enabled: false
+                  blockedCells: []
       responses:
         '201':
           description: Match created
@@ -252,6 +259,8 @@ paths:
                 boardSize:
                   type: integer
                   example: 11
+                rules:
+                  $ref: '#/components/schemas/MatchRules'
       responses:
         '201':
           description: Queued
@@ -473,6 +482,8 @@ components:
           type: string
           enum: [BOT, ONLINE, LOCAL_2P]
           default: BOT
+        rules:
+          $ref: '#/components/schemas/MatchRules'
 
     AddMoveRequest:
       type: object
@@ -518,9 +529,43 @@ components:
         mode:
           type: string
           enum: [BOT, ONLINE, LOCAL_2P]
+        rules:
+          $ref: '#/components/schemas/MatchRules'
         created_at:
           type: string
           format: date-time
+
+    MatchRules:
+      type: object
+      required: [pieRule, honey]
+      properties:
+        pieRule:
+          type: object
+          required: [enabled]
+          properties:
+            enabled:
+              type: boolean
+        honey:
+          type: object
+          required: [enabled, blockedCells]
+          properties:
+            enabled:
+              type: boolean
+            blockedCells:
+              type: array
+              items:
+                $ref: '#/components/schemas/BlockedCell'
+
+    BlockedCell:
+      type: object
+      required: [row, col]
+      properties:
+        row:
+          type: integer
+          minimum: 0
+        col:
+          type: integer
+          minimum: 0
 
     MatchDto:
       type: object

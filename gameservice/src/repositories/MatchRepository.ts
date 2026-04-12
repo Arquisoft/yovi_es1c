@@ -1,14 +1,21 @@
 import { Pool } from 'pg';
+import { cloneDefaultMatchRules, MatchRules } from '../types/rules.js';
 
 export class MatchRepository {
   constructor(private readonly db: Pool) {}
 
-  async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
+  async createMatch(
+      userId: number,
+      boardSize: number,
+      difficulty: string,
+      mode: string = 'BOT',
+      rules: MatchRules = cloneDefaultMatchRules(),
+  ) {
     const result = await this.db.query(
-        `INSERT INTO matches (user_id, board_size, difficulty, status, mode)
-         VALUES ($1, $2, $3, 'ONGOING', $4)
+        `INSERT INTO matches (user_id, board_size, difficulty, status, mode, rules)
+         VALUES ($1, $2, $3, 'ONGOING', $4, $5::jsonb)
            RETURNING id`,
-        [userId, boardSize, difficulty, mode],
+        [userId, boardSize, difficulty, mode, JSON.stringify(rules)],
     );
 
     return result.rows[0].id;
