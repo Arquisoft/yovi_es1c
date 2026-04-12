@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+
 export interface AuthUser {
   id: number
   username: string
@@ -53,8 +54,8 @@ async function postJson<TSuccess>(
     const message =
       errorData?.message ||
       (res.status === 409
-        ? 'Username already exists'
-        : 'Server error')
+        ? 'usernameAlreadyExists'
+        : 'serverError')
 
     throw new Error(message)
   }

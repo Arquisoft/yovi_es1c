@@ -5,6 +5,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { loginUser } from '../api/authApi';
 import { useAuth } from '../context/useAuth';
 import AuthFormCard from './AuthFormCard';
+import {useTranslation} from "react-i18next";
 
 const LoginForm: React.FC = () => {
   const { login } = useAuth();
@@ -13,18 +14,19 @@ const LoginForm: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
 
     if (!username.trim()) {
-      setError('Please enter a username.');
+      setError(t('pleaseEnterUsername'));
       return;
     }
 
     if (!password) {
-      setError('Please enter a password.');
+      setError(t('pleaseEnterPassword'));
       return;
     }
 
@@ -34,17 +36,18 @@ const LoginForm: React.FC = () => {
       login(session.accessToken, session.refreshToken, session.user);
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error');
+      const key = err instanceof Error ? err.message : 'networkError';
+      setError(t(key))
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AuthFormCard icon={<LockOutlinedIcon />} title="Login to YOVI">
+    <AuthFormCard icon={<LockOutlinedIcon />} title={t('loginToYOVI')}>
       <Box component="form" onSubmit={handleSubmit} noValidate>
         <TextField
-          label="Username"
+          label={t('username')}
           fullWidth
           margin="normal"
           value={username}
@@ -54,7 +57,7 @@ const LoginForm: React.FC = () => {
           disabled={loading}
         />
         <TextField
-          label="Password"
+          label={t('password')}
           type="password"
           fullWidth
           margin="normal"
@@ -78,7 +81,7 @@ const LoginForm: React.FC = () => {
           disabled={loading}
           sx={{ mt: 3, mb: 2, py: 1.35 }}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}
+          {loading ? <CircularProgress size={24} color="inherit" /> : t('login')}
         </Button>
 
         <Typography variant="body2" align="center" className="crt-muted" sx={{ letterSpacing: '0.12em' }}>

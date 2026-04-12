@@ -10,6 +10,7 @@ import {
     Stack,
     Typography,
 } from '@mui/material';
+
 import { Board } from './Board.tsx';
 import { useAuth } from '../../../auth';
 import { useGameController, type BotDifficulty } from '../../hooks/useGameController.ts';
@@ -21,8 +22,9 @@ import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
-import { resolveCurrentTurnLabel,  resolveWinnerLabel} from './gameUIHelpers.ts';
+import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
 import WinnerOverlay from './WinnerOverlay';
+import {useTranslation} from "react-i18next";
 
 type GameConfig = {
     matchId: string;
@@ -46,22 +48,26 @@ const modeLabel: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
 };
 
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
+    const {t} = useTranslation();
+
     return (
         <Paper sx={{ p: 4, mt: 10, textAlign: 'center', maxWidth: 600, margin: '100px auto' }}>
             <Typography variant="h5" color="primary" sx={{ mb: 2 }}>
-                No se encontró la configuración de la partida
+                {t('noConfigTitle')}
             </Typography>
             <Typography color="text.secondary" sx={{ mb: 2 }}>
-                Vuelve a la página de crear partida para iniciar un juego.
+                {t('noConfigSubtitle')}
             </Typography>
             <Button variant="contained" onClick={onNavigate}>
-                Crear partida
+                {t('createMatch')}
             </Button>
         </Paper>
     );
 }
 
 export default function GameUI() {
+    const {t} = useTranslation();
+
     const location = useLocation();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -80,19 +86,22 @@ export default function GameUI() {
     const { sessionState, error: onlineError, connectionStatus, playMove } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
+
     const { messages, sendMessage } = useChatSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
     useEffect(() => {
         if (config?.mode !== 'ONLINE') return;
-        if (!onlineError?.code) return;
-        if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
+        if (!onlineError) return;
+
+        if (!['sessionTerminal', 'sessionNotFound'].includes(onlineError)) {
             return;
         }
-        globalThis.alert('La partida ya no está disponible');
+
+        globalThis.alert(t('sessionUnavailable'));
         navigate('/create-match');
-    }, [config?.mode, navigate, onlineError?.code]);
+    }, [config?.mode, navigate, onlineError, t]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;
@@ -115,8 +124,8 @@ export default function GameUI() {
             turn: localState.turn,
             winner: null,
             players: [
-                { userId: 0, username: 'Jugador 1', symbol: 'B' as const },
-                { userId: 1, username: config.mode === 'BOT' ? 'Bot' : 'Jugador 2', symbol: 'R' as const },
+                { userId: 0, username: t('player1'), symbol: 'B' as const },
+                { userId: 1, username: config.mode === 'BOT' ? 'Bot' : t('player2'), symbol: 'R' as const },
             ],
         };
 
@@ -124,7 +133,9 @@ export default function GameUI() {
     const localGameOver = state.gameOver;
     const onlineGameOver = isOnline && Boolean(sessionState?.winner);
     const gameOver = isOnline ? onlineGameOver : localGameOver;
-    const error = isOnline ? onlineError?.message ?? null : state.error;
+
+    const error = isOnline ? onlineError ?? null : state.error;
+    const errorMessage = error ? t(error) : null;
 
     const currentTurnLabel = resolveCurrentTurnLabel(
         isOnline,
@@ -137,8 +148,8 @@ export default function GameUI() {
         ? resolveWinnerLabel(displayState.winner, displayState.players)
         : state.gameOver
             ? displayState.turn === 1
-                ? `¡Felicidades, ${displayState.players[0].username} gana!`
-                : `¡Felicidades, ${displayState.players[1].username} gana!`
+                ? t('winnerUser1')
+                : t('winnerUser2')
             : null;
 
     const handleBoardClick = (row: number, col: number) => {
@@ -153,19 +164,16 @@ export default function GameUI() {
 
     return (
         <Box className={styles.container}>
-            <Box
-                className={styles.mainBox}
-                sx={{
-                    display: 'flex',
-                    flexDirection: { xs: 'column', md: 'row' },
-                    width: '100%',
-                    maxWidth: 1180,
-                    minHeight: 'calc(100dvh - 140px)',
-                }}
-            >
+            <Box className={styles.mainBox} sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                width: '100%',
+                maxWidth: 1180,
+                minHeight: 'calc(100dvh - 140px)',
+            }}>
                 <Box className={styles.sidebar} sx={{ width: { xs: '100%', md: 300 } }}>
                     <Typography variant="h5" className={styles.title}>
-                        Información de partida
+                        {t('matchInfo')}
                     </Typography>
 
                     <Stack spacing={2} mt={2}>
@@ -173,15 +181,21 @@ export default function GameUI() {
                             <CardContent className={styles.cardContent}>
                                 <Avatar className={styles.avatarStatic} sx={{ bgcolor: avatarColor }} />
                                 <Box textAlign="center">
-                                    <Typography variant="subtitle1" color="primary">Turno</Typography>
-                                    <Typography variant="body2" color="text.secondary">{currentTurnLabel}</Typography>
+                                    <Typography variant="subtitle1" color="primary">
+                                        {t('turn')}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {currentTurnLabel}
+                                    </Typography>
                                 </Box>
                             </CardContent>
                         </Card>
 
                         <Card className={styles.cardStatic}>
                             <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                <Typography variant="subtitle2" color="primary">Modo</Typography>
+                                <Typography variant="subtitle2" color="primary">
+                                    {t('mode')}
+                                </Typography>
                                 <Typography variant="body2" color="text.secondary">
                                     {modeLabel[config.mode]}
                                 </Typography>
@@ -191,7 +205,9 @@ export default function GameUI() {
                         {config.mode === 'BOT' && (
                             <Card className={styles.cardStatic}>
                                 <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                    <Typography variant="subtitle2" color="primary">Dificultad</Typography>
+                                    <Typography variant="subtitle2" color="primary">
+                                        {t('difficulty')}
+                                    </Typography>
                                     <Typography variant="body2" color="text.secondary">
                                         {difficultyLabels[config.difficulty]}
                                     </Typography>
@@ -202,27 +218,29 @@ export default function GameUI() {
                         {isOnline && sessionState && (
                             <>
                                 <Card className={styles.cardStatic}>
-                                    <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                        <Box>
-                                            <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Conexión</Typography>
-                                            <ConnectionBadge state={connectionStatus} />
-                                        </Box>
+                                    <CardContent className={styles.cardContent}>
+                                        <Typography variant="subtitle2" color="primary">
+                                            {t('connection')}
+                                        </Typography>
+                                        <ConnectionBadge state={connectionStatus} />
                                     </CardContent>
                                 </Card>
+
                                 <Card className={styles.cardStatic}>
-                                    <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                        <Box>
-                                            <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Tiempo de turno</Typography>
-                                            <TurnTimer
-                                                timerEndsAt={sessionState.timerEndsAt}
-                                                onExpire={() => {
-                                                    onlineSocketClient.emit('turn:timeout', {
-                                                        matchId: sessionState.matchId,
-                                                        version: sessionState.version,
-                                                    });
-                                                }}
-                                            />
-                                        </Box>
+                                    <CardContent className={styles.cardContent}>
+                                        <Typography variant="subtitle2" color="primary">
+                                            {t('turnTimer')}
+                                        </Typography>
+
+                                        <TurnTimer
+                                            timerEndsAt={sessionState.timerEndsAt}
+                                            onExpire={() => {
+                                                onlineSocketClient.emit('turn:timeout', {
+                                                    matchId: sessionState.matchId,
+                                                    version: sessionState.version,
+                                                });
+                                            }}
+                                        />
                                     </CardContent>
                                 </Card>
                             </>
@@ -230,103 +248,68 @@ export default function GameUI() {
                     </Stack>
 
                     <Stack spacing={2} sx={{ mt: 'auto', pt: 2 }}>
-                        {isOnline ? (
-                            <Button
-                                variant="outlined"
-                                onClick={() => navigate('/create-match')}
-                                className={styles.restartButton}
-                            >
-                                Volver
-                            </Button>
-                        ) : (
-                            <>
-                                <Button
-                                    variant="outlined"
-                                    onClick={actions.newGame}
-                                    className={styles.restartButton}
-                                >
-                                    Reiniciar partida
-                                </Button>
+                        <Button variant="outlined" onClick={() => navigate('/create-match')}>
+                            {t('back')}
+                        </Button>
 
-                                {}
-                                <Button
-                                    variant="contained"
-                                    color="secondary"
-                                    onClick={() => navigate('/create-match')}
-                                >
-                                    Nueva Partida
-                                </Button>
-                            </>
+                        {!isOnline && (
+                            <Button variant="outlined" onClick={actions.newGame}>
+                                {t('restart')}
+                            </Button>
                         )}
                     </Stack>
                 </Box>
 
-                <Box
-                    sx={{
-                        flexGrow: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        p: { xs: 2, md: 4 },
-                        minHeight: 0,
-                    }}
-                >
+                <Box sx={{
+                    flexGrow: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    p: { xs: 2, md: 4 },
+                }}>
                     <Typography variant="h3" className={styles.gameTitle} sx={{ mb: 2 }}>
-                        ¡Tu partida de Y!
+                        {t('title')}
                     </Typography>
 
-                    {error && (
-                        <Paper sx={{ p: 2, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'error.main', color: 'error.main' }}>
-                            {error}
+                    {errorMessage && (
+                        <Paper sx={{ p: 2, my: 1 }}>
+                            {errorMessage}
                         </Paper>
                     )}
 
                     {!isOnline && loading && (
-                        <Paper sx={{ p: 2, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center' }}>
-                            Bot pensando...
+                        <Paper sx={{ p: 2, my: 1 }}>
+                            {state.message.key === 'botThinking' && t('botThinking')}
                         </Paper>
                     )}
 
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flexGrow: 1,
-                            minHeight: 0, // Firefox: required so flex children can shrink and remain visible with backdrop/overflow clipping.
-                            alignItems: 'center',
-                            width: '100%',
-                        }}
-                    >
-                        <Paper className={styles.boardPanel} sx={{ mt: 3, p: { xs: 1, sm: 1.5, md: 2 }, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', maxWidth: '100%', overflow: 'visible' }}>
-                            <Board
-                                layout={displayState.layout}
-                                size={displayState.size}
-                                onCellClick={handleBoardClick}
-                                currentPlayer={displayState.turn}
-                            />
-                        </Paper>
+                    <Paper className={styles.boardPanel} sx={{ mt: 3 }}>
+                        <Board
+                            layout={displayState.layout}
+                            size={displayState.size}
+                            onCellClick={handleBoardClick}
+                            currentPlayer={displayState.turn}
+                        />
+                    </Paper>
 
-                        {gameOver && (
-                            <WinnerOverlay
-                                winnerLabel={winnerLabel ?? 'Partida terminada'}
-                                onNewGame={() => {
-                                    actions.newGame();
-                                }}
-                                onNavigateHome={() => navigate('/create-match')} // vuelve al menú
-                            />
-                        )}
+                    {gameOver && (
+                        <WinnerOverlay
+                            winnerLabel={winnerLabel ?? t('gameOver')}
+                            onNewGame={actions.newGame}
+                            onNavigateHome={() => navigate('/create-match')}
+                        />
+                    )}
 
-                        {isOnline && (
-                            <ChatBox
-                                matchId={sessionState?.matchId ?? null}
-                                winner={displayState.winner ?? null}
-                                localUserId={user?.id ?? null}
-                                messages={messages}
-                                sendMessage={sendMessage}
-                            />
-                        )}
-                    </Box>
+                    {isOnline && (
+                        <ChatBox
+                            matchId={sessionState?.matchId ?? null}
+                            winner={displayState.winner ?? null}
+                            localUserId={user?.id ?? null}
+                            messages={messages}
+                            sendMessage={sendMessage}
+                        />
+                    )}
                 </Box>
             </Box>
         </Box>
