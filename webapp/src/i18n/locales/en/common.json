@@ -80,5 +80,12 @@
   "matchHistory": "Match history",
   "noMatchesRegistered": "No matches registered yet",
   "performanceMonitor": "Performance monitor",
-
+  "matchPlayed": "Matches played",
+  "wins": "Wins",
+  "losses": "Losses",
+  "winrate": "Win rate",
+  "nA": "N/A",
+  "date": "Date",
+  "mode": "Mode",
+  "result": "Result"
 }

@@ -78,6 +78,15 @@
   "loadingStats": "加载统计数据中",
   "playerStats": "玩家统计",
   "matchHistory": "对局历史",
-  "noMatchesRegistered": "暂无对局记录"
+  "noMatchesRegistered": "暂无对局记录",
+  "matchPlayed": "已进行对局",
+  "wins": "胜利",
+  "losses": "失败",
+  "winrate": "胜率",
+  "performanceMonitor": "性能监控",
+  "nA": "N/A",
+  "date": "日期",
+  "mode": "模式",
+  "result": "结果"
 
 }

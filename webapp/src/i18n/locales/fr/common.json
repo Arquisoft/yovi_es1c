@@ -78,5 +78,14 @@
   "loadingStats": "Chargement des statistiques",
   "playerStats": "Statistiques du joueur",
   "matchHistory": "Historique des parties",
-  "noMatchesRegistered": "Aucune partie enregistrée pour le moment"
+  "noMatchesRegistered": "Aucune partie enregistrée pour le moment",
+  "matchPlayed": "Parties jouées",
+  "wins": "Victoires",
+  "losses": "Défaites",
+  "winrate": "Taux de victoire",
+  "performanceMonitor": "Moniteur de performance",
+  "nA": "N/A",
+  "date": "Date",
+  "mode": "Mode",
+  "result": "Résultat"
 }
