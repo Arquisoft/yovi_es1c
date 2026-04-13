@@ -7,10 +7,11 @@ interface TurnTimerProps {
 }
 
 export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerProps>) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState<number>(() => Date.now());
   const expiredRef = useRef(false);
   const {t} = useTranslation();
   
+
 
   useEffect(() => {
     expiredRef.current = false;
@@ -21,7 +22,10 @@ export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerP
     return () => globalThis.clearInterval(timer);
   }, []);
 
-  const remaining = useMemo(() => Math.max(0, Math.ceil((timerEndsAt - now) / 1000)), [timerEndsAt, now]);
+  const remaining = useMemo(
+      () => Math.max(0, Math.ceil((timerEndsAt - now) / 1000)),
+      [timerEndsAt, now],
+  );
 
   useEffect(() => {
     if (remaining === 0 && !expiredRef.current && onExpire) {
@@ -30,5 +34,9 @@ export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerP
     }
   }, [remaining, onExpire]);
 
-  return <span style={{ color: remaining <= 5 ? 'var(--phosphor-danger)' : 'var(--phosphor-primary)' }}>⏱ {remaining} {t('seconds', { count: remaining })}</span>;
+  return (
+      <span style={{ color: remaining <= 5 ? 'var(--phosphor-danger)' : 'var(--phosphor-primary)' }}>
+      ⏱ {remaining}s
+    </span>
+  );
 }

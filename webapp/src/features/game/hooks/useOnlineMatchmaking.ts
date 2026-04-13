@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTH_STORAGE_KEYS } from '../../auth/constants/storage';
 import { onlineSocketClient } from '../realtime/onlineSocketClient';
+import type { MatchRulesDto } from '../../../shared/contracts';
 
 interface QueueStatusPayload {
   state: 'queued' | 'searching';
@@ -16,7 +17,7 @@ interface MatchmakingMatchedPayload {
 
 const BOT_FALLBACK_TIMEOUT_MS = 30_000;
 
-export function useOnlineMatchmaking(boardSize: number) {
+export function useOnlineMatchmaking(boardSize: number, rules: MatchRulesDto) {
   const [waiting, setWaiting] = useState(false);
   const [waitedSec, setWaitedSec] = useState(0);
   const [matched, setMatched] = useState<{ matchId: string; opponent: string; revealAfterGame: boolean } | null>(null);
@@ -115,7 +116,7 @@ export function useOnlineMatchmaking(boardSize: number) {
     });
 
     const emitJoin = () => {
-      onlineSocketClient.emit('queue:join', { boardSize });
+      onlineSocketClient.emit('queue:join', { boardSize, rules });
       joinedRef.current = true;
       joinedAtRef.current = Date.now();
       setWaiting(true);
@@ -155,7 +156,7 @@ export function useOnlineMatchmaking(boardSize: number) {
       unsubscribeMatched();
       unsubscribeConnectError();
     };
-  }, [boardSize]);
+  }, [boardSize, rules]);
 
   const cancelQueue = useCallback(async () => {
     if (fallbackTimerRef.current) {

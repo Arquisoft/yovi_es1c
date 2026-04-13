@@ -62,6 +62,12 @@ paths:
                   turn: 0
                   players: [ "B", "R" ]
                   layout: "./B./.RB"
+                  rules:
+                    pieRule:
+                      enabled: false
+                    honey:
+                      enabled: false
+                      blockedCells: []
       responses:
         "200":
           description: Move chosen successfully or an error occurred
@@ -130,6 +136,12 @@ paths:
                     turn: 0
                     players: ["B", "R"]
                     layout: "./B./.RB"
+                    rules:
+                      pieRule:
+                        enabled: true
+                      honey:
+                        enabled: false
+                        blockedCells: []
                   bot_id: easy
       responses:
         "200":
@@ -201,6 +213,8 @@ components:
             - `B` player B
             - `R` player R
           example: "./B./.RB"
+        rules:
+          $ref: '#/components/schemas/MatchRules'
 
     Coordinates:
       type: object
@@ -300,3 +314,35 @@ components:
           type: string
           nullable: true
           example: "unknown_bot"
+
+    MatchRules:
+      type: object
+      required: [pieRule, honey]
+      properties:
+        pieRule:
+          type: object
+          required: [enabled]
+          properties:
+            enabled:
+              type: boolean
+        honey:
+          type: object
+          required: [enabled, blockedCells]
+          properties:
+            enabled:
+              type: boolean
+            blockedCells:
+              type: array
+              items:
+                $ref: '#/components/schemas/BlockedCell'
+
+    BlockedCell:
+      type: object
+      required: [row, col]
+      properties:
+        row:
+          type: integer
+          minimum: 0
+        col:
+          type: integer
+          minimum: 0

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { YenPositionDto } from "../../../shared/contracts";
+import type { MatchRulesDto } from "../../../shared/contracts";
 import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 import { API_CONFIG } from "../../../config/api.config";
 
@@ -20,13 +21,28 @@ type GameMessage =
 
 const DEFAULT_BOARD_SIZE = 8;
 const GAMEY_TIMEOUT_MS = 4000;
+const CLASSIC_RULES: MatchRulesDto = {
+    pieRule: { enabled: false },
+    honey: { enabled: false, blockedCells: [] },
+};
+
+const normalizeRules = (rules?: MatchRulesDto): MatchRulesDto => ({
+    pieRule: { enabled: rules?.pieRule?.enabled === true },
+    honey: {
+        enabled: rules?.honey?.enabled === true,
+        blockedCells: rules?.honey?.enabled ? [...(rules?.honey?.blockedCells ?? [])] : [],
+    },
+});
+
+const isBlockedCell = (rules: MatchRulesDto, row: number, col: number) =>
+    rules.honey.enabled && rules.honey.blockedCells.some((cell) => cell.row === row && cell.col === col);
 
 // ── Funciones de dominio ──
-export const createEmptyYEN = (size: number): YenPositionDto => {
+export const createEmptyYEN = (size: number, rules: MatchRulesDto = CLASSIC_RULES): YenPositionDto => {
     const layout = Array.from({ length: size }, (_, rowIndex) =>
         ".".repeat(rowIndex + 1)
     ).join("/");
-    return { size, turn: 0, players: ["B", "R"], layout };
+    return { size, turn: 0, players: ["B", "R"], layout, rules: normalizeRules(rules) };
 };
 
 export const updateLayout = (
@@ -157,11 +173,13 @@ export const useGameController = (
     initialMode: GameMode = "BOT",
     initialYEN?: YenPositionDto,
     initialMatchId?: string,
-    botDifficulty: BotDifficulty = "easy"
+    botDifficulty: BotDifficulty = "easy",
+    initialRules: MatchRulesDto = CLASSIC_RULES,
 ) => {
+    const resolvedInitialRules = normalizeRules(initialYEN?.rules ?? initialRules);
     const [gameMode, setGameMode] = useState<GameMode>(initialMode);
     const [gameState, setGameState] = useState<YenPositionDto>(
-        () => initialYEN ?? createEmptyYEN(initialSize)
+        () => initialYEN ? { ...initialYEN, rules: normalizeRules(initialYEN.rules ?? initialRules) } : createEmptyYEN(initialSize, resolvedInitialRules)
     );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -190,7 +208,7 @@ export const useGameController = (
 
     const resetGame = (nextMode: GameMode) => {
         setGameMode(nextMode);
-        setGameState(createEmptyYEN(initialSize));
+        setGameState(createEmptyYEN(initialSize, resolvedInitialRules));
         setLoading(false);
         setError(null);
         setGameOver(false);
@@ -201,11 +219,8 @@ export const useGameController = (
     };
 
     const changeSize = (newSize: number) => {
-        const emptyLayout = Array.from({ length: newSize }, (_, i) =>
-            ".".repeat(i + 1)
-        ).join("/");
-
-        setGameState({ ...gameState, size: newSize, layout: emptyLayout, turn: 0 });
+        const emptyLayout = Array.from({ length: newSize }, (_, i) => ".".repeat(i + 1)).join("/");
+        setGameState({ ...gameState, size: newSize, layout: emptyLayout, turn: 0, rules: normalizeRules(gameState.rules ?? resolvedInitialRules) });
         setGameOver(false);
         setError(null);
 
@@ -272,6 +287,7 @@ export const useGameController = (
     // ── Click ──
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
+        if (isBlockedCell(normalizeRules(gameState.rules ?? resolvedInitialRules), row, col)) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
 
         if (gameMode === "ONLINE") {
@@ -513,15 +529,15 @@ export const useGameController = (
             );
 
             try {
-                const response = await fetchWithAuth(
-                    `${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${level}`,
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(state),
-                        signal: controller.signal,
-                    }
-                );
+                const response = await fetchWithAuth(`${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${level}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        ...state,
+                        rules: normalizeRules(state.rules ?? resolvedInitialRules),
+                    }),
+                    signal: controller.signal,
+                });
 
                 if (
                     !response.ok &&
@@ -573,6 +589,21 @@ export const useGameController = (
             newGame: () => resetGame(gameMode),
             handleCellClick,
             changeSize,
+            applyPieSwap: () => {
+                setGameState((prev) => {
+                    const rules = normalizeRules(prev.rules ?? resolvedInitialRules);
+                    const stoneCount = prev.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
+                    if (gameMode !== "LOCAL_2P" || !rules.pieRule.enabled || prev.turn !== 1 || stoneCount !== 1) {
+                        return prev;
+                    }
+                    const swappedLayout = prev.layout
+                        .split('')
+                        .map((ch) => (ch === 'B' ? 'R' : ch === 'R' ? 'B' : ch))
+                        .join('');
+                    setMessage("Pie Rule aplicado: se intercambiaron colores");
+                    return { ...prev, layout: swappedLayout, turn: 0, rules };
+                });
+            },
         },
     };
 };

@@ -1,5 +1,6 @@
 use gamey::{
-    Coordinates, GameAction, GameStatus, GameY, GameYError, Movement, PlayerId, RenderOptions, YEN,
+    BlockedCell, Coordinates, GameAction, GameRules, GameStatus, GameY, GameYError, HoneyRule, Movement, PieRule,
+    PlayerId, RenderOptions, YEN,
 };
 use std::fs;
 use tempfile::tempdir;
@@ -65,7 +66,7 @@ fn test_single_move_changes_next_player() {
         player: PlayerId::new(0),
         coords: Coordinates::new(4, 0, 0), // Top corner
     })
-    .unwrap();
+        .unwrap();
 
     assert_eq!(game.next_player(), Some(PlayerId::new(1)));
 }
@@ -78,13 +79,13 @@ fn test_two_moves_alternate_players() {
         player: PlayerId::new(0),
         coords: Coordinates::new(4, 0, 0),
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(3, 1, 0),
     })
-    .unwrap();
+        .unwrap();
 
     assert_eq!(game.next_player(), Some(PlayerId::new(0)));
 }
@@ -98,7 +99,7 @@ fn test_move_decreases_available_cells() {
         player: PlayerId::new(0),
         coords: Coordinates::new(2, 0, 0),
     })
-    .unwrap();
+        .unwrap();
 
     assert_eq!(game.available_cells().len(), initial_count - 1);
 }
@@ -112,17 +113,17 @@ fn test_multiple_moves_track_available_cells() {
         player: PlayerId::new(0),
         coords: Coordinates::new(2, 0, 0),
     })
-    .unwrap();
+        .unwrap();
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(1, 1, 0),
     })
-    .unwrap();
+        .unwrap();
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 2, 0),
     })
-    .unwrap();
+        .unwrap();
 
     assert_eq!(game.available_cells().len(), 3);
 }
@@ -225,7 +226,7 @@ fn test_single_cell_board_instant_win() {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 0, 0), // Only cell, touches all sides
     })
-    .unwrap();
+        .unwrap();
 
     assert!(game.check_game_over());
     match game.status() {
@@ -248,19 +249,19 @@ fn test_size_2_board_win() {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 0, 1), // Side A and B
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(1, 0, 0), // Top
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 1, 0), // Side A and C - connects to form winning path
     })
-    .unwrap();
+        .unwrap();
 
     assert!(game.check_game_over());
     match game.status() {
@@ -280,13 +281,13 @@ fn test_game_not_over_without_three_sides() {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 0, 4), // Side A and B
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(4, 0, 0), // Side B and C
     })
-    .unwrap();
+        .unwrap();
 
     assert!(!game.check_game_over());
 }
@@ -305,7 +306,7 @@ fn test_cannot_place_on_occupied_cell() {
         player: PlayerId::new(0),
         coords,
     })
-    .unwrap();
+        .unwrap();
 
     let result = game.add_move(Movement::Placement {
         player: PlayerId::new(1),
@@ -369,7 +370,7 @@ fn test_resign_ends_game_with_opponent_winning() {
         player: PlayerId::new(0),
         action: GameAction::Resign,
     })
-    .unwrap();
+        .unwrap();
 
     assert!(game.check_game_over());
     match game.status() {
@@ -389,14 +390,14 @@ fn test_player_1_resign_makes_player_0_win() {
         player: PlayerId::new(0),
         coords: Coordinates::new(4, 0, 0),
     })
-    .unwrap();
+        .unwrap();
 
     // Player 1 resigns
     game.add_move(Movement::Action {
         player: PlayerId::new(1),
         action: GameAction::Resign,
     })
-    .unwrap();
+        .unwrap();
 
     assert!(game.check_game_over());
     match game.status() {
@@ -409,39 +410,152 @@ fn test_player_1_resign_makes_player_0_win() {
 
 #[test]
 fn test_swap_changes_next_player() {
-    let mut game = GameY::new(5);
+    let mut game = GameY::with_rules(
+        5,
+        GameRules {
+            pie_rule: PieRule { enabled: true },
+            honey: HoneyRule::default(),
+        },
+    )
+        .unwrap();
+
+    game.add_move(Movement::Placement {
+        player: PlayerId::new(0),
+        coords: Coordinates::new(4, 0, 0),
+    })
+        .unwrap();
 
     game.add_move(Movement::Action {
-        player: PlayerId::new(0),
+        player: PlayerId::new(1),
         action: GameAction::Swap,
     })
-    .unwrap();
+        .unwrap();
 
     assert!(!game.check_game_over());
-    assert_eq!(game.next_player(), Some(PlayerId::new(1)));
+    assert_eq!(game.next_player(), Some(PlayerId::new(0)));
 }
 
 #[test]
 fn test_swap_after_opening_move() {
-    let mut game = GameY::new(5);
+    let mut game = GameY::with_rules(
+        5,
+        GameRules {
+            pie_rule: PieRule { enabled: true },
+            honey: HoneyRule::default(),
+        },
+    )
+        .unwrap();
 
     // Player 0 makes opening move
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(2, 1, 1),
     })
-    .unwrap();
+        .unwrap();
 
     // Player 1 uses swap action
     game.add_move(Movement::Action {
         player: PlayerId::new(1),
         action: GameAction::Swap,
     })
-    .unwrap();
+        .unwrap();
 
     // Now it's player 0's turn again
     assert_eq!(game.next_player(), Some(PlayerId::new(0)));
     assert!(!game.check_game_over());
+}
+
+#[test]
+fn test_swap_is_rejected_in_classic_mode() {
+    let mut game = GameY::new(5);
+    game.add_move(Movement::Placement {
+        player: PlayerId::new(0),
+        coords: Coordinates::new(4, 0, 0),
+    })
+        .unwrap();
+
+    let result = game.add_move(Movement::Action {
+        player: PlayerId::new(1),
+        action: GameAction::Swap,
+    });
+    assert!(matches!(result, Err(GameYError::InvalidSwapAction { .. })));
+}
+
+#[test]
+fn test_honey_rule_blocks_cells_when_enabled() {
+    let mut game = GameY::with_rules(
+        4,
+        GameRules {
+            pie_rule: PieRule::default(),
+            honey: HoneyRule {
+                enabled: true,
+                blocked_cells: vec![BlockedCell { row: 1, col: 1 }],
+            },
+        },
+    )
+        .unwrap();
+
+    let blocked = Coordinates::new(2, 1, 0);
+    let result = game.add_move(Movement::Placement {
+        player: PlayerId::new(0),
+        coords: blocked,
+    });
+    assert!(matches!(result, Err(GameYError::BlockedCell { .. })));
+}
+
+#[test]
+fn test_honey_cells_are_playable_when_disabled() {
+    let mut game = GameY::with_rules(
+        4,
+        GameRules {
+            pie_rule: PieRule::default(),
+            honey: HoneyRule {
+                enabled: false,
+                blocked_cells: vec![BlockedCell { row: 1, col: 1 }],
+            },
+        },
+    )
+        .unwrap();
+
+    let allowed = Coordinates::new(2, 1, 0);
+    let result = game.add_move(Movement::Placement {
+        player: PlayerId::new(0),
+        coords: allowed,
+    });
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_both_rules_enabled_apply_together() {
+    let mut game = GameY::with_rules(
+        4,
+        GameRules {
+            pie_rule: PieRule { enabled: true },
+            honey: HoneyRule {
+                enabled: true,
+                blocked_cells: vec![BlockedCell { row: 1, col: 0 }],
+            },
+        },
+    )
+        .unwrap();
+
+    game.add_move(Movement::Placement {
+        player: PlayerId::new(0),
+        coords: Coordinates::new(3, 0, 0),
+    })
+        .unwrap();
+
+    game.add_move(Movement::Action {
+        player: PlayerId::new(1),
+        action: GameAction::Swap,
+    })
+        .unwrap();
+
+    let blocked_result = game.add_move(Movement::Placement {
+        player: PlayerId::new(0),
+        coords: Coordinates::new(2, 0, 1),
+    });
+    assert!(matches!(blocked_result, Err(GameYError::BlockedCell { .. })));
 }
 
 // ============================================================================
@@ -469,17 +583,17 @@ fn test_yen_round_trip_with_moves() {
         player: PlayerId::new(0),
         coords: Coordinates::new(3, 0, 0),
     })
-    .unwrap();
+        .unwrap();
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(2, 1, 0),
     })
-    .unwrap();
+        .unwrap();
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(1, 1, 1),
     })
-    .unwrap();
+        .unwrap();
 
     let yen: YEN = (&game).into();
     let loaded_game = GameY::try_from(yen.clone()).unwrap();
@@ -591,12 +705,12 @@ fn test_save_and_load_game_file() {
         player: PlayerId::new(0),
         coords: Coordinates::new(3, 0, 0),
     })
-    .unwrap();
+        .unwrap();
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(2, 0, 1),
     })
-    .unwrap();
+        .unwrap();
 
     game.save_to_file(&file_path).unwrap();
 
@@ -751,12 +865,12 @@ fn test_render_with_pieces() {
         player: PlayerId::new(0),
         coords: Coordinates::new(2, 0, 0),
     })
-    .unwrap();
+        .unwrap();
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(1, 1, 0),
     })
-    .unwrap();
+        .unwrap();
 
     let options = RenderOptions {
         show_3d_coords: false,
@@ -824,7 +938,7 @@ fn test_full_game_on_size_4_board() {
             player: PlayerId::new(*player_id),
             coords: *coords,
         })
-        .unwrap();
+            .unwrap();
     }
 
     // Game might or might not be over depending on the board state
@@ -842,45 +956,45 @@ fn test_union_find_correctly_merges_components() {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 0, 3), // Side A and B
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(3, 0, 0), // Player 1's piece
     })
-    .unwrap();
+        .unwrap();
 
     // Component 2: touches side C
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 3, 0), // Side A and C
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(2, 1, 0),
     })
-    .unwrap();
+        .unwrap();
 
     // Connect the components
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 1, 2), // Side A - connects the chain
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(1),
         coords: Coordinates::new(2, 0, 1),
     })
-    .unwrap();
+        .unwrap();
 
     game.add_move(Movement::Placement {
         player: PlayerId::new(0),
         coords: Coordinates::new(0, 2, 1), // Final connection - should win
     })
-    .unwrap();
+        .unwrap();
 
     // Player 0 should now have won by connecting all three sides via side A
     assert!(game.check_game_over());

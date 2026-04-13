@@ -1,5 +1,6 @@
 import { MatchRepository } from "../repositories/MatchRepository";
 import { gamesCreated, activeGames, gamesFinished } from '../metrics';
+import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from "../types/rules.js";
 
 type MatchMove = {
   position_yen: string;
@@ -13,8 +14,15 @@ export class MatchService {
 
   constructor(private readonly matchRepo: MatchRepository) {}
 
-  async createMatch(userId: number, boardSize: number, difficulty: string, mode: string = 'BOT') {
-    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode);
+  async createMatch(
+      userId: number,
+      boardSize: number,
+      difficulty: string,
+      mode: string = 'BOT',
+      rules: MatchRules = cloneDefaultMatchRules(),
+  ) {
+    const resolvedRules = resolveRulesForMatch(boardSize, rules);
+    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode, resolvedRules);
     gamesCreated.inc();
     activeGames.inc();
     return match;
@@ -68,8 +76,9 @@ export class MatchService {
     const match = await this.matchRepo.getMatchById(matchId);
     if (!match || match.status !== 'ONGOING') return;
 
+    const rules = this.resolveMatchRules(match.rules);
     const moves = await this.matchRepo.listMoves(matchId) as MatchMove[];
-    const move = await this.getBotMoveWithTimeout(matchId, match.board_size, moves);
+    const move = await this.getBotMoveWithTimeout(matchId, match.board_size, moves, rules);
     const fallbackMove = this.pickFallbackMove(match.board_size, moves);
     const chosen = move && !moves.some((existing) => existing.position_yen === move) ? move : fallbackMove;
     if (!chosen) return;
@@ -78,7 +87,12 @@ export class MatchService {
     await this.matchRepo.addMove(matchId, chosen, 'BOT', nextMoveNumber);
   }
 
-  private async getBotMoveWithTimeout(matchId: number, boardSize: number, moves: MatchMove[]): Promise<string | null> {
+  private async getBotMoveWithTimeout(
+      matchId: number,
+      boardSize: number,
+      moves: MatchMove[],
+      rules: MatchRules,
+  ): Promise<string | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 500);
     const baseUrl = process.env.GAMEY_SERVICE_URL
@@ -87,7 +101,7 @@ export class MatchService {
       const response = await fetch(`${baseUrl}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId, boardSize, moves }),
+        body: JSON.stringify({ matchId, boardSize, moves, rules }),
         signal: controller.signal,
       });
 
@@ -100,6 +114,17 @@ export class MatchService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private resolveMatchRules(rawRules: unknown): MatchRules {
+    if (typeof rawRules === 'string') {
+      try {
+        return normalizeMatchRules(JSON.parse(rawRules));
+      } catch {
+        return cloneDefaultMatchRules();
+      }
+    }
+    return normalizeMatchRules(rawRules);
   }
 
   private pickFallbackMove(boardSize: number, moves: MatchMove[]) {

@@ -42,7 +42,7 @@ export function createGameController(
       }
 
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode, validated.rules);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);
@@ -139,6 +139,7 @@ export function createGameController(
         userId: Number(req.userId),
         username: req.username,
         boardSize: payload.boardSize,
+        rules: payload.rules,
         socketId: `http:${req.userId}`,
       });
       res.status(201).json({ queued: true, joinedAt: queued.joinedAt });
@@ -174,6 +175,7 @@ export function createGameController(
               { userId: assignment.playerB.userId, username: assignment.playerB.username },
             ],
             'HUMAN',
+            assignment.playerA.rules,
         );
       }
 

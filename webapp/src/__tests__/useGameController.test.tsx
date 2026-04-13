@@ -351,6 +351,57 @@ describe("useGameController", () => {
         });
     });
 
+    it("does not play on blocked honey cells", async () => {
+        const { result } = renderHook(() =>
+            useGameController(
+                4,
+                "LOCAL_2P",
+                {
+                    size: 4,
+                    turn: 0,
+                    players: ["B", "R"],
+                    layout: "./../.../....",
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+                    },
+                },
+            ),
+        );
+
+        await act(async () => {
+            await result.current.actions.handleCellClick(1, 0);
+        });
+
+        expect(result.current.state.gameState.layout).toBe("./../.../....");
+    });
+
+    it("applies pie swap only in eligible local flow", async () => {
+        const { result } = renderHook(() =>
+            useGameController(
+                3,
+                "LOCAL_2P",
+                {
+                    size: 3,
+                    turn: 1,
+                    players: ["B", "R"],
+                    layout: "B/../...",
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                },
+            ),
+        );
+
+        act(() => {
+            result.current.actions.applyPieSwap();
+        });
+
+        expect(result.current.state.gameState.layout).toBe("R/../...");
+        expect(result.current.state.gameState.turn).toBe(0);
+    });
+
     it("handles 400 bot error", async () => {
         fetchMock.mockResolvedValueOnce(
             new Response("", { status: 400 })

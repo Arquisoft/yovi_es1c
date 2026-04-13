@@ -156,7 +156,16 @@ describe('Game match flow integration tests', () => {
             });
 
         expect(response.status).toBe(201);
-        expect(mockMatchService.createMatch).toHaveBeenCalledWith(userId, 8, difficulty, 'BOT');
+        expect(mockMatchService.createMatch).toHaveBeenCalledWith(
+            userId,
+            8,
+            difficulty,
+            'BOT',
+            {
+              pieRule: { enabled: false },
+              honey: { enabled: false, blockedCells: [] },
+            },
+        );
       }
     });
 

@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto';
 import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from './BotFallbackService';
-import { OnlineMatchAssignment, OnlineQueueEntry, OnlineSessionState } from '../types/online';
+import {OnlineMatchAssignment, OnlinePlayerState, OnlineQueueEntry, OnlineSessionState} from '../types/online';
+import { MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { StatsService } from './StatsService';
 import { matchmakingDuration, matchmakingEvents } from '../metrics';
 
@@ -71,6 +72,7 @@ export class MatchmakingService {
     const skillBand = this.getSkillBand(winRate);
     const queueEntry: OnlineQueueEntry = {
       ...entry,
+      rules: normalizeMatchRules(entry.rules),
       skillBand,
       joinedAt: Date.now(),
       queueJoinId: randomUUID(),
@@ -148,7 +150,10 @@ export class MatchmakingService {
     const waitedSec = (now - self.joinedAt) / 1000;
     const skillRange = waitedSec >= 20 ? 2 : 1;
     const rival = allCandidates.find(
-        (entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange
+        (entry) =>
+            entry.userId !== self.userId
+            && Math.abs(entry.skillBand - self.skillBand) <= skillRange
+            && this.areRulesCompatible(self.rules, entry.rules),
     );
 
     if (rival) {
@@ -203,6 +208,7 @@ export class MatchmakingService {
       userId: String(entry.userId),
       username: entry.username,
       boardSize: String(entry.boardSize),
+      rules: JSON.stringify(entry.rules),
       skillBand: String(entry.skillBand),
       joinedAt: String(entry.joinedAt),
       socketId: entry.socketId,
@@ -251,6 +257,7 @@ export class MatchmakingService {
       userId: Number(data.userId),
       username: data.username,
       boardSize: Number(data.boardSize),
+      rules: this.parseQueueRules(data.rules),
       skillBand: Number(data.skillBand),
       joinedAt: Number(data.joinedAt),
       socketId: data.socketId,
@@ -285,38 +292,66 @@ export class MatchmakingService {
 
   private async persistInitialMatch(assignment: OnlineMatchAssignment, boardSize: number): Promise<void> {
     const redis = this.deps.redis;
-    if (!redis || !assignment.playerB) return;
+    if (!redis) return;
 
     const layout = Array.from({ length: boardSize }, (_, idx) => '.'.repeat(idx + 1)).join('/');
+    const resolvedRules = resolveRulesForMatch(boardSize, assignment.playerA.rules);
+
+    const botSlot: OnlinePlayerState = { userId: 0, username: 'BOT', symbol: 'R' };
+    const players: [OnlinePlayerState, OnlinePlayerState] = [
+      { userId: assignment.playerA.userId, username: assignment.playerA.username, symbol: 'B' },
+      assignment.playerB
+          ? { userId: assignment.playerB.userId, username: assignment.playerB.username, symbol: 'R' }
+          : botSlot,
+    ];
+
+    const connection: OnlineSessionState['connection'] = {
+      [assignment.playerA.userId]: 'CONNECTED',
+      ...(assignment.playerB ? { [assignment.playerB.userId]: 'CONNECTED' } : {}),
+    };
+
+    const reconnectDeadline: OnlineSessionState['reconnectDeadline'] = {
+      [assignment.playerA.userId]: null,
+      ...(assignment.playerB ? { [assignment.playerB.userId]: null } : {}),
+    };
+
     const initial: OnlineSessionState = {
       matchId: assignment.matchId,
       layout,
       size: boardSize,
+      rules: resolvedRules,
       turn: 0,
       version: 0,
       timerEndsAt: Date.now() + 25_000,
-      players: [
-        { userId: assignment.playerA.userId, username: assignment.playerA.username, symbol: 'B' },
-        { userId: assignment.playerB.userId, username: assignment.playerB.username, symbol: 'R' },
-      ],
-      opponentType: 'HUMAN',
+      players,
+      opponentType: assignment.opponentType,
       status: 'active',
       closeReason: null,
-      connection: {
-        [assignment.playerA.userId]: 'CONNECTED',
-        [assignment.playerB.userId]: 'CONNECTED',
-      },
-      reconnectDeadline: {
-        [assignment.playerA.userId]: null,
-        [assignment.playerB.userId]: null,
-      },
+      connection,
+      reconnectDeadline,
       winner: null,
       messages: [],
     };
 
     await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial), { EX: 3600 });
     await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId, { EX: 3600 });
-    await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId, { EX: 3600 });
+
+    if (assignment.playerB) {
+      await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId, { EX: 3600 });
+    }
+  }
+
+  private areRulesCompatible(left: MatchRules, right: MatchRules): boolean {
+    return JSON.stringify(normalizeMatchRules(left)) === JSON.stringify(normalizeMatchRules(right));
+  }
+
+  private parseQueueRules(rawRules: string | undefined): MatchRules {
+    if (!rawRules) return normalizeMatchRules(undefined);
+    try {
+      return normalizeMatchRules(JSON.parse(rawRules));
+    } catch {
+      return normalizeMatchRules(undefined);
+    }
   }
 
   private emitMatched(assignment: OnlineMatchAssignment): void {
