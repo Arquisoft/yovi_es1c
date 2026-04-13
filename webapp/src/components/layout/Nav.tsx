@@ -6,6 +6,8 @@ import logoLight from '../../assets/gamey-logo-black.png';
 import { useAuth } from '../../features/auth';
 import { logoutSession } from '../../features/auth/api/authApi';
 import {useTranslation} from "react-i18next";
+import LanguageSwitcher from './LanguageSwitcher';
+
 
 export default function Nav() {
   const { user, logout } = useAuth();
@@ -65,6 +67,9 @@ export default function Nav() {
         <li>
           <Link to="/stats" className={linkClass('/stats')}>{t('stats')}</Link>
         </li>
+        <li>
+            <LanguageSwitcher />
+        </li>
         {user ? (
           <>
             <li>
@@ -75,6 +80,8 @@ export default function Nav() {
                 {t('logout')}
               </button>
             </li>
+
+             
           </>
         ) : (
           <>

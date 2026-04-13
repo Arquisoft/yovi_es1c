@@ -389,5 +389,6 @@ export default function GameUI() {
                 </Box>
             </Box>
         </Box>
+    </Box>
     );
 }

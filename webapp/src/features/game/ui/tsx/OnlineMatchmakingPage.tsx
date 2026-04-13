@@ -4,6 +4,7 @@ import { Box, Button, Paper, Typography } from '@mui/material';
 import { useOnlineMatchmaking } from '../../hooks/useOnlineMatchmaking';
 import { useAuth } from '../../../auth/context/useAuth';
 import type { MatchRulesDto } from '../../../../shared/contracts';
+import {useTranslation} from "react-i18next";
 
 export default function OnlineMatchmakingPage() {
     const navigate = useNavigate();
@@ -17,6 +18,8 @@ export default function OnlineMatchmakingPage() {
     };
     const { waiting, waitedSec, matched, error, joinQueue, cancelQueue } = useOnlineMatchmaking(boardSize, rules);
 
+    const {t} = useTranslation();
+    
     useEffect(() => {
         if (!token) return;
         let cleanup: (() => void) | undefined;

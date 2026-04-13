@@ -50,9 +50,17 @@ export interface OnlineSnapshotPayload {
   connectionStatus?: ConnectionBadgeState;
 }
 
-interface SessionErrorSocketPayload {
-  code: string;
-  message?: string;
+interface SessionErrorPayload {
+  code:
+      | 'VERSION_CONFLICT'
+      | 'NOT_YOUR_TURN'
+      | 'INVALID_MOVE'
+      | 'SESSION_NOT_FOUND'
+      | 'RECONNECT_EXPIRED'
+      | 'SESSION_TERMINAL'
+      | 'UNAUTHORIZED'
+      | 'DUPLICATE_EVENT';
+  message: string;
   details?: unknown;
 }
 
@@ -75,51 +83,51 @@ interface SessionStateSocketPayload {
 /**
  * UI / i18n error codes (camelCase)
  */
-type SessionErrorCode =
-    | 'sessionNotFound'
-    | 'sessionTerminal'
-    | 'notAuthenticated'
-    | 'socketError'
-    | 'versionConflict'
-    | 'notYourTurn'
-    | 'invalidMove'
-    | 'sessionError';
+// type SessionErrorCode =
+//     | 'sessionNotFound'
+//     | 'sessionTerminal'
+//     | 'notAuthenticated'
+//     | 'socketError'
+//     | 'versionConflict'
+//     | 'notYourTurn'
+//     | 'invalidMove'
+//     | 'sessionError';
 
 /**
  * Backend error codes (UPPER_CASE contract)
  */
-type BackendSessionErrorCode =
-    | 'VERSION_CONFLICT'
-    | 'NOT_YOUR_TURN'
-    | 'INVALID_MOVE'
-    | 'SESSION_NOT_FOUND'
-    | 'RECONNECT_EXPIRED'
-    | 'SESSION_TERMINAL'
-    | 'UNAUTHORIZED'
-    | 'DUPLICATE_EVENT';
+// type BackendSessionErrorCode =
+//     | 'VERSION_CONFLICT'
+//     | 'NOT_YOUR_TURN'
+//     | 'INVALID_MOVE'
+//     | 'SESSION_NOT_FOUND'
+//     | 'RECONNECT_EXPIRED'
+//     | 'SESSION_TERMINAL'
+//     | 'UNAUTHORIZED'
+//     | 'DUPLICATE_EVENT';
 
-function mapSessionError(code?: BackendSessionErrorCode | string): SessionErrorCode {
-  switch (code) {
-    case 'SESSION_NOT_FOUND':
-      return 'sessionNotFound';
-    case 'SESSION_TERMINAL':
-      return 'sessionTerminal';
-    case 'UNAUTHORIZED':
-      return 'notAuthenticated';
-    case 'VERSION_CONFLICT':
-      return 'versionConflict';
-    case 'NOT_YOUR_TURN':
-      return 'notYourTurn';
-    case 'INVALID_MOVE':
-      return 'invalidMove';
-    default:
-      return 'sessionError';
-  }
-}
+// function mapSessionError(code?: BackendSessionErrorCode | string): SessionErrorCode {
+//   switch (code) {
+//     case 'SESSION_NOT_FOUND':
+//       return 'sessionNotFound';
+//     case 'SESSION_TERMINAL':
+//       return 'sessionTerminal';
+//     case 'UNAUTHORIZED':
+//       return 'notAuthenticated';
+//     case 'VERSION_CONFLICT':
+//       return 'versionConflict';
+//     case 'NOT_YOUR_TURN':
+//       return 'notYourTurn';
+//     case 'INVALID_MOVE':
+//       return 'invalidMove';
+//     default:
+//       return 'sessionError';
+//   }
+// }
 
 export function useOnlineSession(matchId: string | null) {
   const [sessionState, setSessionState] = useState<OnlineSnapshotPayload | null>(null);
-  const [error, setError] = useState<SessionErrorCode | null>(null);
+  const [error, setError] = useState<SessionErrorPayload  | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   // Ref que siempre tiene el último estado conocido de forma síncrona.
@@ -135,7 +143,10 @@ export function useOnlineSession(matchId: string | null) {
     const token = localStorage.getItem(AUTH_STORAGE_KEYS.ACCESS_TOKEN);
 
     if (!token) {
-      setError('notAuthenticated');
+      setError({
+        code: 'UNAUTHORIZED',
+        message: 'Not authenticated',
+      });
       return;
     }
 

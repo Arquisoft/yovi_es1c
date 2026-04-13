@@ -49,4 +49,16 @@ i18n
         },
     });
 
+const syncDocumentLanguage = (lng: string) => {
+  if (typeof document === 'undefined') return;
+
+  const normalized = lng.split('-')[0];
+  document.documentElement.lang = normalized;
+};
+
+syncDocumentLanguage(i18n.resolvedLanguage || i18n.language);
+
+i18n.on('languageChanged', syncDocumentLanguage);
+
+
 export default i18n;

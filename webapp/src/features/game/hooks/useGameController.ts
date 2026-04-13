@@ -8,16 +8,17 @@ import { API_CONFIG } from "../../../config/api.config";
 export type GameMode = "BOT" | "LOCAL_2P" | "ONLINE";
 export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
 
-type GameMessage =
-    | { key: "clickACellToPlay" }
-    | { key: "botThinking" }
-    | { key: "errorCommunicatingWithBot" }
-    | { key: "onlineWaitingServer" }
-    | { key: "invalidBotMove" }
-    | { key: "winnerAnnouncement"; params: { label: string } }
-    | { key: "turnMessage"; params: { label: string } }
-    | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
-    | { key: "custom"; text: string };
+export type GameMessage =
+  | { key: "clickACellToPlay" }
+  | { key: "botThinking" }
+  | { key: "errorCommunicatingWithBot" }
+  | { key: "onlineWaitingServer" }
+  | { key: "invalidBotMove" }
+  | { key: "winnerAnnouncement"; params: { label: string } }
+  | { key: "turnMessage"; params: { label: string } }
+  | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
+  | { key: "pieRuleApplied" }
+  | { key: "custom"; text: string };
 
 const DEFAULT_BOARD_SIZE = 8;
 const GAMEY_TIMEOUT_MS = 4000;
@@ -182,6 +183,7 @@ export const useGameController = (
         () => initialYEN ? { ...initialYEN, rules: normalizeRules(initialYEN.rules ?? initialRules) } : createEmptyYEN(initialSize, resolvedInitialRules)
     );
     const [loading, setLoading] = useState(false);
+
     const [error, setError] = useState<string | null>(null);
 
     const [message, setMessage] = useState<GameMessage>({
@@ -600,7 +602,9 @@ export const useGameController = (
                         .split('')
                         .map((ch) => (ch === 'B' ? 'R' : ch === 'R' ? 'B' : ch))
                         .join('');
-                    setMessage("Pie Rule aplicado: se intercambiaron colores");
+                    setMessage({
+                        key: "pieRuleApplied"
+                    });
                     return { ...prev, layout: swappedLayout, turn: 0, rules };
                 });
             },

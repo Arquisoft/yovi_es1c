@@ -34,9 +34,5 @@ export default function TurnTimer({ timerEndsAt, onExpire }: Readonly<TurnTimerP
     }
   }, [remaining, onExpire]);
 
-  return (
-      <span style={{ color: remaining <= 5 ? 'var(--phosphor-danger)' : 'var(--phosphor-primary)' }}>
-      ⏱ {remaining}s
-    </span>
-  );
+  return <span style={{ color: remaining <= 5 ? 'var(--phosphor-danger)' : 'var(--phosphor-primary)' }}>⏱ {remaining} {t('seconds', { count: remaining })}</span>;
 }
