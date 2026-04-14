@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Button, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Button, Menu, MenuItem, ListItemText } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useTranslation } from 'react-i18next';
 
 const LANGUAGE_OPTIONS = [
-  { code: 'en', label: 'English', flag: '🇬🇧' },
-  { code: 'es', label: 'Español', flag: '🇪🇸' },
-  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
-  { code: 'fr', label: 'Français', flag: '🇫🇷' },
-  { code: 'zh', label: '中文', flag: '🇨🇳' },
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'fr', label: 'Français' },
+  { code: 'zh', label: '中文' },
 ] as const;
 
 export default function LanguageSwitcher() {
@@ -31,7 +31,7 @@ export default function LanguageSwitcher() {
         onClick={(event) => setAnchorEl(event.currentTarget)}
         endIcon={<KeyboardArrowDownIcon />}
       >
-        {currentLanguage.code.toUpperCase()} {currentLanguage.flag}
+        {currentLanguage.code.toUpperCase()}
       </Button>
 
       <Menu
@@ -49,9 +49,6 @@ export default function LanguageSwitcher() {
                 setAnchorEl(null);
               }}
             >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                {item.flag}
-              </ListItemIcon>
               <ListItemText>
                 {item.code.toUpperCase()}
               </ListItemText>
