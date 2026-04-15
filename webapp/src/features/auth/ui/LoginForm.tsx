@@ -85,9 +85,9 @@ const LoginForm: React.FC = () => {
         </Button>
 
         <Typography variant="body2" align="center" className="crt-muted" sx={{ letterSpacing: '0.12em' }}>
-          No account?{' '}
+          {t('noAccount')}{' '}
           <Link component={RouterLink} to="/register" underline="none" fontWeight={400} sx={{ letterSpacing: '0.12em' }}>
-            Register here
+            {t('registerHere')}
           </Link>
         </Typography>
       </Box>

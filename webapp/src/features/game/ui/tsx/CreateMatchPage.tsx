@@ -21,6 +21,7 @@ import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../../../../config/api.config';
 import type { BotDifficulty } from '../../hooks/useGameController';
 import type { MatchRulesDto } from '../../../../shared/contracts';
+import {useTranslation} from "react-i18next";
 
 type CreateMatchMode = 'BOT' | 'LOCAL_2P' | 'ONLINE';
 
@@ -34,6 +35,7 @@ export default function CreateMatchPage() {
     const [error, setError] = useState<string | null>(null);
     const [pieRuleEnabled, setPieRuleEnabled] = useState(false);
     const [honeyEnabled, setHoneyEnabled] = useState(false);
+    const {t} = useTranslation();
 
     const buildRules = (): MatchRulesDto => ({
         pieRule: { enabled: pieRuleEnabled },
@@ -41,14 +43,14 @@ export default function CreateMatchPage() {
     });
 
     const buttonLabel = loading
-        ? 'INICIALIZANDO...'
+        ? t('initializing')
         : mode === 'ONLINE'
-            ? 'BUSCAR RIVAL'
-            : 'CREAR PARTIDA';
+            ? t('searchRival')
+            : t('createMatch');
 
     const handleCreateMatch = async () => {
         if (!token) {
-            setError('ACCESO DENEGADO: Debes iniciar sesión para crear una partida');
+            setError(t('accessDeniedLoginToCreateMatch'));
             return;
         }
 
@@ -71,7 +73,7 @@ export default function CreateMatchPage() {
 
             if (!res.ok) {
                 const text = await res.text();
-                throw new Error(text || 'Error creando la partida');
+                throw new Error(text || 'Error creating the game');
             }
 
             const data = await res.json();
@@ -102,7 +104,7 @@ export default function CreateMatchPage() {
                 },
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Error desconocido');
+            setError(err instanceof Error ? err.message : 'Unkown error');
         } finally {
             setLoading(false);
         }
@@ -112,10 +114,10 @@ export default function CreateMatchPage() {
         return (
             <Box sx={{ textAlign: 'center', mt: '58px', pt: 4 }}>
                 <Typography variant="h5" color="error">
-                    ACCESO DENEGADO: Debes iniciar sesión para crear una partida
+                    {t('accessDeniedLoginToCreateMatch')}
                 </Typography>
                 <Button variant="contained" onClick={() => navigate('/login')} sx={{ mt: 2 }}>
-                    IR A LOGIN
+                    {t('goLogin')}
                 </Button>
             </Box>
         );
@@ -144,7 +146,7 @@ export default function CreateMatchPage() {
                         className="crt-screen-label"
                         sx={{ display: 'block', mb: 1 }}
                     >
-                        Match setup
+                        {t('matchSetup')}
                     </Typography>
                     <Typography
                         variant="h4"
@@ -152,10 +154,10 @@ export default function CreateMatchPage() {
                         color="primary"
                         sx={{ mb: 1, textShadow: '0 0 8px rgba(57, 255, 20, 0.45)' }}
                     >
-                        NUEVA PARTIDA
+                        {t('newGame')}
                     </Typography>
                     <Typography variant="subtitle1" color="text.secondary">
-                        CONFIGURACIÓN DE SISTEMA
+                        {t('systemConfig')}
                     </Typography>
                 </Box>
 
@@ -177,7 +179,7 @@ export default function CreateMatchPage() {
                 <Stack spacing={3}>
                     <Box sx={{ px: 1 }}>
                         <Typography id="board-size-slider" gutterBottom color="primary" variant="subtitle2">
-                            TAMAÑO DEL TABLERO: {boardSize} x {boardSize}
+                            {t('boardSize', {boardSize: boardSize})}
                         </Typography>
                         <Slider
                             aria-labelledby="board-size-slider"
@@ -204,7 +206,7 @@ export default function CreateMatchPage() {
                     </Box>
 
                     <FormControl fullWidth>
-                        <InputLabel id="game-mode-label">Modo de juego</InputLabel>
+                        <InputLabel id="game-mode-label">{t('gameMode')}</InputLabel>
                         <Select
                             labelId="game-mode-label"
                             id="game-mode"
@@ -213,15 +215,15 @@ export default function CreateMatchPage() {
                             onChange={(e) => setMode(e.target.value as CreateMatchMode)}
                         >
                             {}
-                            <MenuItem value="BOT">VS BOT</MenuItem>
-                            <MenuItem value="LOCAL_2P">2 JUGADORES (LOCAL)</MenuItem>
-                            <MenuItem value="ONLINE">ONLINE</MenuItem>
+                            <MenuItem value="BOT">{t('VS BOT')}</MenuItem>
+                            <MenuItem value="LOCAL_2P">{t('2players')}</MenuItem>
+                            <MenuItem value="ONLINE">{t('online')}</MenuItem>
                         </Select>
                     </FormControl>
 
                     {mode === 'BOT' && (
                         <FormControl fullWidth>
-                            <InputLabel id="difficulty-label">Dificultad</InputLabel>
+                            <InputLabel id="difficulty-label">{t('difficulty')}</InputLabel>
                             <Select
                                 labelId="difficulty-label"
                                 id="difficulty"
@@ -230,10 +232,10 @@ export default function CreateMatchPage() {
                                 onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
                             >
                                 {}
-                                <MenuItem value="easy">FÁCIL</MenuItem>
-                                <MenuItem value="medium">MEDIA</MenuItem>
-                                <MenuItem value="hard">DIFÍCIL</MenuItem>
-                                <MenuItem value="expert">IMPOSIBLE</MenuItem>
+                                <MenuItem value="easy">{t('easy')}</MenuItem>
+                                <MenuItem value="medium">{t('medium')}</MenuItem>
+                                <MenuItem value="hard">{t('difficult')}</MenuItem>
+                                <MenuItem value="expert">{t('imposible')}</MenuItem>
                             </Select>
                         </FormControl>
                     )}
@@ -241,15 +243,15 @@ export default function CreateMatchPage() {
                     <Divider />
                     <Box>
                         <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
-                            Extras de partida
+                            {t('matchExtras')}
                         </Typography>
                         <FormControlLabel
                             control={<Checkbox checked={pieRuleEnabled} onChange={(e) => setPieRuleEnabled(e.target.checked)} />}
-                            label="Pie Rule"
+                            label={t('pieRule')}
                         />
                         <FormControlLabel
                             control={<Checkbox checked={honeyEnabled} onChange={(e) => setHoneyEnabled(e.target.checked)} />}
-                            label="Honey (celdas bloqueadas)"
+                            label={t('honey')}
                         />
                     </Box>
 

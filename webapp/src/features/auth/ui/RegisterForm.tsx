@@ -55,7 +55,7 @@ const RegisterForm: React.FC = () => {
   };
 
   return (
-    <AuthFormCard icon={<PersonAddOutlinedIcon />} iconBgColor="secondary.main" title="Create your account">
+    <AuthFormCard icon={<PersonAddOutlinedIcon />} iconBgColor="secondary.main" title={t('createAccount')}>
       <Box component="form" onSubmit={handleSubmit} noValidate>
         <TextField
           label={t('username')}
@@ -75,7 +75,7 @@ const RegisterForm: React.FC = () => {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="new-password"
-          helperText="Minimum 8 characters"
+          helperText={t('minimum8Characters')}
           disabled={loading}
         />
 

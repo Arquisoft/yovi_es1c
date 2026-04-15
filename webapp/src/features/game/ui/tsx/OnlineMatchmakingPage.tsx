@@ -61,7 +61,7 @@ export default function OnlineMatchmakingPage() {
                     {t('youMustBeLoggedInToJoinQueue')}
                 </Typography>
                 <Button variant="contained" onClick={() => navigate('/login')} sx={{ mt: 2 }}>
-                    {t('gologin')}
+                    {t('goLogin')}
                 </Button>
             </Box>
         );
@@ -83,7 +83,7 @@ export default function OnlineMatchmakingPage() {
         >
             <Paper className="crt-panel" sx={{ width: '100%', maxWidth: 560, p: 4, textAlign: 'center' }}>
                 <Typography variant="overline" className="crt-screen-label" sx={{ display: 'block', mb: 1 }}>
-                    {t('matchmakingqueue')}
+                    {t('matchMakingQueue')}
                 </Typography>
                 <Typography variant="h4" className="crt-heading" sx={{ mb: 2 }}>
                     {t('searchingOpponentOnline')}
