@@ -41,7 +41,7 @@ ifndef::imagesdir[:imagesdir: ../images]
 |Rust-based microservice responsible for core game logic, move validation, and bot AI strategies. Completely stateless and has no database access.
 
 |*Game Service*
-|Node.js microservice responsible for match persistence, move history, player statistics, online matchmaking, and real-time session management via Socket.IO. Single point of access to `game.db` and Redis.
+|Node.js microservice responsible for match persistence, move history, player statistics, online matchmaking, and real-time session management via Socket.IO. Single point of access to `gamedb` (PostgreSQL) and Redis.
 
 |*Match*
 |Game session between two players (human or bot) with a specific board size and strategy configuration
@@ -73,8 +73,11 @@ ifndef::imagesdir[:imagesdir: ../images]
 |*Socket.IO*
 |Library providing WebSocket-based bidirectional communication between the React Frontend and the Game Service. Used to broadcast real-time board state updates, turn notifications, timeout events, and game-over signals to all players in an online session.
 
+|*PostgreSQL*
+|Relational database used by Auth Service (`authdb`) and Game Service (`gamedb`) for durable transactional persistence
+
 |*SQLite*
-|Embedded relational database used for durable persistence of credentials (`auth.db`), user profiles (`users.db`), and match data (`game.db`)
+|Embedded relational database used by Users Service for profile persistence (`users.db`)
 
 |*Stateless Service*
 |Service that does not maintain persistent state between requests (e.g., Game Server). All state is passed in each request or stored externally.
@@ -92,7 +95,7 @@ ifndef::imagesdir[:imagesdir: ../images]
 |Node.js microservice responsible for managing user profile data. Single point of access to `users.db`.
 
 |*WAL (Write-Ahead Logging)*
-|SQLite mode that enables concurrent reads during writes, improving database performance under load
+|SQLite journaling mode that improves concurrent reads/writes in Users Service storage
 
 |*Win Checker*
 |Algorithm that detects Y-shaped winning connections on the board to determine game outcome

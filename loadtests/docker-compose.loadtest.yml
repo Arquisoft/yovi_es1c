@@ -8,8 +8,9 @@ services:
     volumes:
       - ./k6:/scripts
     environment:
-      - TARGET_URL=http://nginx:80
-      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
+      - K6_INSECURE_TLS=${K6_INSECURE_TLS:-true}
+      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL:-http://prometheus:9090/api/v1/write}
     command: run --out experimental-prometheus-rw /scripts/auth.js
     networks:
       - yovi_net
@@ -23,8 +24,9 @@ services:
     volumes:
       - ./k6:/scripts
     environment:
-      - TARGET_URL=http://nginx:80
-      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
+      - K6_INSECURE_TLS=${K6_INSECURE_TLS:-true}
+      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL:-http://prometheus:9090/api/v1/write}
     command: run --out experimental-prometheus-rw /scripts/game.js
     networks:
       - yovi_net
@@ -38,8 +40,9 @@ services:
     volumes:
       - ./k6:/scripts
     environment:
-      - TARGET_URL=http://nginx:80
-      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
+      - K6_INSECURE_TLS=${K6_INSECURE_TLS:-true}
+      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL:-http://prometheus:9090/api/v1/write}
     command: run --out experimental-prometheus-rw /scripts/matchmaking.js
     networks:
       - yovi_net
@@ -54,7 +57,8 @@ services:
     volumes:
       - ./artillery:/scripts
     environment:
-      - TARGET_URL=http://nginx:80
+      - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
     command: run /scripts/online-session.yml
     networks:
       - yovi_net
@@ -69,7 +73,8 @@ services:
     volumes:
       - ./artillery:/scripts
     environment:
-      - TARGET_URL=http://nginx:80
+      - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
     command: run /scripts/turn-timeout.yml
     networks:
       - yovi_net

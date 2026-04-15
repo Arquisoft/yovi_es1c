@@ -32,7 +32,7 @@ Excepción: `POST /api/auth/verify` devuelve `401` con `{ "valid": false }`.
 ## Variables de entorno
 
 - `JWT_SECRET` (obligatoria): clave para firmar/verificar JWT. El servicio debe fallar en arranque si falta.
-- `AUTH_DB_PATH` (opcional): ruta al SQLite de auth. Por defecto en compose: `/app/auth/data/auth.db`.
+- `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` (opcionales): configuración de PostgreSQL para Auth (por defecto en compose: `auth-db:5432/authdb`, usuario `auth_user`).
 
 ## Ejecución local
 
@@ -48,12 +48,12 @@ npm test
 npm run test:coverage
 ```
 
-## Verificar creación de `auth.db`
+## Verificar conectividad a PostgreSQL (Auth)
 
-Con docker-compose, el volumen `./data:/app/data` permite comprobar el archivo desde la raíz del monorepo:
+Con Docker Compose puedes comprobar disponibilidad del motor con:
 
 ```bash
-test -f ./data/auth.db && echo "auth.db exists"
+pg_isready -h auth-db -p 5432 -U auth_user -d authdb
 ```
 
 ## Consumo interno de `/verify` por otros servicios
