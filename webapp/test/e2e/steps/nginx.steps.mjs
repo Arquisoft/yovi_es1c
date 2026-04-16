@@ -22,7 +22,7 @@ When('I visit the home page', async function () {
         this.failedRequests.push(request.url());
     });
 
-    await this.page.goto('http://localhost/', {waitUntil: 'networkidle'});
+    await this.page.goto('https://localhost/', {waitUntil: 'networkidle'});
 });
 
 Then('the page should load successfully', async function () {
@@ -49,7 +49,7 @@ Then('all CSS assets should load', async function () {
 });
 
 When('I request {string}', async function (endpoint) {
-    const url = `http://localhost${endpoint}`;
+    const url = `https://localhost${endpoint}`;
     this.proxyResponse = await this.page.request.get(url);
     this.proxyUrl = url;
 });
@@ -71,7 +71,7 @@ When('I test all proxy endpoints', async function () {
     this.endpointResults = {};
 
     try {
-        const gameyResponse = await this.page.request.get('http://localhost/api/gamey/status');
+        const gameyResponse = await this.page.request.get('https://localhost/api/gamey/status');
         this.endpointResults['/api/gamey/status'] = {
             status: gameyResponse.status(),
             success: gameyResponse.ok(),
@@ -82,7 +82,7 @@ When('I test all proxy endpoints', async function () {
     }
 
     try {
-        const webappResponse = await this.page.request.get('http://localhost/');
+        const webappResponse = await this.page.request.get('https://localhost/');
         this.endpointResults['/'] = {
             status: webappResponse.status(),
             success: webappResponse.ok()
@@ -111,7 +111,7 @@ Then('the root path {string} should serve the webapp', async function (path) {
 });
 
 When('I inspect the webapp JavaScript bundle', async function () {
-    await this.page.goto('http://localhost/', {waitUntil: 'networkidle'});
+    await this.page.goto('https://localhost/', {waitUntil: 'networkidle'});
 
     const html = await this.page.content();
     const scriptMatches = html.matchAll(/src="([^"]+\.js)"/g);
@@ -122,7 +122,7 @@ When('I inspect the webapp JavaScript bundle', async function () {
     for (const scriptPath of scriptPaths) {
         const scriptUrl = scriptPath.startsWith('http')
             ? scriptPath
-            : `http://localhost${scriptPath}`;
+            : `https://localhost${scriptPath}`;
 
         try {
             const response = await this.page.request.get(scriptUrl);
@@ -153,7 +153,7 @@ Then('it should not contain {string}', async function (needle) {
 });
 
 When('I make a bot move request to {string}', async function (endpoint) {
-    const url = `http://localhost${endpoint}`;
+    const url = `https://localhost${endpoint}`;
 
 
     const yenState = {

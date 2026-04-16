@@ -96,7 +96,7 @@ Only authenticated users can access certain features, such as creating matches o
 Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database using bcrypt or Argon2.
 
 • **Data Protection:**
-We only store the minimum amount of user information needed for the system to work. Data is split by domain with strict ownership: `auth.db` is accessible only through Auth Service, `users.db` only through Users Service, and `game.db` only through Game Service.
+We only store the minimum amount of user information needed for the system to work. Data is split by domain with strict ownership: `authdb` (PostgreSQL) is accessible only through Auth Service, `users.db` only through Users Service, and `gamedb` (PostgreSQL) only through Game Service.
 
 • **CORS and Rate Limiting:**
 Nginx handles Cross-Origin Resource Sharing (CORS) headers and rate limiting to prevent abuse and ensure legitimate API usage.
@@ -110,11 +110,11 @@ application, we split the project into several smaller, independent services:
 
 • **Nginx:** The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, WebSocket proxying for Socket.IO, and serves the React frontend static files.
 
-• **Auth Service (auth/):** Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to `auth.db`.
+• **Auth Service (auth/):** Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to `authdb` (PostgreSQL).
 
 • **Users Service (users/):** Node.js + Express + TypeScript service that manages user profile data. It is the single point of access to `users.db`.
 
-• **Game Service (gameservice/):** Node.js + Express + TypeScript service that manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. It is the single point of access to `game.db` and Redis.
+• **Game Service (gameservice/):** Node.js + Express + TypeScript service that manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. It is the single point of access to `gamedb` (PostgreSQL) and Redis.
 
 • **Game Server (gamey/):** Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.
 
@@ -165,13 +165,13 @@ This helps detect errors early and keeps all services aligned.
 
 The application relies on two complementary persistence mechanisms split by domain and lifetime:
 
-**Durable storage (SQLite):**
+**Durable storage (relational):**
 
-Three independent SQLite databases store long-lived data:
+Three independent databases (PostgreSQL for auth/game + SQLite for users) store long-lived data:
 
-* `auth.db` — accessible only through Auth Service. Stores user credentials and JWT token metadata.
+* `authdb` (PostgreSQL) — accessible only through Auth Service. Stores user credentials and JWT token metadata.
 * `users.db` — accessible only through Users Service. Stores user profile data.
-* `game.db` — accessible only through Game Service. Stores match records, move history, and player statistics.
+* `gamedb` (PostgreSQL) — accessible only through Game Service. Stores match records, move history, and player statistics.
 
 Each database is accessed exclusively by its owning service. This design decision ensures data consistency, security, and separation of concerns.
 
@@ -180,10 +180,10 @@ Each database is accessed exclusively by its owning service. This design decisio
 Redis is used exclusively by the Game Service for data that is short-lived and must be accessed with low latency:
 
 * **Matchmaking queue**: stores the list of players waiting for an online opponent. Entries are created when a player joins and removed when matched or when the timeout expires.
-* **Online session snapshots**: stores the current board state, active turn, and player list for each ongoing online match. This allows the Game Service to process moves and broadcast updates without hitting `game.db` on every turn.
+* **Online session snapshots**: stores the current board state, active turn, and player list for each ongoing online match. This allows the Game Service to process moves and broadcast updates without hitting `gamedb` (PostgreSQL) on every turn.
 * **Socket.IO pub/sub adapter**: Redis acts as the message broker between Socket.IO server instances, ensuring events are delivered to all connected clients even if multiple Game Service replicas are running.
 
-Redis data is ephemeral and requires no host volume. If Redis restarts, ongoing online sessions are lost, but durable match history in `game.db` is unaffected.
+Redis data is ephemeral and requires no host volume. If Redis restarts, ongoing online sessions are lost, but durable match history in `gamedb` (PostgreSQL) is unaffected.
 
 === Error Handling
 

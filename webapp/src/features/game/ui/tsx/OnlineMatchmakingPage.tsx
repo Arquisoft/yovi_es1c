@@ -3,14 +3,19 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Button, Paper, Typography } from '@mui/material';
 import { useOnlineMatchmaking } from '../../hooks/useOnlineMatchmaking';
 import { useAuth } from '../../../auth/context/useAuth';
+import type { MatchRulesDto } from '../../../../shared/contracts';
 
 export default function OnlineMatchmakingPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const { token } = useAuth();
-    const config = location.state as { boardSize?: number } | null;
+    const config = location.state as { boardSize?: number; rules?: MatchRulesDto } | null;
     const boardSize = config?.boardSize ?? 8;
-    const { waiting, waitedSec, matched, error, joinQueue, cancelQueue } = useOnlineMatchmaking(boardSize);
+    const rules = config?.rules ?? {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+    };
+    const { waiting, waitedSec, matched, error, joinQueue, cancelQueue } = useOnlineMatchmaking(boardSize, rules);
 
     useEffect(() => {
         if (!token) return;
@@ -30,7 +35,7 @@ export default function OnlineMatchmakingPage() {
 
         if (matched.matchId === '__BOT_FALLBACK__') {
             navigate('/gamey', {
-                state: { boardSize, mode: 'BOT', difficulty: 'medium' },
+                state: { boardSize, mode: 'BOT', difficulty: 'medium', rules },
             });
             return;
         }
@@ -41,9 +46,10 @@ export default function OnlineMatchmakingPage() {
                 boardSize,
                 mode: 'ONLINE',
                 difficulty: 'medium',
+                rules,
             },
         });
-    }, [matched, navigate, boardSize]);
+    }, [matched, navigate, boardSize, rules]);
 
     if (!token) {
         return (

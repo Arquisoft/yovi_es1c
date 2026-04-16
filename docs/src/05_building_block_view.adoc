@@ -23,9 +23,9 @@ package "Yovi System" {
   component "Users Service\n(Node.js + Express + TS)" as users <<service>>
   component "Game Service\n(Node.js + Express + TS)" as gameservice <<service>>
   component "Game Server\n(Rust)" as gamey <<service>>
-  database "auth.db\n(SQLite)" as authdb <<database>>
+  database "authdb\n(PostgreSQL)" as authdb <<database>>
   database "users.db\n(SQLite)" as usersdb <<database>>
-  database "game.db\n(SQLite)" as gamedb <<database>>
+  database "gamedb\n(PostgreSQL)" as gamedb <<database>>
   database "Redis\n(In-memory store)" as redis <<database>>
 }
 
@@ -38,9 +38,9 @@ nginx -down-> gamey : HTTP (4000)\n/api/gamey/*
 
 frontend ..> nginx : API calls from browser\n(/api/auth/*, /api/users/*, /api/game/*, /api/gamey/*)
 
-auth -down-> authdb : SQLite\nSQL
+auth -down-> authdb : PostgreSQL\nSQL
 users -down-> usersdb : SQLite\nSQL
-gameservice -down-> gamedb : SQLite\nSQL
+gameservice -down-> gamedb : PostgreSQL\nSQL
 gameservice -down-> redis : Redis protocol\nMatchmaking & sessions
 
 note right of nginx
@@ -54,7 +54,7 @@ note right of auth
   **Auth Layer**
   Registration & login
   JWT management
-  Credentials (auth.db)
+  Credentials (authdb)
 end note
 
 note right of users
@@ -68,7 +68,7 @@ note right of gameservice
   Match & stats persistence
   Online matchmaking (Redis)
   Real-time sessions (Socket.IO)
-  Game data (game.db)
+  Game data (gamedb)
 end note
 
 note right of gamey
@@ -93,9 +93,9 @@ The Yovi system is decomposed into six main subsystems to achieve separation of 
 
 * **Nginx (API Gateway)**: Single public entry point for all requests, handling routing, rate limiting, and CORS
 * **React Frontend (Webapp)**: User interface layer running in the browser, managing UI state and coordinating API calls to backend services
-* **Auth Service**: Authentication layer with exclusive access to `auth.db`, managing credentials, registration, login, and JWT tokens
+* **Auth Service**: Authentication layer with exclusive access to `authdb` (PostgreSQL), managing credentials, registration, login, and JWT tokens
 * **Users Service**: Profile layer with exclusive access to `users.db`, managing user profile data
-* **Game Service**: Game data and online play layer with exclusive access to `game.db` and Redis, managing match persistence, move history, statistics, online matchmaking, and real-time sessions via Socket.IO
+* **Game Service**: Game data and online play layer with exclusive access to `gamedb` (PostgreSQL) and Redis, managing match persistence, move history, statistics, online matchmaking, and real-time sessions via Socket.IO
 * **Game Server**: Pure game logic engine optimized for performance (Rust), completely stateless
 * **Redis**: Ephemeral in-memory store exclusively used by the Game Service for matchmaking queue state and active online session snapshots
 
@@ -108,7 +108,7 @@ Each service owns its own data store. A failure or overload in one store does no
 | Building Block | Responsibility
 
 | **Nginx (API Gateway)**
-a| • Single public entry point on port 80
+a| • Single public ingress via Nginx (`80` redirect + `443` TLS)
 • Routes requests based on URL paths:
 ** `/api/auth/*` → Auth Service (port 3001)
 ** `/api/users/*` → Users Service (port 3000)
@@ -129,7 +129,7 @@ a| • Single-page application (SPA) running in user's browser
 • Coordinates game flow from the client side
 
 | **Auth Service**
-a| • Single point of access to `auth.db`
+a| • Single point of access to `authdb` (PostgreSQL)
 • Manages user registration and login
 • Password hashing (bcrypt/Argon2)
 • JWT token generation and validation
@@ -144,7 +144,7 @@ a| • Single point of access to `users.db`
 • Exposes REST API on port 3000 (internal)
 
 | **Game Service**
-a| • Single point of access to `game.db` and Redis
+a| • Single point of access to `gamedb` (PostgreSQL) and Redis
 • Manages match lifecycle (creation, updates, completion) for both AI and online matches
 • Persists move history and serialized YEN board states
 • Aggregates and provides player statistics and rankings
@@ -170,7 +170,7 @@ a| • In-memory store exclusively used by the Game Service
 • Data is ephemeral: session state is rebuilt or discarded when a match ends
 • Exposed internally on port 6379
 
-| **auth.db (SQLite)**
+| **authdb (PostgreSQL)**
 a| • Stores user credentials (hashed passwords)
 • Persists JWT token metadata and refresh tokens
 • Accessible only through Auth Service
@@ -181,7 +181,7 @@ a| • Stores user profile information (username, avatar, preferences)
 • Accessible only through Users Service
 • Isolated from credentials and game data
 
-| **game.db (SQLite)**
+| **gamedb (PostgreSQL)**
 a| • Stores match records and metadata (size, strategy, difficulty, status)
 • Persists move history and serialized YEN board states
 • Maintains player statistics and rankings
@@ -191,7 +191,7 @@ a| • Stores match records and metadata (size, strategy, difficulty, status)
 
 **Important Interfaces:**
 
-* **User → Nginx**: HTTP REST API and WebSocket (port 80, public)
+* **User → Nginx**: HTTPS REST API and WebSocket (public ingress: `443`, with `80` redirect)
 * **Nginx → React Frontend**: Static file serving (HTML, JS, CSS)
 * **Nginx → Auth Service**: REST API (`/api/auth/*`, port 3001, internal)
 * **Nginx → Users Service**: REST API (`/api/users/*`, port 3000, internal)
@@ -199,27 +199,27 @@ a| • Stores match records and metadata (size, strategy, difficulty, status)
 * **Nginx → Game Server**: REST API (`/api/gamey/*`, port 4000, internal)
 * **React Frontend → Nginx**: AJAX/Fetch API calls and Socket.IO WebSocket connection from browser
 * **Game Service → Redis**: Redis protocol (port 6379, internal) for matchmaking queue and session state
-* **Auth Service → auth.db**: SQLite native SQL queries
+* **Auth Service → authdb**: PostgreSQL SQL over TCP
 * **Users Service → users.db**: SQLite native SQL queries
-* **Game Service → game.db**: SQLite native SQL queries
+* **Game Service → gamedb**: PostgreSQL SQL over TCP
 
 **Communication Flow Example (AI Match):**
 
 1. User loads the app → Nginx serves React static files → React runs in browser
 2. User clicks "Login" → React calls `POST /api/auth/login` → Nginx routes to Auth Service
-3. Auth Service validates credentials against `auth.db` → Returns JWT token
-4. User creates a match → React calls `POST /api/game/matches` → Nginx routes to Game Service → persisted in `game.db`
+3. Auth Service validates credentials against `authdb` (PostgreSQL) → Returns JWT token
+4. User creates a match → React calls `POST /api/game/matches` → Nginx routes to Game Service → persisted in `gamedb` (PostgreSQL)
 5. User makes a move → React calls `POST /api/gamey/play` → Nginx routes to Game Server → returns updated YEN
-6. Game Server returns move validation → React calls `POST /api/game/matches/{id}/moves` → Game Service persists in `game.db`
+6. Game Server returns move validation → React calls `POST /api/game/matches/{id}/moves` → Game Service persists in `gamedb` (PostgreSQL)
 7. React updates UI
 
 **Communication Flow Example (Online Match):**
 
 1. User joins matchmaking → React calls `POST /api/game/online/queue` → Game Service stores entry in Redis
-2. React polls `GET /api/game/online/queue/match` → Game Service checks Redis for a paired opponent
+2. Match assignment is pushed through Socket.IO `matchmaking:matched` (REST `GET /online/queue/match` remains as fallback polling endpoint)
 3. When matched, Game Service creates an online session in Redis and returns match details
 4. Both clients connect via Socket.IO → receive real-time board state updates after each move
-5. Player submits a move → `POST /api/game/online/sessions/:matchId/moves` → Game Service validates, updates Redis session, broadcasts updated state via Socket.IO
+5. Player submits a move via Socket.IO `move:play` (or REST fallback `POST /api/game/online/sessions/:matchId/moves`) → Game Service validates, updates Redis session, and broadcasts `session:state`
 6. If a player exceeds their turn time → `TurnTimerService` fires → `BotFallbackService` computes and applies a move automatically
 
 === Level 2
@@ -244,7 +244,7 @@ package "Auth Service (Node.js + TypeScript)" {
   }
 }
 
-database "auth.db (SQLite)" as authdb <<database>>
+database "authdb (PostgreSQL)" as authdb <<database>>
 
 [AuthController] ..> [AuthService]
 [AuthService] ..> [CredentialsRepository]
@@ -267,7 +267,7 @@ end note
 
 note right of [CredentialsRepository]
   **Repository Pattern**
-  Abstracts auth.db access
+  Abstracts authdb access
   Enables testing with mocks
 end note
 
@@ -292,7 +292,7 @@ a| • User registration logic
 • Token refresh logic
 
 | **CredentialsRepository**
-a| • Database access layer for `auth.db`
+a| • Database access layer for `authdb` (PostgreSQL)
 • SQL query execution and result mapping
 • Stores hashed passwords and token metadata
 |===
@@ -405,7 +405,7 @@ package "Game Service (Node.js + TypeScript)" {
   }
 }
 
-database "game.db (SQLite)" as gamedb <<database>>
+database "gamedb (PostgreSQL)" as gamedb <<database>>
 database "Redis" as redis <<database>>
 
 [GameController] ..> [MatchService]
@@ -440,6 +440,8 @@ note right of [GameController]
   GET    /api/game/online/sessions/active
   GET    /api/game/online/sessions/:matchId
   POST   /api/game/online/sessions/:matchId/moves
+  POST   /api/game/online/sessions/:matchId/reconnect
+  POST   /api/game/online/sessions/:matchId/abandon
 end note
 
 note right of [MatchmakingService]
@@ -500,7 +502,7 @@ a| • Aggregates player statistics (wins/losses)
 
 | **MatchmakingService**
 a| • Manages the Redis-backed matchmaking queue
-• Adds, polls, and removes players from the queue
+• Adds, pairs, and removes players from the queue (with optional REST polling fallback)
 • Pairs two players when compatible entries are found
 • Triggers bot fallback if no opponent is found within `MM_TIMEOUT_SEC`
 
@@ -522,11 +524,11 @@ a| • Called when a player's turn times out or no opponent is found during matc
 • Applies the bot move to the active session on behalf of the player
 
 | **MatchRepository**
-a| • Database access layer for match records in `game.db`
+a| • Database access layer for match records in `gamedb` (PostgreSQL)
 • Stores and retrieves match metadata and move history
 
 | **StatsRepository**
-a| • Database access layer for statistics in `game.db`
+a| • Database access layer for statistics in `gamedb` (PostgreSQL)
 • Optimised read queries for per-user rankings and metrics
 
 | **MatchmakingRepository**

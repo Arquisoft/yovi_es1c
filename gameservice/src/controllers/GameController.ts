@@ -42,7 +42,7 @@ export function createGameController(
       }
 
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode, validated.rules);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);
@@ -52,7 +52,7 @@ export function createGameController(
   router.get("/matches/:id", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const matchId = validateMatchId(req.params.id);
-      const match = await matchService.getMatch(matchId);
+      const match = await matchService.getMatchState(matchId);
 
       if (!match) {
         throw new MatchNotFoundError();
@@ -87,7 +87,8 @@ export function createGameController(
       }
 
       await matchService.addMove(matchId, validated.position_yen, validated.player, validated.moveNumber);
-      res.status(201).json({ message: "Move added" });
+      matchService.queueBotMove(matchId);
+      res.status(202).json({ status: 'processing', matchId });
     } catch (error) {
       next(error);
     }
@@ -138,6 +139,7 @@ export function createGameController(
         userId: Number(req.userId),
         username: req.username,
         boardSize: payload.boardSize,
+        rules: payload.rules,
         socketId: `http:${req.userId}`,
       });
       res.status(201).json({ queued: true, joinedAt: queued.joinedAt });
@@ -173,6 +175,7 @@ export function createGameController(
               { userId: assignment.playerB.userId, username: assignment.playerB.username },
             ],
             'HUMAN',
+            assignment.playerA.rules,
         );
       }
 

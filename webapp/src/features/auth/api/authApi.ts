@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 export interface AuthUser {
   id: number
   username: string
@@ -25,7 +26,7 @@ const DEVICE_ID_KEY = 'auth_device_id'
 function getOrCreateDeviceId(): string {
   const current = localStorage.getItem(DEVICE_ID_KEY)
   if (current) return current
-  const generated = `web-${crypto.randomUUID()}`
+  const generated = `web-${uuidv4()}`
   localStorage.setItem(DEVICE_ID_KEY, generated)
   return generated
 }

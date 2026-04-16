@@ -6,7 +6,7 @@ Exposed internally on port `3002`, accessible externally only through the Nginx 
 
 ## Responsibilities
 
-- Persists the full lifecycle of both AI and human-vs-human matches in `game.db` (SQLite).
+- Persists the full lifecycle of both AI and human-vs-human matches in PostgreSQL (`gamedb`).
 - Stores move history in YEN notation.
 - Exposes aggregated statistics per player (wins, losses, total games).
 - **Online matchmaking**: Redis-backed queue that pairs human players for online games.
@@ -66,17 +66,22 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`).
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/game/online/queue` | Join the matchmaking queue |
-| `GET` | `/api/game/online/queue/match` | Poll to check if the player has been matched |
+| `GET` | `/api/game/online/queue/match` | REST polling fallback to check if the player has been matched |
 | `DELETE` | `/api/game/online/queue` | Cancel matchmaking |
 | `GET` | `/api/game/online/sessions/active` | Get the current active online session for the user |
 | `GET` | `/api/game/online/sessions/:matchId` | Get the state of an online session |
 | `POST` | `/api/game/online/sessions/:matchId/moves` | Submit a move in an online session |
+| `POST` | `/api/game/online/sessions/:matchId/reconnect` | Reconnect the authenticated player to an active session |
+| `POST` | `/api/game/online/sessions/:matchId/abandon` | Abandon an active session (forfeit) |
 
 ### Real-time Communication (Socket.IO)
 
 In addition to the REST API, the service exposes a **Socket.IO** server on the same port (`3002`), accessible externally through Nginx at `/api/game/socket.io/`.
 
 Socket.IO events handle real-time board updates, turn notifications, timeouts, disconnections, and typed `session:error` responses (`code`, `message`, optional `details`).
+
+Main client events: `queue:join` (with `boardSize` + `rules`), `queue:cancel`, `match:join`, `move:play`, `pie:swap`, `turn:timeout`, `chat:message`, `session:abandon`.
+Main server events: `queue:status`, `matchmaking:matched`, `session:state`, `session:error`, `session:ended`, `chat:message`.
 
 ## Error Contract
 
@@ -104,7 +109,11 @@ The same `code` catalog is used in HTTP and Socket.IO `session:error` events.
 | Variable | Description | Default |
 |---|---|---|
 | `JWT_SECRET` | Key used to verify JWT tokens (must match Auth Service) | — |
-| `GAME_DB_PATH` | Path to the SQLite match database file | `/app/data/game.db` |
+| `PGHOST` | PostgreSQL host for gameservice | `game-db` |
+| `PGPORT` | PostgreSQL port for gameservice | `5432` |
+| `PGDATABASE` | PostgreSQL database name | `gamedb` |
+| `PGUSER` | PostgreSQL username | `game_user` |
+| `PGPASSWORD` | PostgreSQL password | `changeme` |
 | `AUTH_SERVICE_URL` | Internal URL of the Auth Service | `http://auth:3001` |
 | `REDIS_URL` | Redis connection URL | `redis://redis:6379` |
 | `MM_TIMEOUT_SEC` | Max seconds to wait in matchmaking queue before bot fallback | `30` |

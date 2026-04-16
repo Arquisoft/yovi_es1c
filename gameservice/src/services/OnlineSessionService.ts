@@ -1,18 +1,21 @@
 import { SessionStatePayload } from '../realtime/events/session.events';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
 import { OnlineChatMessage, OnlineSessionState } from '../types/online';
+import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
 import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
+import { randomFillSync } from 'crypto';
 export type MoveErrorCode =
-  | 'VERSION_CONFLICT'
-  | 'NOT_YOUR_TURN'
-  | 'INVALID_MOVE'
-  | 'SESSION_NOT_FOUND'
-  | 'RECONNECT_EXPIRED'
-  | 'SESSION_TERMINAL'
-  | 'UNAUTHORIZED'
-  | 'DUPLICATE_EVENT';
+    | 'VERSION_CONFLICT'
+    | 'NOT_YOUR_TURN'
+    | 'INVALID_MOVE'
+    | 'SESSION_NOT_FOUND'
+    | 'RECONNECT_EXPIRED'
+    | 'SESSION_TERMINAL'
+    | 'UNAUTHORIZED'
+    | 'DUPLICATE_EVENT'
+    | 'PIE_RULE_NOT_AVAILABLE';
 
 export interface RedisSessionClient {
   get(key: string): Promise<string | null>;
@@ -34,6 +37,8 @@ export interface MoveCommand {
   col: number;
 }
 
+type TimeoutAction = { type: 'move'; move: MoveCommand } | { type: 'swap' };
+
 export class OnlineSessionError extends Error {
   constructor(public readonly code: MoveErrorCode, message: string) {
     super(message);
@@ -42,6 +47,7 @@ export class OnlineSessionError extends Error {
 
 export class OnlineSessionService {
   private readonly matchLocks = new Map<string, Promise<void>>();
+  private readonly resolvedLock = Promise.resolve();
   private readonly dedupeTtlMs = 60_000;
   private readonly dedupeTtlSec = Math.ceil(this.dedupeTtlMs / 1000);
   private readonly persistedSessions = new Set<string>();
@@ -59,13 +65,15 @@ export class OnlineSessionService {
       matchId: string,
       size: number,
       players: [{ userId: number; username: string }, { userId: number; username: string }],
-      opponentType: 'HUMAN' | 'BOT'
+      opponentType: 'HUMAN' | 'BOT',
+      rules: MatchRules = cloneDefaultMatchRules(),
   ): Promise<OnlineSessionState> {
     const layout = Array.from({ length: size }, (_, idx) => '.'.repeat(idx + 1)).join('/');
     const state: OnlineSessionState = {
       matchId,
       size,
       layout,
+      rules: resolveRulesForMatch(size, rules),
       turn: 0,
       version: 0,
       timerEndsAt: this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
@@ -141,62 +149,82 @@ export class OnlineSessionService {
     return this.withMatchLock(matchId, async () => {
       const state = await this.getState(matchId);
       if (!state) {
-        const error = new OnlineSessionError('SESSION_NOT_FOUND', 'Session not found');
-        onlineMoveErrors.inc({ code: error.code });
-        this.emitSessionError(matchId, userId, error);
-        throw error;
+        this.throwMoveError(matchId, userId, 'SESSION_NOT_FOUND', 'Session not found');
       }
 
       if (this.isTerminal(state)) {
-        const error = new OnlineSessionError('SESSION_TERMINAL', 'Session already finished');
-        onlineMoveErrors.inc({ code: error.code });
-        this.emitSessionError(matchId, userId, error);
-        throw error;
+        this.throwMoveError(matchId, userId, 'SESSION_TERMINAL', 'Session already finished');
       }
 
       if (expectedVersion !== state.version) {
         const error = new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch');
         onlineMoveErrors.inc({ code: error.code });
         this.emitSessionError(matchId, userId, error);
+        this.emitSessionState(state);
         throw error;
       }
 
       const currentPlayer = state.players[state.turn];
       if (currentPlayer.userId !== userId) {
-        const error = new OnlineSessionError('NOT_YOUR_TURN', 'Not your turn');
-        onlineMoveErrors.inc({ code: error.code });
-        this.emitSessionError(matchId, userId, error);
-        throw error;
+        this.throwMoveError(matchId, userId, 'NOT_YOUR_TURN', 'Not your turn');
       }
 
       if (!this.isMoveValid(state, move)) {
-        const error = new OnlineSessionError('INVALID_MOVE', 'Invalid move for current board state');
-        onlineMoveErrors.inc({ code: error.code });
-        this.emitSessionError(matchId, userId, error);
-        throw error;
+        this.throwMoveError(matchId, userId, 'INVALID_MOVE', 'Invalid move for current board state');
       }
 
-      const nextLayout = this.setCell(state.layout, move.row, move.col, currentPlayer.symbol);
-      const winner = this.resolveWinner(nextLayout, state.size);
-      const nextState: OnlineSessionState = {
-        ...state,
-        layout: nextLayout,
-        turn: winner ? state.turn : (state.turn === 0 ? 1 : 0),
-        version: state.version + 1,
-        timerEndsAt: winner ? state.timerEndsAt : this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
-        winner,
-        status: winner ? 'finished' : 'active',
-        closeReason: winner ? 'winner' : null,
-      };
+      const nextState = this.buildStateAfterMove(state, move, currentPlayer.symbol);
 
       await this.saveState(nextState);
       onlineMoves.inc();
 
-      if (winner) {
+      if (nextState.winner) {
         onlineSessionEvents.inc({ event: 'finished' });
-        await this.persistOnlineResult(nextState, winner);
+        await this.persistOnlineResult(nextState, nextState.winner);
       }
 
+      this.emitSessionState(nextState);
+      return nextState;
+    });
+  }
+  async handlePieSwap(matchId: string, userId: number, expectedVersion: number): Promise<OnlineSessionState> {
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) {
+        this.throwMoveError(matchId, userId, 'SESSION_NOT_FOUND', 'Session not found', false);
+      }
+
+      if (this.isTerminal(state)) {
+        this.throwMoveError(matchId, userId, 'SESSION_TERMINAL', 'Session already finished', false);
+      }
+
+      if (expectedVersion !== state.version) {
+        const error = new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch');
+        onlineMoveErrors.inc({ code: error.code });
+        this.emitSessionError(matchId, userId, error);
+        this.emitSessionState(state);
+        throw error;
+      }
+
+      const currentPlayer = state.players[state.turn];
+      if (currentPlayer.userId !== userId) {
+        this.throwMoveError(matchId, userId, 'NOT_YOUR_TURN', 'Not your turn');
+      }
+
+      if (!this.isPieSwapLegal(state)) {
+        this.throwMoveError(
+            matchId,
+            userId,
+            'PIE_RULE_NOT_AVAILABLE',
+            'Pie Rule cannot be applied at this point',
+            false,
+        );
+      }
+
+      const nextState = this.buildPieSwapState(state);
+
+      await this.saveState(nextState);
+      onlineMoves.inc();
       this.emitSessionState(nextState);
       return nextState;
     });
@@ -334,7 +362,17 @@ export class OnlineSessionService {
     const rows = state.layout.split('/');
     if (move.row < 0 || move.row >= rows.length) return false;
     if (move.col < 0 || move.col >= rows[move.row].length) return false;
+    if (this.isHoneyBlocked(state.rules, move.row, move.col)) return false;
     return this.getCell(state.layout, move.row, move.col) === '.';
+  }
+
+  private isHoneyBlocked(rules: MatchRules | undefined, row: number, col: number): boolean {
+    if (!rules?.honey?.enabled) return false;
+    return (rules.honey.blockedCells ?? []).some((cell) => cell.row === row && cell.col === col);
+  }
+
+  private countStones(layout: string): number {
+    return layout.split('').filter((cell) => cell === 'B' || cell === 'R').length;
   }
 
   private getCell(layout: string, row: number, col: number): string {
@@ -345,9 +383,27 @@ export class OnlineSessionService {
   private setCell(layout: string, row: number, col: number, symbol: 'B' | 'R'): string {
     const rows = layout.split('/');
     const targetRow = rows[row];
-    const updated = `${targetRow.slice(0, col)}${symbol}${targetRow.slice(col + 1)}`;
-    rows[row] = updated;
+    rows[row] = `${targetRow.slice(0, col)}${symbol}${targetRow.slice(col + 1)}`;
     return rows.join('/');
+  }
+
+  private buildStateAfterMove(
+      state: OnlineSessionState,
+      move: MoveCommand,
+      symbol: 'B' | 'R',
+  ): OnlineSessionState {
+    const nextLayout = this.setCell(state.layout, move.row, move.col, symbol);
+    const winner = this.resolveWinner(nextLayout, state.size);
+    return {
+      ...state,
+      layout: nextLayout,
+      turn: winner ? state.turn : (state.turn === 0 ? 1 : 0),
+      version: state.version + 1,
+      timerEndsAt: winner ? state.timerEndsAt : this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
+      winner,
+      status: winner ? 'finished' : 'active',
+      closeReason: winner ? 'winner' : null,
+    };
   }
 
   private resolveWinner(layout: string, size: number): 'B' | 'R' | null {
@@ -440,6 +496,7 @@ export class OnlineSessionService {
       matchId: state.matchId,
       layout: state.layout,
       size: state.size,
+      rules: state.rules,
       turn: state.turn,
       version: state.version,
       timerEndsAt: state.timerEndsAt,
@@ -462,38 +519,79 @@ export class OnlineSessionService {
     });
   }
   async handleTurnTimeout(matchId: string, userId: number, expectedVersion: number): Promise<void> {
-    const state = await this.getState(matchId);
-    if (!state) return;
-    if (state.winner) return;
-    if (state.version !== expectedVersion) return;
+    return this.withMatchLock(matchId, async () => {
+      const state = await this.getState(matchId);
+      if (!state) return;
+      if (state.winner) return;
+      if (state.version !== expectedVersion) return;
 
-    const currentPlayer = state.players[state.turn];
-    if (currentPlayer.userId !== userId) return;
+      const currentPlayer = state.players[state.turn];
+      if (currentPlayer.userId !== userId) return;
 
-    turnTimeouts.inc();
+      turnTimeouts.inc();
 
-    const randomMove = this.pickRandomMove(state.layout);
-    if (!randomMove) return;
+      const randomAction = this.pickRandomLegalTimeoutAction(state);
+      if (!randomAction) return;
 
-    await this.handleMove(matchId, userId, randomMove, expectedVersion);
+      if (randomAction.type === 'swap') {
+        const nextState = this.buildPieSwapState(state);
+        await this.saveState(nextState);
+        onlineMoves.inc();
+        this.emitSessionState(nextState);
+        return;
+      }
+
+      const nextState = this.buildStateAfterMove(state, randomAction.move, currentPlayer.symbol);
+
+      await this.saveState(nextState);
+      onlineMoves.inc();
+
+      if (nextState.winner) {
+        onlineSessionEvents.inc({ event: 'finished' });
+        await this.persistOnlineResult(nextState, nextState.winner);
+      }
+
+      this.emitSessionState(nextState);
+    });
   }
 
-  private pickRandomMove(layout: string): MoveCommand | null {
-    const emptyCells: MoveCommand[] = [];
+  private buildPieSwapState(state: OnlineSessionState): OnlineSessionState {
+    const swappedLayout = state.layout.replace(/[BR]/g, (symbol) => (symbol === 'B' ? 'R' : 'B'));
 
-    const rows = layout.split('/');
-    for (let row = 0; row < rows.length; row++) {
-      for (let col = 0; col < rows[row].length; col++) {
-        if (rows[row][col] === '.') {
-          emptyCells.push({ row, col });
+    return {
+      ...state,
+      layout: swappedLayout,
+      turn: 0,
+      version: state.version + 1,
+      timerEndsAt: this.timerService.buildTimerEndsAt(this.turnTimeoutSec),
+    };
+  }
+
+  private isPieSwapLegal(state: OnlineSessionState): boolean {
+    const pieRuleEnabled = state.rules?.pieRule?.enabled === true;
+    const isSecondTurn = state.turn === 1;
+    return pieRuleEnabled && isSecondTurn && this.countStones(state.layout) === 1;
+  }
+
+  private pickRandomLegalTimeoutAction(state: OnlineSessionState): TimeoutAction | null {
+    const actions: TimeoutAction[] = [];
+
+    if (this.isPieSwapLegal(state)) {
+      actions.push({ type: 'swap' });
+    }
+
+    const rows = state.layout.split('/');
+    for (let row = 0; row < rows.length; row += 1) {
+      for (let col = 0; col < rows[row].length; col += 1) {
+        const move = { row, col };
+        if (this.isMoveValid(state, move)) {
+          actions.push({ type: 'move', move });
         }
       }
     }
 
-    if (emptyCells.length === 0) return null;
-
-    const randomIndex = Math.floor(Math.random() * emptyCells.length);
-    return emptyCells[randomIndex];
+    if (actions.length === 0) return null;
+    return actions[this.secureRandomInt(actions.length)];
   }
 
   private async persistOnlineResult(state: OnlineSessionState, winnerSymbol: 'B' | 'R'): Promise<void> {
@@ -502,18 +600,18 @@ export class OnlineSessionService {
     this.persistedSessions.add(state.matchId);
 
     await Promise.all(
-      state.players.map(async (player) => {
-        try {
-          const matchId = await this.matchService!.createMatch(
-            player.userId, state.size, 'medium', 'ONLINE'
-          );
-          if (matchId == null) return;
-          const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
-          await this.matchService!.finishMatch(matchId, winner);
-        } catch (err) {
-          console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
-        }
-      })
+        state.players.map(async (player) => {
+          try {
+            const matchId = await this.matchService!.createMatch(
+                player.userId, state.size, 'medium', 'ONLINE'
+            );
+            if (matchId == null) return;
+            const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
+            await this.matchService!.finishMatch(matchId, winner);
+          } catch (err) {
+            console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
+          }
+        })
     );
   }
 
@@ -527,9 +625,9 @@ export class OnlineSessionService {
 
   private isTerminal(state: OnlineSessionState): boolean {
     return state.status === 'finished'
-      || state.status === 'abandoned'
-      || state.status === 'expired'
-      || state.status === 'cancelled';
+        || state.status === 'abandoned'
+        || state.status === 'expired'
+        || state.status === 'cancelled';
   }
 
   async abandon(matchId: string, userId: number): Promise<OnlineSessionState | null> {
@@ -572,7 +670,10 @@ export class OnlineSessionService {
     try {
       const parsed = JSON.parse(raw) as unknown;
       if (!this.isOnlineSessionState(parsed)) return null;
-      return parsed;
+      return {
+        ...parsed,
+        rules: normalizeMatchRules((parsed as Partial<OnlineSessionState>).rules),
+      };
     } catch {
       return null;
     }
@@ -582,13 +683,13 @@ export class OnlineSessionService {
     if (!value || typeof value !== 'object') return false;
     const state = value as Partial<OnlineSessionState>;
     return typeof state.matchId === 'string'
-      && typeof state.size === 'number'
-      && Array.isArray(state.players)
-      && typeof state.status === 'string';
+        && typeof state.size === 'number'
+        && Array.isArray(state.players)
+        && typeof state.status === 'string';
   }
 
   private async withMatchLock<T>(matchId: string, fn: () => Promise<T>): Promise<T> {
-    const previous = this.matchLocks.get(matchId) ?? Promise.resolve();
+    const previous = this.matchLocks.get(matchId) ?? this.resolvedLock;
     let release: (() => void) | undefined;
     const current = new Promise<void>((resolve) => {
       release = resolve;
@@ -604,5 +705,26 @@ export class OnlineSessionService {
         this.matchLocks.delete(matchId);
       }
     }
+  }
+
+  private secureRandomInt(max: number): number {
+    const array = new Uint32Array(1);
+    randomFillSync(array);
+    return array[0] % max;
+  }
+
+  private throwMoveError(
+      matchId: string,
+      userId: number,
+      code: MoveErrorCode,
+      message: string,
+      trackMetric = true,
+  ): never {
+    const error = new OnlineSessionError(code, message);
+    if (trackMetric) {
+      onlineMoveErrors.inc({ code });
+    }
+    this.emitSessionError(matchId, userId, error);
+    throw error;
   }
 }
