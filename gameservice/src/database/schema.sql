@@ -35,3 +35,37 @@ SELECT
 FROM matches
 WHERE status = 'FINISHED'
 GROUP BY user_id;
+
+-- Player ELO rankings.
+-- Initial rating: 1200 (standard ELO baseline).
+-- Expected range: ~800 (beginner) to ~2400 (expert).
+CREATE TABLE IF NOT EXISTS player_rankings (
+    user_id        INTEGER     PRIMARY KEY,
+    elo_rating     INTEGER     NOT NULL DEFAULT 1200,
+    games_played   INTEGER     NOT NULL DEFAULT 0,
+    peak_rating    INTEGER     NOT NULL DEFAULT 1200,
+    last_updated   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Audit log of every rating change (per finished, ranked match).
+CREATE TABLE IF NOT EXISTS ranking_history (
+    id             SERIAL      PRIMARY KEY,
+    user_id        INTEGER     NOT NULL,
+    match_id       INTEGER     NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    rating_before  INTEGER     NOT NULL,
+    rating_after   INTEGER     NOT NULL,
+    delta          INTEGER     NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rankings_elo        ON player_rankings (elo_rating DESC);
+CREATE INDEX IF NOT EXISTS idx_rankings_user_id    ON player_rankings (user_id);
+CREATE INDEX IF NOT EXISTS idx_history_user_id     ON ranking_history (user_id);
+CREATE INDEX IF NOT EXISTS idx_history_match_id    ON ranking_history (match_id);
+
+-- Backfill: ensure every user with at least one match has a ranking row.
+-- Idempotent: ON CONFLICT keeps existing ratings untouched.
+INSERT INTO player_rankings (user_id, elo_rating, games_played, peak_rating)
+SELECT DISTINCT user_id, 1200, 0, 1200
+FROM matches
+ON CONFLICT (user_id) DO NOTHING;
