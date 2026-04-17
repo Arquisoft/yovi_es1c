@@ -1,7 +1,9 @@
 import { ValidationError } from '../errors/domain-errors';
+import { cloneDefaultMatchRules, MatchRules } from '../types/rules.js';
 
 export interface QueueJoinRequest {
   boardSize: number;
+  rules: MatchRules;
 }
 
 export interface MovePlayRequest {
@@ -16,7 +18,41 @@ export function validateQueueJoin(data: unknown): QueueJoinRequest {
   if (typeof payload.boardSize !== 'number' || payload.boardSize <= 0) {
     throw new ValidationError('boardSize must be a positive number');
   }
-  return { boardSize: payload.boardSize };
+  return { boardSize: payload.boardSize, rules: validateQueueRules(payload.rules) };
+}
+
+function validateQueueRules(data: unknown): MatchRules {
+  const normalized = cloneDefaultMatchRules();
+  if (data === undefined) return normalized;
+  if (typeof data !== 'object' || data === null) throw new ValidationError('rules must be an object');
+  const raw = data as Record<string, unknown>;
+
+  if (raw.pieRule !== undefined) {
+    if (typeof raw.pieRule !== 'object' || raw.pieRule === null) throw new ValidationError('rules.pieRule must be an object');
+    const pie = raw.pieRule as Record<string, unknown>;
+    if (pie.enabled !== undefined && typeof pie.enabled !== 'boolean') throw new ValidationError('rules.pieRule.enabled must be a boolean');
+    normalized.pieRule.enabled = pie.enabled === true;
+  }
+
+  if (raw.honey !== undefined) {
+    if (typeof raw.honey !== 'object' || raw.honey === null) throw new ValidationError('rules.honey must be an object');
+    const honey = raw.honey as Record<string, unknown>;
+    if (honey.enabled !== undefined && typeof honey.enabled !== 'boolean') throw new ValidationError('rules.honey.enabled must be a boolean');
+    normalized.honey.enabled = honey.enabled === true;
+
+    if (honey.blockedCells !== undefined) {
+      if (!Array.isArray(honey.blockedCells)) throw new ValidationError('rules.honey.blockedCells must be an array');
+      if (honey.blockedCells.length > 0) {
+        throw new ValidationError('rules.honey.blockedCells is generated automatically and cannot be configured manually');
+      }
+    }
+  }
+
+  if (!normalized.honey.enabled && normalized.honey.blockedCells.length > 0) {
+    throw new ValidationError('rules.honey.blockedCells requires rules.honey.enabled=true');
+  }
+
+  return normalized;
 }
 
 export function validateMovePlay(data: unknown): MovePlayRequest {

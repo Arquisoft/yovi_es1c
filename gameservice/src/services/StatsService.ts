@@ -8,6 +8,13 @@ function mapWinnerToStatus(winner: string | null): MatchDto['status'] {
   return 'lose';
 }
 
+function normalizeTimestamp(date: string | Date): string {
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  return date.includes('T') ? date : date.replace(' ', 'T') + 'Z';
+}
+
 export class StatsService {
   constructor(private readonly statsRepo: StatsRepository) {}
 
@@ -28,7 +35,7 @@ export class StatsService {
 
     const matches: MatchDto[] = history.map((row) => ({
       matchId: String(row.id),
-      createdAt: row.created_at,
+      createdAt: normalizeTimestamp(row.created_at),
       mode: row.mode,
       status: mapWinnerToStatus(row.winner),
     }));

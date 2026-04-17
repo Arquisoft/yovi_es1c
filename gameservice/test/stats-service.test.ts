@@ -9,6 +9,7 @@ describe('StatsService', () => {
   beforeEach(() => {
     mockStatsRepository = {
       getUserStats: vi.fn(),
+      getMatchHistory: vi.fn(),
     } as unknown as StatsRepository;
 
     statsService = new StatsService(mockStatsRepository);
@@ -111,4 +112,69 @@ describe('StatsService', () => {
       await expect(statsService.getWinRateForUser(999)).resolves.toBe(0);
     });
   });
+
+  describe('getFullStats', () => {
+    it('converts SQLite dates to ISO UTC format', async () => {
+      vi.spyOn(mockStatsRepository, 'getUserStats').mockResolvedValue({
+        user_id: 1,
+        wins: 1,
+        losses: 0,
+        total_games: 1,
+        win_rate: 100,
+      });
+
+      vi.spyOn(mockStatsRepository, 'getMatchHistory').mockResolvedValue([
+        {
+          id: 10,
+          board_size: 8,
+          difficulty: 'medium',
+          status: 'FINISHED',
+          winner: 'USER',
+          mode: 'BOT',
+          created_at: '2026-04-06 14:30:00',
+        },
+      ]);
+
+      const result = await statsService.getFullStats(1);
+
+      expect(result.matches[0]).toEqual({
+        matchId: '10',
+        createdAt: '2026-04-06T14:30:00Z',
+        mode: 'BOT',
+        status: 'win',
+      });
+    });
+
+    it('keeps ISO dates unchanged', async () => {
+      vi.spyOn(mockStatsRepository, 'getUserStats').mockResolvedValue({
+        user_id: 1,
+        wins: 0,
+        losses: 1,
+        total_games: 1,
+        win_rate: 0,
+      });
+
+      vi.spyOn(mockStatsRepository, 'getMatchHistory').mockResolvedValue([
+        {
+          id: 11,
+          board_size: 8,
+          difficulty: 'medium',
+          status: 'FINISHED',
+          winner: 'BOT',
+          mode: 'ONLINE',
+          created_at: '2026-04-06T14:30:00Z',
+        },
+      ]);
+
+      const result = await statsService.getFullStats(1);
+
+      expect(result.matches[0]).toEqual({
+        matchId: '11',
+        createdAt: '2026-04-06T14:30:00Z',
+        mode: 'ONLINE',
+        status: 'lose',
+      });
+    });
+  });
+
 });

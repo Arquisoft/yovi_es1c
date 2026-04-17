@@ -21,7 +21,7 @@ vi.mock('socket.io-client', () => ({
 describe('onlineSocketClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    onlineSocketClient.disconnect();
+    onlineSocketClient.resetForTests();
     mockSocket.connected = true;
   });
 
@@ -50,12 +50,12 @@ describe('onlineSocketClient', () => {
   });
 
   it('disconnects stale socket before reconnecting', () => {
-    const first = onlineSocketClient.connect('token-a');
+    onlineSocketClient.connect('token-a');
+    onlineSocketClient.disconnect();
     mockSocket.connected = false;
 
     const second = onlineSocketClient.connect('token-b');
 
-    expect(first.disconnect).toHaveBeenCalled();
     expect(second).toBe(mockSocket);
     expect(ioMock).toHaveBeenCalledTimes(2);
   });
@@ -88,12 +88,15 @@ describe('onlineSocketClient', () => {
     expect(mockSocket.off).toHaveBeenCalledWith('session:state', handler);
   });
 
-  it('disconnects active socket and reports connected state', () => {
+  it('disconnects only when last consumer releases socket', () => {
     onlineSocketClient.connect('test-token');
-    expect(onlineSocketClient.isConnected()).toBe(true);
+    onlineSocketClient.connect('other-token');
 
     onlineSocketClient.disconnect();
-    expect(mockSocket.disconnect).toHaveBeenCalled();
+    expect(mockSocket.disconnect).not.toHaveBeenCalled();
+
+    onlineSocketClient.disconnect();
+    expect(mockSocket.disconnect).toHaveBeenCalledTimes(1);
     expect(onlineSocketClient.raw()).toBeNull();
     expect(onlineSocketClient.isConnected()).toBe(false);
   });

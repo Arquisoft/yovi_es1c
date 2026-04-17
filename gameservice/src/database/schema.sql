@@ -1,36 +1,37 @@
 CREATE TABLE IF NOT EXISTS matches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    board_size INTEGER NOT NULL,
-    difficulty TEXT NOT NULL,
-    status TEXT DEFAULT 'ONGOING',
-    winner TEXT,
-    mode TEXT DEFAULT 'BOT',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+                                       id SERIAL PRIMARY KEY,
+                                       user_id INTEGER NOT NULL,
+                                       board_size INTEGER NOT NULL,
+                                       difficulty TEXT NOT NULL,
+                                       status TEXT DEFAULT 'ONGOING',
+                                       winner TEXT,
+                                       mode TEXT DEFAULT 'BOT',
+                                       rules JSONB NOT NULL DEFAULT '{"pieRule":{"enabled":false},"honey":{"enabled":false,"blockedCells":[]}}'::jsonb,
+                                       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
 CREATE TABLE IF NOT EXISTS moves (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    match_id INTEGER NOT NULL,
+                                     id SERIAL PRIMARY KEY,
+                                     match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
     position_yen TEXT NOT NULL,
     player TEXT NOT NULL,
     move_number INTEGER NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
-);
+    "timestamp" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
-DROP VIEW IF EXISTS user_stats;
+CREATE INDEX IF NOT EXISTS idx_matches_user_id ON matches(user_id);
+CREATE INDEX IF NOT EXISTS idx_moves_match_id ON moves(match_id);
 
-CREATE VIEW user_stats AS
+CREATE OR REPLACE VIEW user_stats AS
 SELECT
     user_id,
-    SUM(CASE WHEN winner = 'USER' THEN 1 ELSE 0 END) as wins,
-    SUM(CASE WHEN winner = 'BOT' THEN 1 ELSE 0 END) as losses,
-    COUNT(*) as total_games,
+    COUNT(*) FILTER (WHERE winner = 'USER')  AS wins,
+    COUNT(*) FILTER (WHERE winner = 'BOT')   AS losses,
+    COUNT(*)                                  AS total_games,
     ROUND(
-        (SUM(CASE WHEN winner = 'USER' THEN 1 ELSE 0 END) * 100.0) /
-        CASE WHEN COUNT(*) = 0 THEN 1 ELSE COUNT(*) END
-    ,2) as win_rate
+            COUNT(*) FILTER (WHERE winner = 'USER') * 100.0
+        / NULLIF(COUNT(*), 0),
+            2) AS win_rate
 FROM matches
 WHERE status = 'FINISHED'
 GROUP BY user_id;

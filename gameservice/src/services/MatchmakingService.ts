@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto';
 import { MatchmakingRepository } from '../repositories/MatchmakingRepository';
 import { BotFallbackService } from './BotFallbackService';
-import { OnlineMatchAssignment, OnlineQueueEntry, OnlineSessionState } from '../types/online';
+import {OnlineMatchAssignment, OnlinePlayerState, OnlineQueueEntry, OnlineSessionState} from '../types/online';
+import { MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { StatsService } from './StatsService';
 import { matchmakingDuration, matchmakingEvents } from '../metrics';
 
@@ -33,7 +34,7 @@ interface QueueScanResult {
   players: OnlineQueueEntry[];
 }
 
-const ATOMIC_CLAIM_PAIR_LUA = `
+export const ATOMIC_CLAIM_PAIR_LUA = `
 local queueKey = KEYS[1]
 local playerAHash = KEYS[2]
 local playerBHash = KEYS[3]
@@ -46,6 +47,7 @@ if redis.call('exists', playerAHash) == 0 then return 0 end
 if redis.call('exists', playerBHash) == 0 then return 0 end
 
 redis.call('zrem', queueKey, playerA, playerB)
+redis.call('del', playerAHash, playerBHash)
 return 1
 `;
 
@@ -56,11 +58,11 @@ export class MatchmakingService {
   private readonly assignmentTtlSec = Number(process.env.MM_ASSIGNMENT_TTL_SEC ?? 120);
 
   constructor(
-    private readonly repository: MatchmakingRepository,
-    private readonly statsService: StatsService,
-    private readonly botFallbackService: BotFallbackService,
-    private readonly timeoutSec = 30,
-    private readonly deps: MatchmakingDeps = {},
+      private readonly repository: MatchmakingRepository,
+      private readonly statsService: StatsService,
+      private readonly botFallbackService: BotFallbackService,
+      private readonly timeoutSec = 30,
+      private readonly deps: MatchmakingDeps = {},
   ) {
     this.workerIntervalMs = deps.workerIntervalMs ?? 2_000;
   }
@@ -70,6 +72,7 @@ export class MatchmakingService {
     const skillBand = this.getSkillBand(winRate);
     const queueEntry: OnlineQueueEntry = {
       ...entry,
+      rules: normalizeMatchRules(entry.rules),
       skillBand,
       joinedAt: Date.now(),
       queueJoinId: randomUUID(),
@@ -93,7 +96,15 @@ export class MatchmakingService {
     }
     matchmakingEvents.inc({ event: 'queue', result: 'cancel' });
   }
+  async cancelQueueIfStale(userId: number, graceMs = 5_000): Promise<void> {
+    const player = await this.readPlayerFromRedis(userId);
+    if (!player) return;
 
+    const elapsed = Date.now() - player.joinedAt;
+    if (elapsed < graceMs) return;
+
+    await this.cancelQueue(userId);
+  }
   startWorker(): void {
     if (this.workerTimer) return;
     this.workerTimer = setInterval(() => {
@@ -116,19 +127,14 @@ export class MatchmakingService {
         const assignment = await this.tryMatchCandidate(sortedPlayers[index], sortedPlayers, queue.boardSize, now);
         if (!assignment) continue;
         await this.persistInitialMatch(assignment, queue.boardSize);
+        await this.storePendingAssignment(assignment);
         this.emitMatched(assignment);
       }
     }
   }
 
-  async tryMatch(userId: number, now = Date.now()): Promise<OnlineMatchAssignment | null> {
-    const pending = await this.consumePendingAssignment(userId);
-    if (pending) return pending;
-
-    const allCandidates = this.deps.redis ? (await this.listRedisQueueByBoard(8)) : await this.repository.listByBoard(8);
-    const self = allCandidates.find((entry) => entry.userId === userId);
-    if (!self) return null;
-    return this.tryMatchCandidate(self, allCandidates, 8, now);
+  async tryMatch(userId: number): Promise<OnlineMatchAssignment | null> {
+    return this.consumePendingAssignment(userId);
   }
 
   getBotDifficulty(winRate: number): 'easy' | 'medium' | 'hard' {
@@ -142,9 +148,12 @@ export class MatchmakingService {
       now: number,
   ): Promise<OnlineMatchAssignment | null> {
     const waitedSec = (now - self.joinedAt) / 1000;
-    const skillRange = waitedSec >= 20 ? 2 : waitedSec >= 10 ? 1 : 0;
+    const skillRange = waitedSec >= 20 ? 2 : 1;
     const rival = allCandidates.find(
-        (entry) => entry.userId !== self.userId && Math.abs(entry.skillBand - self.skillBand) <= skillRange
+        (entry) =>
+            entry.userId !== self.userId
+            && Math.abs(entry.skillBand - self.skillBand) <= skillRange
+            && this.areRulesCompatible(self.rules, entry.rules),
     );
 
     if (rival) {
@@ -168,7 +177,6 @@ export class MatchmakingService {
         revealAfterGame: false,
       };
 
-      await this.storePendingAssignment(assignment);
       return assignment;
     }
 
@@ -196,16 +204,17 @@ export class MatchmakingService {
     const queueKey = this.getQueueKey(entry.boardSize);
     const playerKey = this.getPlayerKey(entry.userId);
 
-    await redis.zAdd(queueKey, [{ score: entry.joinedAt, value: String(entry.userId) }]);
     await redis.hSet(playerKey, {
       userId: String(entry.userId),
       username: entry.username,
       boardSize: String(entry.boardSize),
+      rules: JSON.stringify(entry.rules),
       skillBand: String(entry.skillBand),
       joinedAt: String(entry.joinedAt),
       socketId: entry.socketId,
       queueJoinId: entry.queueJoinId,
     });
+    await redis.zAdd(queueKey, [{ score: entry.joinedAt, value: String(entry.userId) }]);
     await redis.zAdd('mm:boards', [{ score: entry.boardSize, value: String(entry.boardSize) }]);
   }
 
@@ -248,6 +257,7 @@ export class MatchmakingService {
       userId: Number(data.userId),
       username: data.username,
       boardSize: Number(data.boardSize),
+      rules: this.parseQueueRules(data.rules),
       skillBand: Number(data.skillBand),
       joinedAt: Number(data.joinedAt),
       socketId: data.socketId,
@@ -282,38 +292,66 @@ export class MatchmakingService {
 
   private async persistInitialMatch(assignment: OnlineMatchAssignment, boardSize: number): Promise<void> {
     const redis = this.deps.redis;
-    if (!redis || !assignment.playerB) return;
+    if (!redis) return;
 
     const layout = Array.from({ length: boardSize }, (_, idx) => '.'.repeat(idx + 1)).join('/');
+    const resolvedRules = resolveRulesForMatch(boardSize, assignment.playerA.rules);
+
+    const botSlot: OnlinePlayerState = { userId: 0, username: 'BOT', symbol: 'R' };
+    const players: [OnlinePlayerState, OnlinePlayerState] = [
+      { userId: assignment.playerA.userId, username: assignment.playerA.username, symbol: 'B' },
+      assignment.playerB
+          ? { userId: assignment.playerB.userId, username: assignment.playerB.username, symbol: 'R' }
+          : botSlot,
+    ];
+
+    const connection: OnlineSessionState['connection'] = {
+      [assignment.playerA.userId]: 'CONNECTED',
+      ...(assignment.playerB ? { [assignment.playerB.userId]: 'CONNECTED' } : {}),
+    };
+
+    const reconnectDeadline: OnlineSessionState['reconnectDeadline'] = {
+      [assignment.playerA.userId]: null,
+      ...(assignment.playerB ? { [assignment.playerB.userId]: null } : {}),
+    };
+
     const initial: OnlineSessionState = {
       matchId: assignment.matchId,
       layout,
       size: boardSize,
+      rules: resolvedRules,
       turn: 0,
       version: 0,
       timerEndsAt: Date.now() + 25_000,
-      players: [
-        { userId: assignment.playerA.userId, username: assignment.playerA.username, symbol: 'B' },
-        { userId: assignment.playerB.userId, username: assignment.playerB.username, symbol: 'R' },
-      ],
-      opponentType: 'HUMAN',
+      players,
+      opponentType: assignment.opponentType,
       status: 'active',
       closeReason: null,
-      connection: {
-        [assignment.playerA.userId]: 'CONNECTED',
-        [assignment.playerB.userId]: 'CONNECTED',
-      },
-      reconnectDeadline: {
-        [assignment.playerA.userId]: null,
-        [assignment.playerB.userId]: null,
-      },
+      connection,
+      reconnectDeadline,
       winner: null,
       messages: [],
     };
 
-    await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial));
-    await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId);
-    await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId);
+    await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial), { EX: 3600 });
+    await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId, { EX: 3600 });
+
+    if (assignment.playerB) {
+      await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId, { EX: 3600 });
+    }
+  }
+
+  private areRulesCompatible(left: MatchRules, right: MatchRules): boolean {
+    return JSON.stringify(normalizeMatchRules(left)) === JSON.stringify(normalizeMatchRules(right));
+  }
+
+  private parseQueueRules(rawRules: string | undefined): MatchRules {
+    if (!rawRules) return normalizeMatchRules(undefined);
+    try {
+      return normalizeMatchRules(JSON.parse(rawRules));
+    } catch {
+      return normalizeMatchRules(undefined);
+    }
   }
 
   private emitMatched(assignment: OnlineMatchAssignment): void {
@@ -334,17 +372,19 @@ export class MatchmakingService {
 
 
   private async storePendingAssignment(assignment: OnlineMatchAssignment): Promise<void> {
-    if (!assignment.playerB) return;
-
     if (this.deps.redis) {
       const raw = JSON.stringify(assignment);
       await this.deps.redis.set(this.getAssignmentKey(assignment.playerA.userId), raw, { EX: this.assignmentTtlSec });
-      await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw, { EX: this.assignmentTtlSec });
+      if (assignment.playerB) {
+        await this.deps.redis.set(this.getAssignmentKey(assignment.playerB.userId), raw, { EX: this.assignmentTtlSec });
+      }
       return;
     }
 
     this.pendingAssignments.set(assignment.playerA.userId, assignment);
-    this.pendingAssignments.set(assignment.playerB.userId, assignment);
+    if (assignment.playerB) {
+      this.pendingAssignments.set(assignment.playerB.userId, assignment);
+    }
   }
 
   private async consumePendingAssignment(userId: number): Promise<OnlineMatchAssignment | null> {
@@ -363,6 +403,7 @@ export class MatchmakingService {
   }
 
   private getSkillBand(winRate: number): number {
+    if (!Number.isFinite(winRate)) return 0;
     if (winRate <= 30) return 0;
     if (winRate <= 45) return 1;
     if (winRate <= 60) return 2;

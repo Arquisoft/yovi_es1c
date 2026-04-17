@@ -4,8 +4,11 @@ type Handler<T> = (payload: T) => void;
 
 class OnlineSocketClient {
   private socket: Socket | null = null;
+  private connectionUsers = 0;
 
   connect(token: string): Socket {
+    this.connectionUsers += 1;
+
     if (this.socket?.connected) {
       return this.socket;
     }
@@ -28,6 +31,14 @@ class OnlineSocketClient {
   }
 
   disconnect(): void {
+    if (this.connectionUsers > 0) {
+      this.connectionUsers -= 1;
+    }
+
+    if (this.connectionUsers > 0) {
+      return;
+    }
+
     this.socket?.disconnect();
     this.socket = null;
   }
@@ -66,6 +77,11 @@ class OnlineSocketClient {
 
   raw(): Socket | null {
     return this.socket;
+  }
+
+  resetForTests(): void {
+    this.connectionUsers = 0;
+    this.socket = null;
   }
 }
 

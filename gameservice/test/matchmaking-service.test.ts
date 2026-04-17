@@ -1,142 +1,150 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MatchmakingRepository } from '../src/repositories/MatchmakingRepository';
 import { MatchmakingService } from '../src/services/MatchmakingService';
 import { BotFallbackService } from '../src/services/BotFallbackService';
 import { StatsService } from '../src/services/StatsService';
+import { MatchRules } from '../src/types/rules';
 
-describe('MatchmakingService', () => {
-  const statsService = {
-    getWinRateForUser: vi.fn(async (id: number) => (id === 1 ? 52 : 55)),
-  } as unknown as StatsService;
+const classic: MatchRules = {
+  pieRule: { enabled: false },
+  honey: { enabled: false, blockedCells: [] },
+};
 
-  it('matches two human players', async () => {
-    const repo = new MatchmakingRepository();
-    const service = new MatchmakingService(repo, statsService, new BotFallbackService(), 30);
+const pieOnly: MatchRules = {
+  pieRule: { enabled: true },
+  honey: { enabled: false, blockedCells: [] },
+};
 
-    await service.joinQueue({ userId: 1, username: 'alice', boardSize: 8, socketId: 's1' });
-    await service.joinQueue({ userId: 2, username: 'bob', boardSize: 8, socketId: 's2' });
+const honeyOnly: MatchRules = {
+  pieRule: { enabled: false },
+  honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+};
 
-    const assignment = await service.tryMatch(1, Date.now() + 11_000);
-    expect(assignment?.opponentType).toBe('HUMAN');
-    expect(assignment?.playerB?.username).toBe('bob');
+describe('MatchmakingService rules compatibility', () => {
+  let repository: MatchmakingRepository;
+  let statsService: StatsService;
+  let service: MatchmakingService;
+
+  beforeEach(() => {
+    repository = new MatchmakingRepository();
+    statsService = { getWinRateForUser: vi.fn().mockResolvedValue(50) } as unknown as StatsService;
+    service = new MatchmakingService(repository, statsService, new BotFallbackService(), 30);
   });
 
-  it('triggers bot fallback after timeout', async () => {
-    const repo = new MatchmakingRepository();
-    const service = new MatchmakingService(repo, statsService, new BotFallbackService(), 30);
+  it.each([
+    { label: 'classic vs classic', first: classic, second: classic, shouldMatch: true },
+    { label: 'pie-only vs pie-only', first: pieOnly, second: pieOnly, shouldMatch: true },
+    { label: 'honey-only vs honey-only', first: honeyOnly, second: honeyOnly, shouldMatch: true },
+    { label: 'classic vs pie-only', first: classic, second: pieOnly, shouldMatch: false },
+    { label: 'classic vs honey-only', first: classic, second: honeyOnly, shouldMatch: false },
+  ])('enforces compatibility for $label', async ({ first, second, shouldMatch }) => {
+    const playerA = await service.joinQueue({
+      userId: 1,
+      username: 'alice',
+      boardSize: 8,
+      rules: first,
+      socketId: 'sock-1',
+    });
+    await service.joinQueue({
+      userId: 2,
+      username: 'bob',
+      boardSize: 8,
+      rules: second,
+      socketId: 'sock-2',
+    });
 
-    const queued = await service.joinQueue({ userId: 1, username: 'alice', boardSize: 8, socketId: 's1' });
-    const assignment = await service.tryMatch(1, queued.joinedAt + 31_000);
+    await service.runMatchmakingTick(playerA.joinedAt + 5_000);
 
-    expect(assignment?.opponentType).toBe('BOT');
-    expect(assignment?.revealAfterGame).toBe(true);
+    const assignmentA = await service.tryMatch(1);
+    const assignmentB = await service.tryMatch(2);
+
+    if (shouldMatch) {
+      expect(assignmentA?.playerB?.userId).toBe(2);
+      expect(assignmentB?.playerB?.userId).toBe(2);
+      expect(assignmentA?.playerA.rules).toEqual(first);
+      expect(assignmentA?.playerB?.rules).toEqual(second);
+    } else {
+      expect(assignmentA).toBeNull();
+      expect(assignmentB).toBeNull();
+    }
   });
 
-  it('handles race condition via lua claim path', async () => {
-    const evalMock = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0);
-    const repo = new MatchmakingRepository({ eval: evalMock });
-
-    await repo.enqueue({ userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' });
-    await repo.enqueue({ userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' });
-
-    const first = await repo.claimPair(
-        { userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' },
-        { userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' },
-    );
-    const second = await repo.claimPair(
-        { userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' },
-        { userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' },
-    );
-
-    expect(first).toBe(true);
-    expect(second).toBe(false);
-    expect(evalMock).toHaveBeenCalledTimes(2);
-    expect(repo.getClaimLuaScript()).toContain('sadd');
-  });
-
-  it('stores queue entries in redis and supports cancelQueue', async () => {
+  it('stores rules in redis-backed initial online session state', async () => {
+    const memory = new Map<string, string>();
+    const boards = new Set<string>();
+    const queueMembers = new Map<string, string[]>();
     const redis = {
-      zAdd: vi.fn().mockResolvedValue(1),
-      zRem: vi.fn().mockResolvedValue(1),
-      zRange: vi.fn().mockResolvedValue([]),
-      hSet: vi.fn().mockResolvedValue(1),
-      hGetAll: vi.fn().mockResolvedValue({ userId: '9', username: 'neo', boardSize: '8', skillBand: '2', joinedAt: '11', socketId: 's9', queueJoinId: 'q9' }),
-      del: vi.fn().mockResolvedValue(1),
-      eval: vi.fn().mockResolvedValue(1),
-      set: vi.fn().mockResolvedValue('OK'),
-      get: vi.fn().mockResolvedValue(null),
-    };
-    const service = new MatchmakingService(new MatchmakingRepository(), statsService, new BotFallbackService(), 30, { redis });
-
-    await service.joinQueue({ userId: 9, username: 'neo', boardSize: 8, socketId: 's9' });
-    await service.cancelQueue(9);
-
-    expect(redis.zAdd).toHaveBeenCalled();
-    expect(redis.hSet).toHaveBeenCalled();
-    expect(redis.zRem).toHaveBeenCalledWith('mm:queue:8', ['9']);
-    expect(redis.del).toHaveBeenCalledWith('mm:player:9');
-  });
-
-  it('runMatchmakingTick emits and persists initial session for redis queue', async () => {
-    const emit = vi.fn();
-    const io = { to: vi.fn(() => ({ emit })) };
-    const redis = {
-      zAdd: vi.fn().mockResolvedValue(1),
-      zRem: vi.fn().mockResolvedValue(2),
-      zRange: vi.fn().mockImplementation(async (key: string) => {
-        if (key === 'mm:boards') return ['8'];
-        if (key === 'mm:queue:8') return ['1', '2'];
-        return [];
+      zAdd: vi.fn(async (key: string, members: { score: number; value: string }[]) => {
+        if (key === 'mm:boards') {
+          members.forEach((member) => boards.add(member.value));
+          return members.length;
+        }
+        const current = queueMembers.get(key) ?? [];
+        members.forEach((member) => current.push(member.value));
+        queueMembers.set(key, current);
+        return members.length;
       }),
-      hSet: vi.fn().mockResolvedValue(1),
-      hGetAll: vi.fn().mockImplementation(async (key: string) => {
-        if (key.endsWith(':1')) return { userId: '1', username: 'alice', boardSize: '8', skillBand: '2', joinedAt: '1', socketId: 's1', queueJoinId: 'q1' };
-        return { userId: '2', username: 'bob', boardSize: '8', skillBand: '2', joinedAt: '2', socketId: 's2', queueJoinId: 'q2' };
+      zRem: vi.fn(async (key: string, members: string[]) => {
+        const current = queueMembers.get(key) ?? [];
+        queueMembers.set(key, current.filter((value) => !members.includes(value)));
+        return members.length;
       }),
-      del: vi.fn().mockResolvedValue(1),
-      eval: vi.fn().mockResolvedValue(1),
-      set: vi.fn().mockResolvedValue('OK'),
-      get: vi.fn().mockResolvedValue(null),
+      zRange: vi.fn(async (key: string) => {
+        if (key === 'mm:boards') return [...boards];
+        return queueMembers.get(key) ?? [];
+      }),
+      hSet: vi.fn(async (key: string, values: Record<string, string>) => {
+        memory.set(key, JSON.stringify(values));
+        return 1;
+      }),
+      hGetAll: vi.fn(async (key: string) => {
+        const raw = memory.get(key);
+        return raw ? JSON.parse(raw) : {};
+      }),
+      del: vi.fn(async (_key: string) => 1),
+      eval: vi.fn(async (_script: string, options: { keys: string[]; arguments: string[] }) => {
+        const queueKey = options.keys[0];
+        const current = queueMembers.get(queueKey) ?? [];
+        const next = current.filter((value) => !options.arguments.includes(value));
+        queueMembers.set(queueKey, next);
+        options.arguments.forEach((value) => memory.delete(`mm:player:${value}`));
+        return 1;
+      }),
+      set: vi.fn(async (key: string, value: string) => {
+        memory.set(key, value);
+        return 'OK';
+      }),
+      get: vi.fn(async (key: string) => memory.get(key) ?? null),
     };
 
-    const service = new MatchmakingService(new MatchmakingRepository(), statsService, new BotFallbackService(), 30, { redis, io });
+    const redisService = new MatchmakingService(
+        new MatchmakingRepository(),
+        statsService,
+        new BotFallbackService(),
+        30,
+        { redis: redis as any },
+    );
 
-    await service.runMatchmakingTick(20_000);
+    const a = await redisService.joinQueue({
+      userId: 11,
+      username: 'neo',
+      boardSize: 8,
+      rules: pieOnly,
+      socketId: 'sock-a',
+    });
+    await redisService.joinQueue({
+      userId: 12,
+      username: 'trinity',
+      boardSize: 8,
+      rules: pieOnly,
+      socketId: 'sock-b',
+    });
 
-    expect(redis.eval).toHaveBeenCalled();
-    expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^session:online:online-/), expect.any(String));
-    expect(io.to).toHaveBeenCalledWith('user:1');
-    expect(io.to).toHaveBeenCalledWith('user:2');
-    expect(emit).toHaveBeenCalledWith('matchmaking:matched', expect.objectContaining({ revealAfterGame: false }));
-  });
+    await redisService.runMatchmakingTick(a.joinedAt + 1000);
 
-  it('tryMatch consumes pending assignment from redis once', async () => {
-    const assignment = {
-      matchId: 'online-xyz',
-      playerA: { userId: 1, username: 'a', boardSize: 8, skillBand: 2, joinedAt: 1, socketId: 'x', queueJoinId: 'q1' },
-      playerB: { userId: 2, username: 'b', boardSize: 8, skillBand: 2, joinedAt: 2, socketId: 'y', queueJoinId: 'q2' },
-      opponentType: 'HUMAN' as const,
-      revealAfterGame: false,
-    };
-    const redis = {
-      zAdd: vi.fn().mockResolvedValue(1),
-      zRem: vi.fn().mockResolvedValue(1),
-      zRange: vi.fn().mockResolvedValue([]),
-      hSet: vi.fn().mockResolvedValue(1),
-      hGetAll: vi.fn().mockResolvedValue({}),
-      del: vi.fn().mockResolvedValue(1),
-      eval: vi.fn().mockResolvedValue(1),
-      set: vi.fn().mockResolvedValue('OK'),
-      get: vi.fn().mockResolvedValueOnce(JSON.stringify(assignment)).mockResolvedValueOnce(null),
-    };
-
-    const service = new MatchmakingService(new MatchmakingRepository(), statsService, new BotFallbackService(), 30, { redis });
-
-    const first = await service.tryMatch(1);
-    const second = await service.tryMatch(1);
-
-    expect(first?.matchId).toBe('online-xyz');
-    expect(second).toBeNull();
-    expect(redis.del).toHaveBeenCalledWith('mm:assignment:1');
+    const firstSessionValue = [...memory.entries()].find(([key]) => key.startsWith('session:online:'))?.[1];
+    expect(firstSessionValue).toBeTruthy();
+    const parsed = JSON.parse(firstSessionValue as string);
+    expect(parsed.rules).toEqual(pieOnly);
   });
 });

@@ -9,16 +9,21 @@ RUN npm ci --silent
 # Copy sources
 COPY . .
 
-# Accept build-time API url (defaults to localhost:3000)
-ARG VITE_API_URL="/api/users"
-ARG VITE_GAMEY_API_URL="/api/gamey"
+# Build args (valores por defecto)
+ARG VITE_API_URL=/api/users
+ARG VITE_GAMEY_API_URL=/api/gamey
 
-RUN export VITE_API_URL=${VITE_API_URL} && export VITE_GAMEY_API_URL=${VITE_GAMEY_API_URL} && npm run build
+# IMPORTANTE: usar ENV, no export
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_GAMEY_API_URL=$VITE_GAMEY_API_URL
+
+# Build app
+RUN npm run build
 
 # Production image
 FROM nginx:stable-alpine
 
-# Copiar archivos compilados
 COPY --from=builder /app/dist /usr/share/nginx/html
+
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

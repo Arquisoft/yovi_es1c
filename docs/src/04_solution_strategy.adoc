@@ -31,7 +31,7 @@ a| • **Performance**: Rust provides memory safety without garbage collection, 
 | **Auth Service (Node.js + Express + TypeScript)**
 a| • **Single Responsibility**: Exclusively manages user credentials, authentication, and JWT token lifecycle
 • **Fault Isolation**: A failure in the credentials database does not affect user profiles or game data
-• **Security**: Isolates sensitive credential data (password hashes, tokens) in a dedicated database (`auth.db`)
+• **Security**: Isolates sensitive credential data (password hashes, tokens) in a dedicated database (`authdb` (PostgreSQL))
 • **Independent Scalability**: Can be scaled independently if authentication load increases
 
 | **Users Service (Node.js + Express + TypeScript)**
@@ -41,7 +41,7 @@ a| • **Single Responsibility**: Manages user profile data exclusively (`users.
 • **Type Safety**: TypeScript prevents runtime errors and improves maintainability
 
 | **Game Service (Node.js + Express + TypeScript)**
-a| • **Single Responsibility**: Manages all game-related persistence: matches, moves, and statistics (`game.db`)
+a| • **Single Responsibility**: Manages all game-related persistence: matches, moves, and statistics (`gamedb` (PostgreSQL))
 • **Fault Isolation**: A heavy load of concurrent matches collapses only the game database, leaving authentication and user profiles unaffected
 • **Domain Cohesion**: Groups all game data in one service aligned with the game domain
 • **Independent Scalability**: Can be scaled independently under high game load
@@ -53,8 +53,8 @@ a| • **Component-based UI**: React's declarative approach simplifies game boar
 • **SPA Architecture**: Single-page application enables smooth user experience without page reloads
 • **Client-side coordination**: Frontend manages API call orchestration from the browser
 
-| **Databases (SQLite x3)**
-a| • **Fault Isolation**: Three independent databases (`auth.db`, `users.db`, `game.db`) ensure that a failure or overload in one does not affect the others
+| **Databases (PostgreSQL x2 + SQLite x1)**
+a| • **Fault Isolation**: Three independent databases (`authdb` (PostgreSQL), `users.db`, `gamedb` (PostgreSQL)) ensure that a failure or overload in one does not affect the others
 • **Simplicity**: Zero-configuration embedded database, no separate server process required
 • **Portability**: Single file databases simplify deployment and backup per service
 • **Performance**: Excellent read performance for each domain's specific workload
@@ -85,9 +85,9 @@ RECTANGLE "Auth Service\n(Node.js)" as auth <<service>>
 RECTANGLE "Users Service\n(Node.js)" as users <<service>>
 RECTANGLE "Game Service\n(Node.js)" as gameservice <<service>>
 RECTANGLE "Game Server\n(Rust)" as game <<gameengine>>
-database "auth.db\n(SQLite)" as authdb
+database "authdb\n(PostgreSQL)" as authdb
 database "users.db\n(SQLite)" as usersdb
-database "game.db\n(SQLite)" as gamedb
+database "gamedb\n(PostgreSQL)" as gamedb
 
 user --> nginx : HTTP (80)
 nginx --> frontend : Static files
@@ -114,7 +114,7 @@ note right of auth
   • User registration & login
   • Password hashing (bcrypt/Argon2)
   • JWT token generation & validation
-  • Credentials persistence (auth.db)
+  • Credentials persistence (authdb)
 end note
 
 note right of users
@@ -129,7 +129,7 @@ note right of gameservice
   • Match creation and persistence
   • Move history storage
   • Statistics aggregation
-  • Game data persistence (game.db)
+  • Game data persistence (gamedb)
 end note
 
 note right of game
@@ -148,9 +148,9 @@ The system follows a **microservices architecture** where:
 
 * **Nginx** acts as the API Gateway, providing a single entry point and routing requests to appropriate services
 * **React Frontend** runs in the user's browser and coordinates API calls to backend services
-* **Auth Service** is exclusively responsible for authentication, registration, and JWT management, backed by `auth.db`
+* **Auth Service** is exclusively responsible for authentication, registration, and JWT management, backed by `authdb` (PostgreSQL)
 * **Users Service** manages user profile data, backed by `users.db`
-* **Game Service** manages all game-related persistence (matches, moves, statistics), backed by `game.db`
+* **Game Service** manages all game-related persistence (matches, moves, statistics), backed by `gamedb` (PostgreSQL)
 * **Game Server** remains stateless and focuses solely on game domain logic
 * **YEN notation** defines the boundaries between services for game state communication
 * Each service owns its own database, ensuring **fault isolation**: a failure or overload in one database does not propagate to the others
@@ -181,7 +181,7 @@ package "React Frontend (Browser)" {
 package "Auth Service (Node.js)" {
   [AuthController] --> [AuthService]
   [AuthService] --> [CredentialsRepository]
-  [CredentialsRepository] --> [auth.db]
+  [CredentialsRepository] --> [authdb]
 
   note right of AuthController
     REST endpoints
@@ -215,8 +215,8 @@ package "Game Service (Node.js)" {
   [GameController] --> [StatsService]
   [MatchService] --> [MatchRepository]
   [StatsService] --> [StatsRepository]
-  [MatchRepository] --> [game.db]
-  [StatsRepository] --> [game.db]
+  [MatchRepository] --> [gamedb]
+  [StatsRepository] --> [gamedb]
 
   note right of GameController
     REST endpoints
@@ -260,7 +260,7 @@ package "Game Server (Rust)" {
 
 * **AuthController**: Handles HTTP requests for registration and login
 * **AuthService**: Business logic for password hashing and JWT management
-* **CredentialsRepository**: Abstracts access to `auth.db`
+* **CredentialsRepository**: Abstracts access to `authdb` (PostgreSQL)
 
 **Users Service Layers:**
 
@@ -273,7 +273,7 @@ package "Game Server (Rust)" {
 * **GameController**: Handles HTTP requests for match and stats operations
 * **MatchService**: Business logic for match creation, move persistence, and lifecycle
 * **StatsService**: Aggregates and retrieves player statistics
-* **MatchRepository / StatsRepository**: Abstract access to `game.db`
+* **MatchRepository / StatsRepository**: Abstract access to `gamedb` (PostgreSQL)
 
 **Game Server Design:**
 
@@ -289,7 +289,7 @@ package "Game Server (Rust)" {
 
 | **Performance**
 a| • Rust for compute-intensive game logic
-• SQLite for fast read operations per service
+• PostgreSQL for auth/game transactional workloads and SQLite for users profile storage
 • Stateless game server for horizontal scaling
 • Nginx for efficient request routing
 a| • Move validation in O(n) time
@@ -333,7 +333,7 @@ a| • JWT token-based authentication (Auth Service)
 • Password hashing (bcrypt/Argon2)
 • No direct backend access
 • Input validation at API boundaries
-• `auth.db` isolated from `users.db` and `game.db`
+• `authdb` (PostgreSQL) isolated from `users.db` and `gamedb` (PostgreSQL)
 |===
 
 === Key Constraints
@@ -361,7 +361,7 @@ a| • JWT token-based authentication (Auth Service)
 | Game engine must support extensible bot strategies, leading to Strategy pattern adoption
 
 | **Database Fault Isolation**
-| Three independent databases (auth.db, users.db, game.db) ensure that overload or failure in one domain does not affect the others
+| Three independent databases (authdb, users.db, gamedb) ensure that overload or failure in one domain does not affect the others
 |===
 
 === Organizational Decisions

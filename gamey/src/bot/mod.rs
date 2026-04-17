@@ -13,6 +13,8 @@ pub mod ybot;
 pub mod ybot_registry;
 mod heurisitic;
 pub(crate) mod set_based_heuristic;
+pub mod both_players_set_distances_heuristic;
+pub mod set_connectivity_heuristic;
 pub mod neural_net;
 pub mod neural_mcts;
 

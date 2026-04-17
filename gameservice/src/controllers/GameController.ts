@@ -21,10 +21,10 @@ export function createGameController(
       return res.status(404).json(apiError(error.code, error.message));
     }
     if (
-      error.code === 'VERSION_CONFLICT'
-      || error.code === 'RECONNECT_EXPIRED'
-      || error.code === 'SESSION_TERMINAL'
-      || error.code === 'DUPLICATE_EVENT'
+        error.code === 'VERSION_CONFLICT'
+        || error.code === 'RECONNECT_EXPIRED'
+        || error.code === 'SESSION_TERMINAL'
+        || error.code === 'DUPLICATE_EVENT'
     ) {
       return res.status(409).json(apiError(error.code, error.message));
     }
@@ -42,7 +42,7 @@ export function createGameController(
       }
 
       const validated = validateCreateMatch(req.body);
-      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode);
+      const id = await matchService.createMatch(userId, validated.boardSize, validated.difficulty, validated.mode, validated.rules);
       res.status(201).json({ matchId: id });
     } catch (error) {
       next(error);
@@ -52,7 +52,7 @@ export function createGameController(
   router.get("/matches/:id", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const matchId = validateMatchId(req.params.id);
-      const match = await matchService.getMatch(matchId);
+      const match = await matchService.getMatchState(matchId);
 
       if (!match) {
         throw new MatchNotFoundError();
@@ -87,7 +87,8 @@ export function createGameController(
       }
 
       await matchService.addMove(matchId, validated.position_yen, validated.player, validated.moveNumber);
-      res.status(201).json({ message: "Move added" });
+      matchService.queueBotMove(matchId);
+      res.status(202).json({ status: 'processing', matchId });
     } catch (error) {
       next(error);
     }
@@ -128,25 +129,6 @@ export function createGameController(
     }
   });
 
-  router.post("/matches/:id/finish", async (req, res, next) => {
-  try {
-    const matchId = validateMatchId(req.params.id);
-    const { winner } = req.body; // 'USER' | 'BOT' | 'DRAW'
-
-    const match = await matchService.getMatch(matchId);
-    if (!match) throw new MatchNotFoundError();
-    if (match.user_id !== Number(req.userId)) throw new UnauthorizedMatchError();
-    if (match.status !== 'ONGOING') {
-      return res.status(409).json(apiError('MATCH_ALREADY_FINISHED', 'Match is already finished'));
-    }
-
-    await matchService.finishMatch(matchId, winner);
-    res.status(200).json({ message: "Match finished" });
-  } catch (error) {
-    next(error);
-  }
-});
-
   router.post('/online/queue', async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!matchmakingService || !req.userId || !req.username) {
@@ -157,6 +139,7 @@ export function createGameController(
         userId: Number(req.userId),
         username: req.username,
         boardSize: payload.boardSize,
+        rules: payload.rules,
         socketId: `http:${req.userId}`,
       });
       res.status(201).json({ queued: true, joinedAt: queued.joinedAt });
@@ -192,6 +175,7 @@ export function createGameController(
               { userId: assignment.playerB.userId, username: assignment.playerB.username },
             ],
             'HUMAN',
+            assignment.playerA.rules,
         );
       }
 
@@ -234,8 +218,8 @@ export function createGameController(
         return res.status(204).send();
       }
       const snapshot = typeof (onlineSessionService as any).getSnapshot === 'function'
-        ? await onlineSessionService.getSnapshot(active.matchId)
-        : null;
+          ? await onlineSessionService.getSnapshot(active.matchId)
+          : null;
       return res.status(200).json({
         ...active,
         status: snapshot?.status ?? 'active',

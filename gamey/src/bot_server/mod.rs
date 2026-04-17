@@ -24,6 +24,7 @@ pub mod error;
 pub mod state;
 pub mod version;
 pub mod bot_alias_resolver;
+pub mod play;
 pub mod metrics;
 
 use std::collections::HashMap;
@@ -34,6 +35,7 @@ pub use error::ErrorResponse;
 pub use version::*;
 use tower_http::cors::{CorsLayer, Any};
 
+use crate::set_connectivity_heuristic::SetConnectivityHeuristic;
 use crate::{GameYError, RandomBot, YBotRegistry, state::AppState};
 use crate::bot::set_based_heuristic::SetBasedHeuristic;
 use crate::bot_server::bot_alias_resolver::BotAliasResolver;
@@ -55,8 +57,10 @@ pub fn create_router(state: AppState) -> axum::Router {
         .route("/metrics", axum::routing::get(metrics::metrics_handler))
         .route(
             "/{api_version}/ybot/choose/{bot_id}",
-            axum::routing::post(choose::choose),
-        )
+            axum::routing::post(choose::choose), )
+        .route(
+            "/{api_version}/ybot/play",
+            axum::routing::post(play::play), )
         .layer(cors)
         .with_state(state)
 }
@@ -72,7 +76,7 @@ pub fn create_default_state() -> AppState {
     let bots = YBotRegistry::new()
         .with_bot(Arc::new(RandomBot))
         .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 2)))
-        .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 4)))
+        .with_bot(Arc::new(MinimaxBot::new(SetConnectivityHeuristic, 4)))
         .with_bot(Arc::new(NeuralMctsBot::new(net.clone(), 200)))
         .with_bot(Arc::new(NeuralMctsBot::new(net.clone(), 800)))
         .with_bot(Arc::new(NeuralMctsBot::new(net.clone(), 2000)));
@@ -80,7 +84,7 @@ pub fn create_default_state() -> AppState {
     let mut aliases = HashMap::new();
     aliases.insert("easy".to_string(),   "random".to_string());
     aliases.insert("medium".to_string(), "minimax_set_d2".to_string());
-    aliases.insert("hard".to_string(),   "minimax_set_d4".to_string());
+    aliases.insert("hard".to_string(),   "minimax_connectivity_d4".to_string());
     aliases.insert("expert".to_string(), "neural_mcts_s800".to_string());
 
     let resolver = BotAliasResolver::new(aliases);
@@ -241,4 +245,6 @@ mod tests {
         let _ = state;
     }
 }
+
+
 

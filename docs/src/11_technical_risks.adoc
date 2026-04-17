@@ -35,7 +35,7 @@ Risks can appear like part of Quality Attributes scenarios. We categorized the n
 | *4*
 
 |*Data Integrity*
-|The system now uses three independent databases (`auth.db`, `users.db`, `game.db`). Operations that span multiple services (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level without native transaction support across services. This increases the risk of partial failures leaving data in an inconsistent state.
+|The system now uses three independent databases (`authdb` (PostgreSQL), `users.db`, `gamedb` (PostgreSQL)). Operations that span multiple services (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level without native transaction support across services. This increases the risk of partial failures leaving data in an inconsistent state.
 |Implement compensating operations for cross-service data changes. Define clear ownership rules per data domain. Add integration tests that verify consistency across services after multi-step operations.
 | 2
 | 3
@@ -81,5 +81,5 @@ Risks can appear like part of Quality Attributes scenarios. We categorized the n
 |Because we don't have much experience with server deployment, our first configuration will probably be a bit hardcoded or less modular than it should be. Later we need to refactor this to move to a more scalable setup using environment variables.
 
 |*Cross-service Data Consistency*
-|Operations that affect multiple data domains (e.g., user deletion, which must remove records from `auth.db`, `users.db`, and `game.db`) currently have no distributed transaction mechanism. This is accepted as a technical debt for the academic scope of the project and should be addressed with compensating transactions or a saga pattern in a production-grade system.
+|Operations that affect multiple data domains (e.g., user deletion, which must remove records from `authdb` (PostgreSQL), `users.db`, and `gamedb` (PostgreSQL)) currently have no distributed transaction mechanism. This is accepted as a technical debt for the academic scope of the project and should be addressed with compensating transactions or a saga pattern in a production-grade system.
 |===

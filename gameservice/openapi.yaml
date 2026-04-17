@@ -20,24 +20,30 @@ paths:
         required: true
         content:
           application/json:
-            example:
-              boardSize: 8
-              difficulty: MEDIUM
             schema:
               $ref: '#/components/schemas/CreateMatchRequest'
+            example:
+              boardSize: 8
+              difficulty: medium
+              mode: BOT
+              rules:
+                pieRule:
+                  enabled: false
+                honey:
+                  enabled: false
+                  blockedCells: []
       responses:
         '201':
           description: Match created
           content:
             application/json:
-              example:
-                matchId: 123
               schema:
                 type: object
                 properties:
                   matchId:
                     type: integer
-                    example: 42
+              example:
+                matchId: 42
         '400':
           description: Validation error
           content:
@@ -68,20 +74,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MatchDto'
+                $ref: '#/components/schemas/Match'
               example:
                 id: 123
                 user_id: 1
-                boardSize: 8
-                difficulty: MEDIUM
+                board_size: 8
+                difficulty: medium
                 status: ONGOING
-        '403':
-          description: Unauthorized match access
-          description: Match found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Match'
+                winner: null
+                mode: BOT
+                created_at: '2026-04-06T12:00:00Z'
         '403':
           description: Not the match owner
           content:
@@ -111,48 +113,48 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/MoveDto'
+              $ref: '#/components/schemas/AddMoveRequest'
             example:
-              position_yen: 4
+              position_yen: a1
               player: USER
               moveNumber: 1
-              $ref: '#/components/schemas/AddMoveRequest'
       responses:
         '201':
           description: Move added
           content:
             application/json:
-              example:
-                message: Move added
-        '403':
-          description: Unauthorized
               schema:
                 type: object
                 properties:
                   message:
                     type: string
+              example:
+                message: Move added
         '400':
           description: Validation error or match already finished
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Match not found
         '403':
           description: Not the match owner
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Invalid move / match already finished
         '404':
           description: Match not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Invalid move or match already finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /matches/{id}/finish:
     put:
       summary: Finish a match with a result
@@ -168,24 +170,22 @@ paths:
         required: true
         content:
           application/json:
-            example:
-              winner: USER
             schema:
               $ref: '#/components/schemas/FinishMatchRequest'
+            example:
+              winner: USER
       responses:
         '200':
           description: Match finished
           content:
             application/json:
-              example:
-                message: Match finished
-        '403':
-          description: Unauthorized
               schema:
                 type: object
                 properties:
                   message:
                     type: string
+              example:
+                message: Match finished
         '400':
           description: Validation error
           content:
@@ -210,6 +210,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /stats/{userId}:
     get:
       summary: Get aggregated stats for a user
@@ -227,18 +228,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/StatsDto'
               example:
-                user_id: 1
+                totalMatches: 15
                 wins: 10
                 losses: 5
-                total_games: 15
-                win_rate: 0.66
-
+                matches:
+                  - matchId: '42'
+                    createdAt: '2026-04-06T12:00:00Z'
+                    mode: BOT
+                    status: win
         '400':
           description: Invalid userId
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /online/queue:
     post:
       summary: Join matchmaking queue
@@ -255,6 +259,8 @@ paths:
                 boardSize:
                   type: integer
                   example: 11
+                rules:
+                  $ref: '#/components/schemas/MatchRules'
       responses:
         '201':
           description: Queued
@@ -454,14 +460,11 @@ paths:
           description: Session abandoned
 
 components:
-
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
-  schemas:
 
   schemas:
     CreateMatchRequest:
@@ -479,6 +482,9 @@ components:
           type: string
           enum: [BOT, ONLINE, LOCAL_2P]
           default: BOT
+        rules:
+          $ref: '#/components/schemas/MatchRules'
+
     AddMoveRequest:
       type: object
       required: [position_yen, player, moveNumber]
@@ -493,6 +499,7 @@ components:
         moveNumber:
           type: integer
           minimum: 1
+
     FinishMatchRequest:
       type: object
       required: [winner]
@@ -500,6 +507,7 @@ components:
         winner:
           type: string
           enum: [USER, BOT]
+
     Match:
       type: object
       properties:
@@ -521,9 +529,44 @@ components:
         mode:
           type: string
           enum: [BOT, ONLINE, LOCAL_2P]
+        rules:
+          $ref: '#/components/schemas/MatchRules'
         created_at:
           type: string
           format: date-time
+
+    MatchRules:
+      type: object
+      required: [pieRule, honey]
+      properties:
+        pieRule:
+          type: object
+          required: [enabled]
+          properties:
+            enabled:
+              type: boolean
+        honey:
+          type: object
+          required: [enabled, blockedCells]
+          properties:
+            enabled:
+              type: boolean
+            blockedCells:
+              type: array
+              items:
+                $ref: '#/components/schemas/BlockedCell'
+
+    BlockedCell:
+      type: object
+      required: [row, col]
+      properties:
+        row:
+          type: integer
+          minimum: 0
+        col:
+          type: integer
+          minimum: 0
+
     MatchDto:
       type: object
       properties:
@@ -537,6 +580,7 @@ components:
         status:
           type: string
           enum: [win, lose]
+
     StatsDto:
       type: object
       properties:
@@ -550,6 +594,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MatchDto'
+
     ErrorResponse:
       type: object
       required: [code, message]
@@ -562,44 +607,3 @@ components:
           example: Online session not found
         details:
           nullable: true
-
-    MatchDto:
-      type: object
-      properties:
-        id:
-          type: integer
-        user_id:
-          type: integer
-        boardSize:
-          type: integer
-        difficulty:
-          type: string
-        status:
-          type: string
-          enum: [ONGOING, FINISHED]
-
-    MoveDto:
-      type: object
-      required: [position_yen, player, moveNumber]
-      properties:
-        position_yen:
-          type: integer
-        player:
-          type: string
-          enum: [USER, BOT]
-        moveNumber:
-          type: integer
-
-    StatsDto:
-      type: object
-      properties:
-        user_id:
-          type: integer
-        wins:
-          type: integer
-        losses:
-          type: integer
-        total_games:
-          type: integer
-        win_rate:
-          type: number

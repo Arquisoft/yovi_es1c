@@ -11,9 +11,9 @@ ifndef::imagesdir[:imagesdir: ../images]
 Although it would have simplified the development at first, this solution presents big issues in terms of scalability and maintainability.
 * **Decision:** We decided to implement a microservice-based architecture with a clear separation between game logic, data persistence, and presentation layers. The system will consist of:
 ** **Game Server (Rust)** handling core game rules, move validation, and bot strategies
-** **Auth Service (Node.js + Express + TypeScript)** managing user authentication, registration, and JWT token lifecycle, with exclusive access to `auth.db`
+** **Auth Service (Node.js + Express + TypeScript)** managing user authentication, registration, and JWT token lifecycle, with exclusive access to `authdb` (PostgreSQL)
 ** **Users Service (Node.js + Express + TypeScript)** managing user profile data, with exclusive access to `users.db`
-** **Game Service (Node.js + Express + TypeScript)** managing match persistence, move history, statistics, online matchmaking, and real-time sessions, with exclusive access to `game.db` and Redis
+** **Game Service (Node.js + Express + TypeScript)** managing match persistence, move history, statistics, online matchmaking, and real-time sessions, with exclusive access to `gamedb` (PostgreSQL) and Redis
 ** **React Frontend (Vite + TypeScript)** for user interaction, running entirely in the browser and coordinating API calls to backend services
 ** **Nginx API Gateway** routing requests and handling cross-cutting concerns (CORS, rate limiting, WebSocket proxying, security)
 ** Each service owns its own data store, ensuring fault isolation at the data layer +
@@ -57,18 +57,18 @@ This approach allows each component to evolve independently while using the most
 ** Adds an extra layer of complexity to the development workflow
 ** Requires basic knowledge of Docker and container orchestration from the development team
 
-=== ADR 4: SQLite as Database System
+=== ADR 4: Polyglot Persistence (PostgreSQL + SQLite)
 * **Context:** The application requires persistent storage for game data, user information, and match states. The database solution should be simple to operate, easy to integrate with the existing backend services, and appropriate for an academic project deployed in a cloud environment.
 * **Status:** Proposed by the development team.
 * **Possible alternatives:**
 ** **MongoDB:** A document-oriented NoSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken.
-* **Decision:** We decided to use SQLite as the database system for all three data domains. Each service owns its own SQLite database file (`auth.db`, `users.db`, `game.db`), mounted as an independent Docker volume. No service has access to another service's database. This choice is also highly based on the development team's experience using relational databases.
+* **Decision:** We use a polyglot persistence model: PostgreSQL for Auth (`authdb`) and Game Service (`gamedb`), plus SQLite for Users (`users.db`). Each service owns its database and no service has direct access to another service's data store.
 * **Pros:**
 ** Easy integration with backend services and containerized environments
 ** Suitable for small-to-medium workloads
 ** Low learning curve, as the development team is used to working with relational databases
-** Each service owns its own database file, enforcing data isolation
-** Embedded database requires no separate server process
+** Each service owns its own database, enforcing data isolation
+** Users Service keeps SQLite embedded; Auth and Game use managed PostgreSQL containers
 * **Cons:**
 ** Limited scalability and concurrency support compared to cloud-native database solutions
 ** Not ideal for high-availability or horizontally scaled write-heavy workloads
@@ -79,7 +79,7 @@ This approach allows each component to evolve independently while using the most
 * **Possible alternatives:**
 ** **Direct access to backend services:** Each service could expose its own public port, but this would increase security risks and make it harder to manage cross-cutting concerns.
 ** **Cloud API Gateway services (AWS API Gateway, Azure API Management):** These would provide more features but add complexity and cost for an academic project.
-* **Decision:** We decided to use Nginx as a reverse proxy and API Gateway. Nginx will be the only component with a publicly exposed port (80). It will route requests based on URL paths:
+* **Decision:** We decided to use Nginx as a reverse proxy and API Gateway. Nginx is the only public ingress layer, exposing `80` (HTTP redirect) and `443` (HTTPS/TLS). It routes requests based on URL paths:
 ** `/api/auth/*` → Auth Service (port 3001, internal)
 ** `/api/users/*` → Users Service (port 3000, internal)
 ** `/api/game/*` → Game Service (port 3002, internal), including WebSocket upgrade for Socket.IO
@@ -103,13 +103,13 @@ Nginx will also handle CORS headers, rate limiting, WebSocket proxying, and requ
 * **Possible alternatives:**
 ** **Single database:** One SQLite file accessed by one service. Simple but creates a single point of failure at the data layer. If the database is locked or overloaded (e.g., by a high volume of match writes), authentication also fails.
 ** **Single service with multiple internal connections:** A single backend service managing three internal database connections. This keeps one entry point but does not achieve true fault isolation at the service level — if the service crashes, all three databases become inaccessible anyway.
-* **Decision:** We decided to split the data layer into three independent services, each owning its own SQLite database:
-** **Auth Service** → `auth.db`: stores credentials and JWT token metadata
+* **Decision:** We split the data layer into three independent services, each owning its own database:
+** **Auth Service** → `authdb` (PostgreSQL): stores credentials and JWT token metadata
 ** **Users Service** → `users.db`: stores user profile data
-** **Game Service** → `game.db`: stores matches, move history, and statistics
+** **Game Service** → `gamedb` (PostgreSQL): stores matches, move history, and statistics
 Each database is mounted as an independent Docker volume, and no service has access to another service's database.
 * **Pros:**
-** **Fault isolation**: a failure or overload in `game.db` (e.g., caused by a high volume of concurrent matches) does not affect authentication or user profile access
+** **Fault isolation**: a failure or overload in `gamedb` (PostgreSQL) (e.g., caused by a high volume of concurrent matches) does not affect authentication or user profile access
 ** **Independent scalability**: each service and its database can be scaled according to its own load profile
 ** **Single responsibility**: each service has a clearly defined data domain, improving maintainability
 * **Cons:**
@@ -118,10 +118,10 @@ Each database is mounted as an independent Docker volume, and no service has acc
 ** Cross-service consistency (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level
 
 === ADR 7: Redis and Socket.IO for Online Matchmaking and Real-time Sessions
-* **Context:** Adding online human-vs-human matches required two capabilities that the existing architecture could not provide efficiently: (1) a low-latency shared queue to pair players waiting for an opponent, and (2) a real-time bidirectional communication channel to propagate board state updates to both players instantly after each move. Polling a REST endpoint for both purposes would introduce unacceptable latency and unnecessary load on `game.db`.
+* **Context:** Adding online human-vs-human matches required two capabilities that the existing architecture could not provide efficiently: (1) a low-latency shared queue to pair players waiting for an opponent, and (2) a real-time bidirectional communication channel to propagate board state updates to both players instantly after each move. Polling a REST endpoint for both purposes would introduce unacceptable latency and unnecessary load on `gamedb` (PostgreSQL).
 * **Status:** Proposed by the development team.
 * **Possible alternatives:**
-** **REST polling only (no Redis, no WebSocket):** Both matchmaking and move synchronisation would be handled by clients polling REST endpoints against `game.db`. Simple to implement, but introduces high latency for move propagation, increased database load, and a poor real-time user experience.
+** **REST polling only (no Redis, no WebSocket):** Both matchmaking and move synchronisation would be handled by clients polling REST endpoints against `gamedb` (PostgreSQL). Simple to implement, but introduces high latency for move propagation, increased database load, and a poor real-time user experience.
 ** **Long polling / Server-Sent Events (SSE):** A lighter alternative to WebSocket for server-to-client push. Would reduce polling overhead but does not support bidirectional communication natively, complicating turn submission and event acknowledgment.
 ** **In-memory matchmaking queue (no Redis):** A plain Node.js in-memory queue instead of Redis. Simpler to set up, but the queue is lost on service restart and does not support multiple Game Service instances sharing the same queue state.
 * **Decision:** We decided to introduce **Redis** as an ephemeral in-memory store and **Socket.IO** as the real-time communication layer, both exclusively used by the Game Service:
@@ -131,7 +131,7 @@ Each database is mounted as an independent Docker volume, and no service has acc
 ** Nginx proxies the Socket.IO WebSocket connection transparently under `/api/game/socket.io/`.
 * **Pros:**
 ** Low-latency real-time updates: board state changes are pushed to clients instantly via WebSocket instead of requiring polling
-** Redis decouples matchmaking queue state from `game.db`, avoiding write contention under high concurrency
+** Redis decouples matchmaking queue state from `gamedb` (PostgreSQL), avoiding write contention under high concurrency
 ** The `@socket.io/redis-adapter` enables horizontal scaling of the Game Service without losing session events
 ** Turn timeout and bot fallback logic integrates naturally with Socket.IO event emission
 ** Redis failure only affects online matchmaking and active sessions; AI matches, authentication, and statistics remain fully operational

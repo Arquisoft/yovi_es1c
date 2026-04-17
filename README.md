@@ -1,3 +1,5 @@
+## You can find our project deployed here: [https://yovi-es1c.duckdns.org/](https://yovi-es1c.duckdns.org/)
+
 # Yovi_es1c - Game Y at UniOvi
 
 [![Release — Test, Build, Publish, Deploy](https://github.com/arquisoft/yovi_es1c/actions/workflows/release-deploy.yml/badge.svg)](https://github.com/arquisoft/yovi_es1c/actions/workflows/release-deploy.yml)
@@ -30,8 +32,8 @@ The project is divided into the following components, each in its own directory:
 ## Features
 
 - **User registration and login**: Full JWT-based authentication (access token + refresh token).
-- **Play vs AI**: The player selects board size and difficulty and plays against a bot powered by the Rust game engine.
-- **Online multiplayer (human vs human)**: A matchmaking system pairs two players. The match is played in real time via Socket.IO. If a player exceeds their turn time limit, a bot automatically plays in their place.
+- **Play vs AI and local PvP**: Match creation supports `BOT` and `LOCAL_2P` modes with selectable board size/difficulty and rule set (`pieRule`, `honey`). Honey blocked cells are generated server-side when enabled.
+- **Online multiplayer (human vs human)**: Players join matchmaking through Socket.IO (`queue:join`) and receive assignments via `matchmaking:matched`. Session state is synchronized in real time (`session:state`). If a player times out, bot fallback can play on their behalf.
 - **Match history and statistics**: Registered players can view their match history, wins, losses, and performance metrics.
 - **External bot API**: External bots can register and play matches against the system's AI through the public API.
 - **Monitoring**: Prometheus and Grafana are available for system metrics.
@@ -74,7 +76,7 @@ Endpoints:
 
 Key environment variables:
 - `JWT_SECRET` (required)
-- `AUTH_DB_PATH` (defaults to `/app/auth/data/auth.db`)
+- `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` (PostgreSQL auth connection settings)
 
 Internal verification URL (service-to-service):
 - `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
@@ -97,7 +99,7 @@ Exposed internally on port `4000`.
 The online game and matchmaking service built with Node.js, Express, and TypeScript.
 
 - Manages the full lifecycle of both AI and online human-vs-human matches.
-- Persists match state and move history in YEN notation in `game.db` (SQLite).
+- Persists match state and move history in YEN notation in PostgreSQL (`gamedb`).
 - Exposes aggregated statistics per player.
 - Implements a **Redis-backed matchmaking queue** to pair online players.
 - Manages **real-time online sessions** via Socket.IO (with `@socket.io/redis-adapter`).
@@ -108,7 +110,7 @@ Exposed internally on port `3002`.
 
 ### Nginx (API Gateway)
 
-The single public entry point (port `80`). Routes all requests to internal services:
+The single public entry point through Nginx (`80` + `443`). Port `80` redirects to HTTPS and API/WebSocket traffic is served on `443`:
 
 | Path | Target Service |
 |---|---|
@@ -119,7 +121,7 @@ The single public entry point (port `80`). Routes all requests to internal servi
 | `/*` | React Frontend (webapp) |
 
 `/api/auth/verify` is blocked externally (returns `403`).
-Includes rate limiting (`10 req/s` with burst of 20), CORS headers, static asset caching, and SPA fallback.
+Includes TLS termination, HTTP→HTTPS redirect, rate limiting (`10 req/s` with burst of 20), CORS headers, static asset caching, and SPA fallback.
 
 ### Monitoring
 
@@ -145,7 +147,7 @@ Once running:
 
 | Service | URL |
 |---|---|
-| Web application | http://localhost |
+| Web application | https://localhost (HTTP 80 redirects to HTTPS) |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:9091 |
 
@@ -196,7 +198,7 @@ npm install
 npm run dev
 ```
 
-The web application will be available at `http://localhost:5173`.
+The web application will be available at `http://localhost:5173` (Vite dev server). In Docker deployment, access through `https://localhost`.
 
 ---
 
@@ -251,11 +253,9 @@ Create a `.env` file in the root directory before running the project with Docke
 # Secret key used to sign and verify JWT tokens
 JWT_SECRET=yovi_es1c_2526
 
-# Internal path to the auth database file (inside the container)
-AUTH_DB_PATH=/app/auth/data/auth.db
-
-# Internal path to the game service database file (inside the container)
-GAME_DB_PATH=/app/data/game.db
+# PostgreSQL credentials (auth + gameservice)
+AUTH_DB_PASSWORD=changeme
+GAME_DB_PASSWORD=changeme
 
 # Matchmaking and online session timeouts (in seconds)
 MM_TIMEOUT_SEC=30

@@ -1,4 +1,4 @@
-import { Database } from "sqlite";
+import { Pool } from 'pg';
 
 export interface MatchRow {
   id: number;
@@ -11,20 +11,23 @@ export interface MatchRow {
 }
 
 export class StatsRepository {
-  constructor(private db: Database) {}
+  constructor(private readonly db: Pool) {}
 
   async getUserStats(userId: number) {
-    return this.db.get(`SELECT * FROM user_stats WHERE user_id = ?`, [userId]);
+    const result = await this.db.query(`SELECT * FROM user_stats WHERE user_id = $1`, [userId]);
+    return result.rows[0] ?? null;
   }
 
   async getMatchHistory(userId: number, limit: number): Promise<MatchRow[]> {
-    return this.db.all<MatchRow[]>(
-      `SELECT id, board_size, difficulty, status, winner, mode, created_at
-       FROM matches
-       WHERE user_id = ? AND status = 'FINISHED'
-       ORDER BY created_at DESC
-       LIMIT ?`,
-      [userId, limit]
+    const result = await this.db.query<MatchRow>(
+        `SELECT id, board_size, difficulty, status, winner, mode, created_at
+         FROM matches
+         WHERE user_id = $1 AND status = 'FINISHED'
+         ORDER BY created_at DESC
+           LIMIT $2`,
+        [userId, limit],
     );
+
+    return result.rows;
   }
 }

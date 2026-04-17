@@ -15,13 +15,12 @@ import { useAuth } from '../../../auth';
 import { useGameController, type BotDifficulty } from '../../hooks/useGameController.ts';
 import { useOnlineSession } from '../../hooks/useOnlineSession';
 import { useChatSession } from '../../hooks/useChatSession';
-import { onlineSocketClient } from '../../realtime/onlineSocketClient';
-import type { YenPositionDto } from '../../../../shared/contracts';
+import type { MatchRulesDto, YenPositionDto } from '../../../../shared/contracts';
 import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
-import { resolveCurrentTurnLabel,  resolveWinnerLabel} from './gameUIHelpers.ts';
+import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
 import WinnerOverlay from './WinnerOverlay';
 
 type GameConfig = {
@@ -30,6 +29,7 @@ type GameConfig = {
     difficulty: BotDifficulty;
     mode: 'BOT' | 'LOCAL_2P' | 'ONLINE';
     initialYEN?: YenPositionDto;
+    rules?: MatchRulesDto;
 } | null;
 
 const difficultyLabels: Record<BotDifficulty, string> = {
@@ -44,6 +44,12 @@ const modeLabel: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
     LOCAL_2P: '2 Jugadores',
     ONLINE: 'Online',
 };
+
+const RECOVERABLE_ERROR_CODES = new Set([
+    'VERSION_CONFLICT',
+    'NOT_YOUR_TURN',
+    'DUPLICATE_EVENT',
+]);
 
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
     return (
@@ -75,24 +81,30 @@ export default function GameUI() {
         config?.initialYEN,
         config?.matchId,
         config?.difficulty || 'easy',
+        config?.rules,
     );
 
-    const { sessionState, error: onlineError, connectionStatus, playMove } = useOnlineSession(
+    const {
+        sessionState,
+        error: onlineError,
+        connectionStatus,
+        playMove,
+        applyPieSwapOnline,
+        emitTurnTimeout,
+        isTerminalError,
+    } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
     const { messages, sendMessage } = useChatSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
 
-  useEffect(() => {
-    if (config?.mode !== 'ONLINE') return;
-    if (!onlineError?.code) return;
-    if (!['RECONNECT_EXPIRED', 'SESSION_TERMINAL', 'SESSION_NOT_FOUND'].includes(onlineError.code)) {
-      return;
-    }
-    globalThis.alert('La partida ya no está disponible');
-    navigate('/create-match');
-  }, [config?.mode, navigate, onlineError?.code]);
+    useEffect(() => {
+        if (config?.mode !== 'ONLINE') return;
+        if (!isTerminalError) return;
+        globalThis.alert('La partida ya no está disponible');
+        navigate('/create-match');
+    }, [config?.mode, navigate, isTerminalError]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;
@@ -108,12 +120,14 @@ export default function GameUI() {
             turn: sessionState.turn,
             winner: sessionState.winner ?? null,
             players: sessionState.players,
+            rules: sessionState.rules ?? config.rules ?? { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
         }
         : {
             layout: localState.layout,
             size: localState.size,
             turn: localState.turn,
             winner: null,
+            rules: localState.rules ?? config.rules ?? { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
             players: [
                 { userId: 0, username: 'Jugador 1', symbol: 'B' as const },
                 { userId: 1, username: config.mode === 'BOT' ? 'Bot' : 'Jugador 2', symbol: 'R' as const },
@@ -124,7 +138,14 @@ export default function GameUI() {
     const localGameOver = state.gameOver;
     const onlineGameOver = isOnline && Boolean(sessionState?.winner);
     const gameOver = isOnline ? onlineGameOver : localGameOver;
-    const error = isOnline ? onlineError?.message ?? null : state.error;
+
+    const errorMessage = isOnline
+        ? (onlineError && !RECOVERABLE_ERROR_CODES.has(onlineError.code) ? onlineError.message : null)
+        : state.error;
+
+    const recoverableWarning = isOnline && onlineError && RECOVERABLE_ERROR_CODES.has(onlineError.code)
+        ? onlineError.message
+        : null;
 
     const currentTurnLabel = resolveCurrentTurnLabel(
         isOnline,
@@ -150,6 +171,33 @@ export default function GameUI() {
     };
 
     const avatarColor = displayState.turn === 0 ? '#39ff14' : '#8cff68';
+    const stonesPlaced = displayState.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
+
+    const canUsePieSwapLocal =
+        !isOnline
+        && config.mode === 'LOCAL_2P'
+        && displayState.rules?.pieRule?.enabled
+        && displayState.turn === 1
+        && stonesPlaced === 1
+        && !gameOver;
+
+    const canUsePieSwapOnline =
+        isOnline
+        && sessionState !== null
+        && displayState.rules?.pieRule?.enabled
+        && displayState.turn === 1
+        && stonesPlaced === 1
+        && !gameOver;
+
+    const canUsePieSwap = canUsePieSwapLocal || canUsePieSwapOnline;
+
+    const handlePieSwap = () => {
+        if (canUsePieSwapOnline) {
+            applyPieSwapOnline();
+        } else {
+            actions.applyPieSwap();
+        }
+    };
 
     return (
         <Box className={styles.container}>
@@ -160,7 +208,7 @@ export default function GameUI() {
                     flexDirection: { xs: 'column', md: 'row' },
                     width: '100%',
                     maxWidth: 1180,
-                    minHeight: 'calc(100vh - 140px)',
+                    minHeight: 'calc(100dvh - 140px)',
                 }}
             >
                 <Box className={styles.sidebar} sx={{ width: { xs: '100%', md: 300 } }}>
@@ -199,6 +247,22 @@ export default function GameUI() {
                             </Card>
                         )}
 
+                        <Card className={styles.cardStatic}>
+                            <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
+                                <Typography variant="subtitle2" color="primary">Extras</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {displayState.rules?.pieRule?.enabled ? 'Pie ON' : 'Pie OFF'} ·{' '}
+                                    {displayState.rules?.honey?.enabled ? 'Honey ON' : 'Honey OFF'}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+
+                        {canUsePieSwap && (
+                            <Button variant="contained" color="warning" onClick={handlePieSwap}>
+                                Aplicar Pie Rule
+                            </Button>
+                        )}
+
                         {isOnline && sessionState && (
                             <>
                                 <Card className={styles.cardStatic}>
@@ -215,12 +279,7 @@ export default function GameUI() {
                                             <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Tiempo de turno</Typography>
                                             <TurnTimer
                                                 timerEndsAt={sessionState.timerEndsAt}
-                                                onExpire={() => {
-                                                    onlineSocketClient.emit('turn:timeout', {
-                                                        matchId: sessionState.matchId,
-                                                        version: sessionState.version,
-                                                    });
-                                                }}
+                                                onExpire={emitTurnTimeout}
                                             />
                                         </Box>
                                     </CardContent>
@@ -269,15 +328,24 @@ export default function GameUI() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         p: { xs: 2, md: 4 },
+                        minHeight: 0,
                     }}
                 >
                     <Typography variant="h3" className={styles.gameTitle} sx={{ mb: 2 }}>
                         ¡Tu partida de Y!
                     </Typography>
 
-                    {error && (
+                    {/* Error terminal o de juego: bloquea visualmente con color rojo */}
+                    {errorMessage && (
                         <Paper sx={{ p: 2, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'error.main', color: 'error.main' }}>
-                            {error}
+                            {errorMessage}
+                        </Paper>
+                    )}
+
+                    {/* Aviso menor para errores recuperables (VERSION_CONFLICT, etc.) */}
+                    {recoverableWarning && (
+                        <Paper sx={{ p: 1.5, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'warning.main', color: 'warning.main', border: '1px solid' }}>
+                            <Typography variant="caption">{recoverableWarning}</Typography>
                         </Paper>
                     )}
 
@@ -287,34 +355,46 @@ export default function GameUI() {
                         </Paper>
                     )}
 
-                    <Paper className={styles.boardPanel} sx={{ mt: 3, p: { xs: 1, sm: 1.5, md: 2 }, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', maxWidth: '100%', overflow: 'visible' }}>
-                        <Board
-                            layout={displayState.layout}
-                            size={displayState.size}
-                            onCellClick={handleBoardClick}
-                            currentPlayer={displayState.turn}
-                        />
-                    </Paper>
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flexGrow: 1,
+                            minHeight: 0,
+                            alignItems: 'center',
+                            width: '100%',
+                        }}
+                    >
+                        <Paper className={styles.boardPanel} sx={{ mt: 3, p: { xs: 1, sm: 1.5, md: 2 }, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', maxWidth: '100%', overflow: 'visible' }}>
+                            <Board
+                                layout={displayState.layout}
+                                size={displayState.size}
+                                onCellClick={handleBoardClick}
+                                currentPlayer={displayState.turn}
+                                blockedCells={displayState.rules?.honey?.enabled ? displayState.rules.honey.blockedCells : []}
+                            />
+                        </Paper>
 
-                    {gameOver && (
-                        <WinnerOverlay
-                            winnerLabel={winnerLabel ?? 'Empate'}
-                            onNewGame={() => {
-                                actions.newGame();
-                            }}
-                            onNavigateHome={() => navigate('/create-match')} // vuelve al menú
-                        />
-                    )}
+                        {gameOver && (
+                            <WinnerOverlay
+                                winnerLabel={winnerLabel ?? 'Partida terminada'}
+                                onNewGame={() => {
+                                    actions.newGame();
+                                }}
+                                onNavigateHome={() => navigate('/create-match')}
+                            />
+                        )}
 
-                    {isOnline && (
-                        <ChatBox
-                            matchId={sessionState?.matchId ?? null}
-                            winner={displayState.winner ?? null}
-                            localUserId={user?.id ?? null}
-                            messages={messages}
-                            sendMessage={sendMessage}
-                        />
-                    )}
+                        {isOnline && (
+                            <ChatBox
+                                matchId={sessionState?.matchId ?? null}
+                                winner={displayState.winner ?? null}
+                                localUserId={user?.id ?? null}
+                                messages={messages}
+                                sendMessage={sendMessage}
+                            />
+                        )}
+                    </Box>
                 </Box>
             </Box>
         </Box>

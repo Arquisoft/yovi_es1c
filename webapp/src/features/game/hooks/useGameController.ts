@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { YenPositionDto } from "../../../shared/contracts";
+import type { MatchRulesDto } from "../../../shared/contracts";
 import { fetchWithAuth } from "../../../shared/api/fetchWithAuth";
 import { API_CONFIG } from "../../../config/api.config";
 
@@ -9,13 +10,28 @@ export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
 
 const DEFAULT_BOARD_SIZE = 8;
 const GAMEY_TIMEOUT_MS = 4000;
+const CLASSIC_RULES: MatchRulesDto = {
+    pieRule: { enabled: false },
+    honey: { enabled: false, blockedCells: [] },
+};
+
+const normalizeRules = (rules?: MatchRulesDto): MatchRulesDto => ({
+    pieRule: { enabled: rules?.pieRule?.enabled === true },
+    honey: {
+        enabled: rules?.honey?.enabled === true,
+        blockedCells: rules?.honey?.enabled ? [...(rules?.honey?.blockedCells ?? [])] : [],
+    },
+});
+
+const isBlockedCell = (rules: MatchRulesDto, row: number, col: number) =>
+    rules.honey.enabled && rules.honey.blockedCells.some((cell) => cell.row === row && cell.col === col);
 
 // ── Funciones de dominio ──
-export const createEmptyYEN = (size: number): YenPositionDto => {
+export const createEmptyYEN = (size: number, rules: MatchRulesDto = CLASSIC_RULES): YenPositionDto => {
     const layout = Array.from({ length: size }, (_, rowIndex) =>
         ".".repeat(rowIndex + 1)
     ).join("/");
-    return { size, turn: 0, players: ["B", "R"], layout };
+    return { size, turn: 0, players: ["B", "R"], layout, rules: normalizeRules(rules) };
 };
 
 export const updateLayout = (
@@ -137,11 +153,13 @@ export const useGameController = (
     initialMode: GameMode = "BOT",
     initialYEN?: YenPositionDto,
     initialMatchId?: string,
-    botDifficulty: BotDifficulty = "easy"
+    botDifficulty: BotDifficulty = "easy",
+    initialRules: MatchRulesDto = CLASSIC_RULES,
 ) => {
+    const resolvedInitialRules = normalizeRules(initialYEN?.rules ?? initialRules);
     const [gameMode, setGameMode] = useState<GameMode>(initialMode);
     const [gameState, setGameState] = useState<YenPositionDto>(
-        () => initialYEN ?? createEmptyYEN(initialSize)
+        () => initialYEN ? { ...initialYEN, rules: normalizeRules(initialYEN.rules ?? initialRules) } : createEmptyYEN(initialSize, resolvedInitialRules)
     );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -160,7 +178,7 @@ export const useGameController = (
 
     const resetGame = (nextMode: GameMode) => {
         setGameMode(nextMode);
-        setGameState(createEmptyYEN(initialSize));
+        setGameState(createEmptyYEN(initialSize, resolvedInitialRules));
         setLoading(false);
         setError(null);
         setGameOver(false);
@@ -169,13 +187,13 @@ export const useGameController = (
 
     const changeSize = (newSize: number) => {
         const emptyLayout = Array.from({ length: newSize }, (_, i) => ".".repeat(i + 1)).join("/");
-        setGameState({ ...gameState, size: newSize, layout: emptyLayout, turn: 0 });
+        setGameState({ ...gameState, size: newSize, layout: emptyLayout, turn: 0, rules: normalizeRules(gameState.rules ?? resolvedInitialRules) });
         setGameOver(false);
         setError(null);
         setMessage("Click a cell to play");
     };
 
-    const finishMatch = async (winner: "USER" | "BOT" | "DRAW") => {
+    const finishMatch = async (winner: "USER" | "BOT") => {
         if (!matchId) return;
         try {
             await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`, {
@@ -220,6 +238,7 @@ export const useGameController = (
     // ── Manejo de clics ──
     const handleCellClick = async (row: number, col: number) => {
         if (loading || gameOver) return;
+        if (isBlockedCell(normalizeRules(gameState.rules ?? resolvedInitialRules), row, col)) return;
         if (getCellSymbol(gameState.layout, row, col) !== ".") return;
 
         if (gameMode === "ONLINE") {
@@ -234,17 +253,15 @@ export const useGameController = (
                 const nextTurn = prev.turn === 0 ? 1 : 0;
                 const nextState: YenPositionDto = { ...prev, layout: newLayout, turn: nextTurn };
                 persistMove(nextState, nextSymbol === prev.players[0] ? "USER" : "BOT");
+
                 if (checkWinner(newLayout, prev.size, nextSymbol)) {
                     const winnerCode = nextSymbol === prev.players[0] ? "USER" : "BOT";
                     announceWinner(nextSymbol === prev.players[0] ? "Jugador 1" : "Jugador 2");
                     finishMatch(winnerCode);
-                } else if (!newLayout.includes(".")) {
-                    setGameOver(true);
-                    setMessage("Board full — game over");
-                    finishMatch("DRAW");
                 } else {
                     setMessage(`Turno: ${nextTurn === 0 ? "Jugador 1 (Blue)" : "Jugador 2 (Red)"}`);
                 }
+
                 return nextState;
             });
             return;
@@ -254,17 +271,13 @@ export const useGameController = (
             const humanLayout = updateLayout(prev.layout, row, col, prev.players[0]);
             const humanState: YenPositionDto = { ...prev, layout: humanLayout, turn: 1 };
             persistMove(humanState, "USER");
+
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
                 announceWinner("Jugador 1");
                 persistFinish("USER");
                 return humanState;
             }
-            if (!humanLayout.includes(".")) {
-                setGameOver(true);
-                setMessage("Board full — game over");
-                finishMatch("DRAW");
-                return humanState;
-            }
+
             callBot(humanState);
             return humanState;
         });
@@ -277,63 +290,74 @@ export const useGameController = (
         usedDifficulty: BotDifficulty
     ) => {
         const mapped = rowColFromCoords(data.coords, humanState.size);
+
         if (!mapped || getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
             setMessage("Bot sugirió una celda inválida, vuelve a jugar");
             setGameState({ ...humanState, turn: 0 });
             setBotFailureCount((prev) => prev + 1);
             return;
         }
+
         const botLayout = updateLayout(humanState.layout, mapped.row, mapped.col, humanState.players[1]);
         const botState: YenPositionDto = { ...humanState, layout: botLayout, turn: 0 };
         setGameState(botState);
         await persistMove(botState, "BOT");
+
         if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
             announceWinner("Jugador 2 (Bot)");
             await persistFinish("BOT");
-        } else if (!botLayout.includes(".")) {
-            setGameOver(true);
-            setMessage("Board full — game over");
-            await finishMatch("DRAW");
         } else {
             const fallbackInfo = usedDifficulty !== botDifficulty ? ` [fallback: ${usedDifficulty}]` : "";
             setMessage(`Bot jugó en (${mapped.row}, ${mapped.col}) — tu turno${fallbackInfo}`);
         }
+
         setBotFailureCount(0);
     };
 
     const callBot = async (humanState: YenPositionDto) => {
         if (gameMode !== "BOT") return;
+
         setLoading(true);
         setError(null);
         setMessage("Bot pensando...");
+
         try {
             const { response: res, usedDifficulty } = await requestBotMove(humanState, botDifficulty, botFailureCount);
+
             if (!res.ok) {
                 const errorMsg = await buildBotHttpError(res.status, () => res.text());
                 revertBotState(humanState, errorMsg, setError, setMessage, setGameState, setBotFailureCount);
                 return;
             }
+
             const data = await res.json();
+
             if (data.message) {
                 revertBotState(humanState, `Error del bot: ${data.message}`, setError, setMessage, setGameState, setBotFailureCount);
                 return;
             }
+
             const coords = data.coords;
             const hasValidCoords =
                 coords &&
                 typeof coords.x === "number" &&
                 typeof coords.y === "number" &&
                 typeof coords.z === "number";
+
             if (!hasValidCoords) {
                 revertBotState(humanState, "Respuesta inválida del bot.", setError, setMessage, setGameState, setBotFailureCount);
                 return;
             }
+
             await applyBotMove(humanState, data, usedDifficulty);
         } catch (err) {
             revertBotState(
                 humanState,
                 err instanceof Error ? err.message : "Error desconocido",
-                setError, setMessage, setGameState, setBotFailureCount
+                setError,
+                setMessage,
+                setGameState,
+                setBotFailureCount
             );
         } finally {
             setLoading(false);
@@ -345,38 +369,50 @@ export const useGameController = (
         difficulty: BotDifficulty,
         failureCount: number
     ): Promise<{ response: Response; usedDifficulty: BotDifficulty }> => {
-        const hasExpertDegraded = difficulty === 'expert' && failureCount >= 3;
-        const primaryDifficulty: BotDifficulty = hasExpertDegraded ? 'hard' : difficulty;
-        const candidates: BotDifficulty[] = primaryDifficulty === 'expert' ? ['expert', 'hard'] : [primaryDifficulty];
+        const hasExpertDegraded = difficulty === "expert" && failureCount >= 3;
+        const primaryDifficulty: BotDifficulty = hasExpertDegraded ? "hard" : difficulty;
+        const candidates: BotDifficulty[] = primaryDifficulty === "expert" ? ["expert", "hard"] : [primaryDifficulty];
+
         let lastError: unknown = null;
+
         for (const level of candidates) {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), GAMEY_TIMEOUT_MS);
+
             try {
                 const response = await fetchWithAuth(`${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${level}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(state),
+                    body: JSON.stringify({
+                        ...state,
+                        rules: normalizeRules(state.rules ?? resolvedInitialRules),
+                    }),
                     signal: controller.signal,
                 });
-                if (!response.ok && level === 'expert' && (response.status >= 500 || response.status === 504)) {
+
+                if (!response.ok && level === "expert" && (response.status >= 500 || response.status === 504)) {
                     continue;
                 }
+
                 return { response, usedDifficulty: level };
             } catch (error) {
                 lastError = error;
-                if (error instanceof Error && error.name === 'AbortError' && level !== 'expert') {
-                    throw new Error('Timeout comunicando con gamey');
+
+                if (error instanceof Error && error.name === "AbortError" && level !== "expert") {
+                    throw new Error("Timeout comunicando con gamey");
                 }
-                if (level !== 'expert') throw error;
+
+                if (level !== "expert") throw error;
             } finally {
                 clearTimeout(timeout);
             }
         }
-        if (lastError instanceof Error && lastError.name === 'AbortError') {
-            throw new Error('Timeout comunicando con gamey');
+
+        if (lastError instanceof Error && lastError.name === "AbortError") {
+            throw new Error("Timeout comunicando con gamey");
         }
-        throw lastError instanceof Error ? lastError : new Error('No se pudo obtener respuesta del bot');
+
+        throw lastError instanceof Error ? lastError : new Error("No se pudo obtener respuesta del bot");
     };
 
     return {
@@ -386,6 +422,21 @@ export const useGameController = (
             newGame: () => resetGame(gameMode),
             handleCellClick,
             changeSize,
+            applyPieSwap: () => {
+                setGameState((prev) => {
+                    const rules = normalizeRules(prev.rules ?? resolvedInitialRules);
+                    const stoneCount = prev.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
+                    if (gameMode !== "LOCAL_2P" || !rules.pieRule.enabled || prev.turn !== 1 || stoneCount !== 1) {
+                        return prev;
+                    }
+                    const swappedLayout = prev.layout
+                        .split('')
+                        .map((ch) => (ch === 'B' ? 'R' : ch === 'R' ? 'B' : ch))
+                        .join('');
+                    setMessage("Pie Rule aplicado: se intercambiaron colores");
+                    return { ...prev, layout: swappedLayout, turn: 0, rules };
+                });
+            },
         },
     };
 };

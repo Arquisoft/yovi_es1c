@@ -1,9 +1,11 @@
 import { ConnectionState, OpponentType } from '../../types/online';
+import { MatchRules } from '../../types/rules.js';
 
 export interface SessionStatePayload {
   matchId: string;
   layout: string;
   size: number;
+  rules: MatchRules;
   turn: 0 | 1;
   version: number;
   timerEndsAt: number;

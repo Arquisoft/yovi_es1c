@@ -18,6 +18,9 @@ use std::fmt::Display;
 use std::sync::Arc;
 use crate::bot::minimax::MinimaxBot;
 use crate::bot::set_based_heuristic::SetBasedHeuristic;
+use crate::bot::both_players_set_distances_heuristic::BotPlayersSetDistancesHeuristic;
+use crate::set_connectivity_heuristic::SetConnectivityHeuristic;
+use crate::core::rules::{BlockedCell, GameRules, HoneyRule, PieRule};
 
 /// Command-line arguments for the GameY application.
 #[derive(Parser, Debug)]
@@ -39,6 +42,17 @@ pub struct CliArgs {
     /// Port to run the server on (only used with --mode=server)
     #[arg(short, long, default_value_t = 3000)]
     pub port: u16,
+
+    /// Enable Honey mode (blocked cells). Auto-generates random blocked cells
+    /// if --honey-cells is not provided.
+    #[arg(long, default_value_t = false)]
+    pub honey: bool,
+
+    /// Blocked cells for Honey mode, expressed as "row,col" pairs separated by
+    /// spaces (e.g. --honey-cells 2,1 4,3). Only used when --honey is set.
+    /// If --honey is set but this is empty, cells are generated automatically.
+    #[arg(long, value_delimiter = ' ', num_args = 0..)]
+    pub honey_cells: Vec<String>,
 }
 
 /// The game mode determining how the game is played.
@@ -63,6 +77,80 @@ impl Display for Mode {
     }
 }
 
+/// Parses a "row,col" string into a `BlockedCell`. Returns None on bad input.
+fn parse_blocked_cell(s: &str) -> Option<BlockedCell> {
+    let mut parts = s.splitn(2, ',');
+    let row = parts.next()?.trim().parse::<u32>().ok()?;
+    let col = parts.next()?.trim().parse::<u32>().ok()?;
+    Some(BlockedCell { row, col })
+}
+
+/// Builds `GameRules` from CLI arguments, generating Honey blocked cells
+/// automatically when `--honey` is set but no explicit cells are provided.
+fn build_rules_from_args(args: &CliArgs) -> GameRules {
+    if !args.honey {
+        return GameRules::classic();
+    }
+
+    let explicit_cells: Vec<BlockedCell> = args
+        .honey_cells
+        .iter()
+        .filter_map(|s| parse_blocked_cell(s))
+        .collect();
+
+    let blocked_cells = if explicit_cells.is_empty() {
+        generate_honey_blocked_cells(args.size)
+    } else {
+        explicit_cells
+    };
+
+    GameRules {
+        pie_rule: PieRule { enabled: false },
+        honey: HoneyRule {
+            enabled: true,
+            blocked_cells,
+        },
+    }
+}
+
+/// Generates random blocked cells for Honey mode
+fn generate_honey_blocked_cells(board_size: u32) -> Vec<BlockedCell> {
+    use std::collections::HashSet;
+    let rows = if board_size > 1 { board_size } else { 8 };
+    let target_count = std::cmp::max(1, rows / 6) as usize;
+    let mut used: HashSet<(u32, u32)> = HashSet::new();
+    let mut blocked_cells: Vec<BlockedCell> = Vec::new();
+
+    while blocked_cells.len() < target_count {
+        let row = rand_range(1, rows);
+        let col = rand_range(0, row + 1);
+        if used.insert((row, col)) {
+            blocked_cells.push(BlockedCell { row, col });
+        }
+    }
+
+    blocked_cells
+}
+
+
+
+fn rand_range(low: u32, high: u32) -> u32 {
+    if low >= high {
+        return low;
+    }
+    let range = (high - low) as u64;
+    let seed = {
+        let dummy: u8 = 0;
+        let ptr = &dummy as *const u8 as u64;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64)
+            .unwrap_or(0);
+        ptr ^ nanos ^ (ptr.wrapping_mul(6_364_136_223_846_793_005))
+    };
+    low + (seed % range) as u32
+}
+
 /// Runs the interactive CLI game loop.
 ///
 /// This function parses command-line arguments, initializes the game,
@@ -75,7 +163,11 @@ pub fn run_cli_game() -> Result<()> {
     let bots_registry = YBotRegistry::new()
         .with_bot(Arc::new(RandomBot))
         .with_bot(Arc::new(
-            MinimaxBot::new(SetBasedHeuristic, 4)
+            MinimaxBot::new(SetBasedHeuristic, 4)))
+        .with_bot(Arc::new(
+            MinimaxBot::new(BotPlayersSetDistancesHeuristic, 4)))
+        .with_bot(Arc::new(
+            MinimaxBot::new(SetConnectivityHeuristic, 4)
         ));
     let bot: Arc<dyn YBot> = match bots_registry.find(&args.bot) {
         Some(b) => b,
@@ -88,7 +180,17 @@ pub fn run_cli_game() -> Result<()> {
             return Ok(());
         }
     };
-    let mut game = game::GameY::new(args.size);
+
+    let rules = build_rules_from_args(&args);
+    if rules.honey.enabled {
+        println!(
+            "Honey mode enabled. Blocked cells: {:?}",
+            rules.honey.blocked_cells
+        );
+    }
+    let mut game = game::GameY::with_rules(args.size, rules)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize game: {}", e))?;
+
     loop {
         println!("{}", game.render(&render_options));
         let status = game.status();
@@ -517,5 +619,66 @@ mod tests {
         assert!(debug.contains("Place"));
         assert!(debug.contains("5"));
     }
-}
 
+    #[test]
+    fn test_parse_blocked_cell_valid() {
+        let cell = parse_blocked_cell("2,1").unwrap();
+        assert_eq!(cell.row, 2);
+        assert_eq!(cell.col, 1);
+    }
+
+    #[test]
+    fn test_parse_blocked_cell_invalid() {
+        assert!(parse_blocked_cell("abc").is_none());
+        assert!(parse_blocked_cell("2").is_none());
+        assert!(parse_blocked_cell("2,x").is_none());
+    }
+
+    #[test]
+    fn test_build_rules_honey_disabled() {
+        let args = CliArgs {
+            size: 7,
+            mode: Mode::Human,
+            bot: "random".to_string(),
+            port: 3000,
+            honey: false,
+            honey_cells: vec![],
+        };
+        let rules = build_rules_from_args(&args);
+        assert!(!rules.honey.enabled);
+        assert!(rules.honey.blocked_cells.is_empty());
+    }
+
+    #[test]
+    fn test_build_rules_honey_enabled_auto() {
+        let args = CliArgs {
+            size: 7,
+            mode: Mode::Human,
+            bot: "random".to_string(),
+            port: 3000,
+            honey: true,
+            honey_cells: vec![],
+        };
+        let rules = build_rules_from_args(&args);
+        assert!(rules.honey.enabled);
+        // Auto-generation should produce at least 1 cell for board_size=7
+        assert!(!rules.honey.blocked_cells.is_empty());
+    }
+
+    #[test]
+    fn test_build_rules_honey_enabled_explicit() {
+        let args = CliArgs {
+            size: 7,
+            mode: Mode::Human,
+            bot: "random".to_string(),
+            port: 3000,
+            honey: true,
+            honey_cells: vec!["2,1".to_string(), "4,3".to_string()],
+        };
+        let rules = build_rules_from_args(&args);
+        assert!(rules.honey.enabled);
+        assert_eq!(rules.honey.blocked_cells.len(), 2);
+        assert_eq!(rules.honey.blocked_cells[0].row, 2);
+        assert_eq!(rules.honey.blocked_cells[0].col, 1);
+    }
+}

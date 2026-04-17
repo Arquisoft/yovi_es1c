@@ -1,7 +1,6 @@
-import { getAuthDbPath } from '../bootstrap/auth-context.js';
 import { initAuthDatabase } from './init-auth-db.js';
 
-initAuthDatabase(getAuthDbPath())
+initAuthDatabase()
     .then(() => {
         console.log('Auth DB initialized');
     })

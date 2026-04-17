@@ -14,8 +14,9 @@ pub mod coord;
 pub mod game;
 pub mod movement;
 pub mod player;
-mod player_set;
+pub(crate) mod player_set;
 pub mod render_options;
+pub mod rules;
 
 pub use action::*;
 pub use coord::*;
@@ -23,5 +24,6 @@ pub use game::*;
 pub use movement::*;
 pub use player::*;
 pub use render_options::*;
+pub use rules::*;
 
 type SetIdx = usize;

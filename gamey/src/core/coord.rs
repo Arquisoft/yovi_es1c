@@ -98,6 +98,13 @@ impl Coordinates {
     pub fn touches_side_c(&self) -> bool {
         self.z == 0
     }
+
+    /// Returns the Manhattan distance between two coordinates
+    pub fn manhattan_distance(&self, other: &Coordinates) -> u32 {
+        ((self.x() as i32 - other.x() as i32).abs()
+            + (self.y() as i32 - other.y() as i32).abs()
+            + (self.z() as i32 - other.z() as i32).abs()) as u32
+    }
 }
 
 impl From<Coordinates> for Vec<u32> {

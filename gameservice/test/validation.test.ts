@@ -10,9 +10,25 @@ import {
 describe('Game validation schemas', () => {
     describe('validateCreateMatch', () => {
         it('should validate correct create match data', () => {
-            const result = validateCreateMatch({ boardSize: 8, difficulty: 'medium', mode: 'BOT' });
+            const result = validateCreateMatch({
+                boardSize: 8,
+                difficulty: 'medium',
+                mode: 'BOT',
+                rules: {
+                    pieRule: { enabled: false },
+                    honey: { enabled: false, blockedCells: [] },
+                },
+            });
 
-            expect(result).toEqual({ boardSize: 8, difficulty: 'medium', mode: 'BOT' });
+            expect(result).toEqual({
+                boardSize: 8,
+                difficulty: 'medium',
+                mode: 'BOT',
+                rules: {
+                    pieRule: { enabled: false },
+                    honey: { enabled: false, blockedCells: [] },
+                },
+            });
         });
 
         it('should accept all difficulty levels in lowercase', () => {
@@ -96,6 +112,81 @@ describe('Game validation schemas', () => {
         it('should default mode to BOT when not provided', () => {
             const result = validateCreateMatch({ boardSize: 8, difficulty: 'easy' });
             expect(result.mode).toBe('BOT');
+            expect(result.rules).toEqual({
+                pieRule: { enabled: false },
+                honey: { enabled: false, blockedCells: [] },
+            });
+        });
+
+        it('should accept pie-rule only', () => {
+            const result = validateCreateMatch({
+                boardSize: 8,
+                difficulty: 'easy',
+                rules: {
+                    pieRule: { enabled: true },
+                    honey: { enabled: false, blockedCells: [] },
+                },
+            });
+            expect(result.rules).toEqual({
+                pieRule: { enabled: true },
+                honey: { enabled: false, blockedCells: [] },
+            });
+        });
+
+        it('should accept honey-only without blocked cells (generated server-side)', () => {
+            const result = validateCreateMatch({
+                boardSize: 8,
+                difficulty: 'easy',
+                rules: {
+                    pieRule: { enabled: false },
+                    honey: { enabled: true, blockedCells: [] },
+                },
+            });
+            expect(result.rules).toEqual({
+                pieRule: { enabled: false },
+                honey: { enabled: true, blockedCells: [] },
+            });
+        });
+
+        it('should accept both extras enabled', () => {
+            const result = validateCreateMatch({
+                boardSize: 8,
+                difficulty: 'easy',
+                rules: {
+                    pieRule: { enabled: true },
+                    honey: { enabled: true, blockedCells: [] },
+                },
+            });
+            expect(result.rules).toEqual({
+                pieRule: { enabled: true },
+                honey: { enabled: true, blockedCells: [] },
+            });
+        });
+
+        it('should reject blocked cells when honey is disabled', () => {
+            expect(() =>
+                validateCreateMatch({
+                    boardSize: 8,
+                    difficulty: 'easy',
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [{ row: 0, col: 0 }] },
+                    },
+                })
+            ).toThrow('rules.honey.blockedCells is generated automatically and cannot be configured manually');
+        });
+
+        it('should reject manually configured blocked cell coordinates', () => {
+            expect(() =>
+                validateCreateMatch({
+                    boardSize: 8,
+                    difficulty: 'easy',
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: true, blockedCells: [{ row: 1, col: 0 }] },
+                    },
+                })
+            ).toThrow('rules.honey.blockedCells is generated automatically and cannot be configured manually');
         });
 
         it('should accept all valid modes', () => {

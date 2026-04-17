@@ -24,12 +24,10 @@ export function resolveWinnerLabel(
 ): string | null {
     if (winner === 'B') return players[0]?.username ?? 'Jugador 1';
     if (winner === 'R') return players[1]?.username ?? 'Jugador 2';
-    if (winner === 'DRAW') return 'Empate';
     return null;
 }
 
 export function resolveGameOverText(winnerLabel: string | null): string {
     if (!winnerLabel) return '¡Partida terminada!';
-    if (winnerLabel === 'Empate') return '¡Partida terminada en empate!';
     return `¡Ganador: ${winnerLabel}!`;
 }

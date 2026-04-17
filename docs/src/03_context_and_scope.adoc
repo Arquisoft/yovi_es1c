@@ -109,7 +109,7 @@ node "API Gateway" as nginxnode {
 
 node "Auth Service Server" as authserver {
   artifact "Node.js\nAuth Service\n(Express + TS)" as auth
-  database "SQLite DB\n(auth.db)" as authdb
+  database "PostgreSQL DB\n(authdb)" as authdb
 }
 
 node "Users Service Server" as usersserver {
@@ -119,7 +119,7 @@ node "Users Service Server" as usersserver {
 
 node "Game Service Server" as gameserviceserver {
   artifact "Node.js\nGame Service\n(Express + TS)" as gameservice
-  database "SQLite DB\n(game.db)" as gamedb
+  database "PostgreSQL DB\n(gamedb)" as gamedb
 }
 
 node "Game Engine Server" as gameserver {
@@ -132,9 +132,9 @@ nginx -down-> auth : HTTP (3001)\n/api/auth/*
 nginx -down-> users : HTTP (3000)\n/api/users/*
 nginx -down-> gameservice : HTTP (3002)\n/api/game/*
 nginx -down-> rust : HTTP (4000)\n/api/gamey/*
-auth -down-> authdb : SQLite protocol\nSQL queries\n(embedded)
+auth -down-> authdb : PostgreSQL protocol\nSQL over TCP
 users -down-> usersdb : SQLite protocol\nSQL queries\n(embedded)
-gameservice -down-> gamedb : SQLite protocol\nSQL queries\n(embedded)
+gameservice -down-> gamedb : PostgreSQL protocol\nSQL over TCP
 
 note right of browser
   **Client Environment**
@@ -154,7 +154,7 @@ end note
 note right of authserver
   **Auth Layer**
   Credentials & JWT
-  auth.db
+  authdb
 end note
 
 note right of usersserver
@@ -167,7 +167,7 @@ note right of gameserviceserver
   **Game Data Layer**
   Matches, moves, stats
   Online matchmaking & sessions
-  game.db
+  gamedb
 end note
 
 note right of gameserver
@@ -232,9 +232,9 @@ a| • Matchmaking queue persistence
 • Online session state storage
 • Socket.IO adapter for multi-instance pub/sub
 
-| **Auth Service → auth.db**
-| SQLite native (embedded)
-| Local file access
+| **Auth Service → authdb**
+| PostgreSQL protocol
+| 5432/TCP
 a| • Credential CRUD operations
 • JWT token metadata persistence
 • Transaction management
@@ -245,9 +245,9 @@ a| • Credential CRUD operations
 a| • User profile CRUD operations
 • Transaction management
 
-| **Game Service → game.db**
-| SQLite native (embedded)
-| Local file access
+| **Game Service → gamedb**
+| PostgreSQL protocol
+| 5432/TCP
 a| • Match state persistence
 • Move history storage
 • Statistics aggregation
@@ -279,19 +279,21 @@ a| • API calls to all backend services
 
 **Game Data Management (via Nginx → Game Service):**
 
-* `POST /api/game/matches` - Create new match (size, strategy, difficulty)
+* `POST /api/game/matches` - Create new match (`BOT`, `LOCAL_2P`, `ONLINE`) with board size, difficulty and rules (`pieRule`, `honey`)
 * `GET /api/game/matches/{id}` - Retrieve match state
-* `POST /api/game/matches/{id}/moves` - Persist a move and updated YEN state
+* `POST /api/game/matches/{id}/moves` - Persist a move in YEN notation and trigger async bot move processing
 * `GET /api/game/stats/{userId}` - Retrieve player statistics and match history
 
 **Online Matchmaking and Sessions (via Nginx → Game Service):**
 
 * `POST /api/game/online/queue` - Join the matchmaking queue
-* `GET /api/game/online/queue/match` - Poll to check if the player has been matched
+* `GET /api/game/online/queue/match` - REST polling fallback for match assignment (primary realtime flow uses Socket.IO events)
 * `DELETE /api/game/online/queue` - Cancel matchmaking
 * `GET /api/game/online/sessions/active` - Get the current active online session for the authenticated user
 * `GET /api/game/online/sessions/:matchId` - Get the state of a specific online session
 * `POST /api/game/online/sessions/:matchId/moves` - Submit a move in an online session
+* `POST /api/game/online/sessions/:matchId/reconnect` - Reconnect to an active online session
+* `POST /api/game/online/sessions/:matchId/abandon` - Abandon an active online session
 
 **Game Logic (via Nginx → Game Server):**
 
@@ -335,7 +337,7 @@ a| • API calls to all backend services
 ==== Deployment Considerations
 
 * **Containerization**: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis) are containerized using Docker for consistent deployment
-* **Databases**: Three independent SQLite files (`auth.db`, `users.db`, `game.db`), each stored as a separate volume mount in its respective service container
+* **Databases**: Three independent stores: `authdb` (PostgreSQL), `users.db` (SQLite), and `gamedb` (PostgreSQL), each isolated behind its owning service
 * **Real-time State**: Online session state and the matchmaking queue are stored in Redis, which runs as an independent container and is accessible only to the Game Service
 * **Fault Isolation**: A failure or overload in one database does not affect the others; authentication, profile, and game data are independently available
 * **Scalability**: Game Server is stateless and can be horizontally scaled behind Nginx load balancer; each Node.js service can also be scaled independently
