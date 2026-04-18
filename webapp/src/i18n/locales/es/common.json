@@ -43,7 +43,7 @@
   "botThinking": "El bot está pensando...",
   "onlineWaitingServer": "Esperando al servidor en línea...",
   "invalidBotMove": "El bot sugirió un movimiento inválido, inténtalo de nuevo",
-  "winnerAnnouncement": "¡Felicidades {{label}}!",
+  "winnerAnnouncement": "¡Felicidades, {{label}} gana!",
   "turnMessage": "Turno: {{label}}",
   "botPlayed": "El bot jugó en ({{row}}, {{col}}){{fallback}}",
   "custom": "{{text}}",
@@ -58,8 +58,8 @@
   "sessionError": "Se produjo un error de sesión",
   "player1": "Jugador 1",
   "player2": "Jugador 2",
-  "gameOver": "¡Partida terminada!",
-  "winner": "¡Ganador:",
+  "gameOver": "¡FIN DEL JUEGO!",
+  "winnerMessage": "¡Ganador: {{name}}!",
   "youMustBeLoggedInToJoinQueue": "Debes iniciar sesión para jugar online",
   "goLogin": "Ir a Login",
   "matchMakingQueue": "Cola de emparejamiento",
@@ -109,5 +109,8 @@
   "matchSetup": "Configuración de partida",
   "pieRule": "Pie Rule",
   "honey": "Honey (celdas bloqueadas)",
-  "noAccount": "¿No tienes cuenta?"
+  "noAccount": "¿No tienes cuenta?",
+  "restart": "Nueva Partida",
+  "noConfigTitle": "No se encontró la configuración de la partida",
+  "back": "Atrás"
 }

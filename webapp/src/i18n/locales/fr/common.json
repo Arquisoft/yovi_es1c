@@ -59,7 +59,7 @@
   "player1": "Joueur 1",
   "player2": "Joueur 2",
   "gameOver": "Partie terminée !",
-  "winner": "Vainqueur :",
+  "winnerMessage": "Gagnant : {{name}} !",
   "youMustBeLoggedInToJoinQueue": "Vous devez être connecté pour jouer en ligne",
   "goLogin": "Aller à la connexion",
   "matchMakingQueue": "File d’attente de matchmaking",
@@ -109,5 +109,7 @@
   "matchSetup": "Configuration de la partie",
   "pieRule": "Pie Rule",
   "honey": "Honey (cases bloquées)",
-  "noAccount": "Vous n'avez pas de compte ?"
+  "noAccount": "Vous n'avez pas de compte ?",
+  "restart": "Nouvelle partie",
+  "back": "Retour"
 }

@@ -59,7 +59,7 @@
   "player1": "玩家 1",
   "player2": "玩家 2",
   "gameOver": "游戏结束！",
-  "winner": "获胜者：",
+  "winnerMessage": "胜者：{{name}}！",
   "youMustBeLoggedInToJoinQueue": "你必须登录才能进行在线游戏",
   "goLogin": "前往登录",
   "matchMakingQueue": "匹配队列",
@@ -109,5 +109,7 @@
   "matchSetup": "对局设置",
   "pieRule": "Pie Rule",
   "honey": "Honey（被阻塞的格子）",
-  "noAccount": "还没有账号？"
+  "noAccount": "还没有账号？",
+  "restart": "新游戏",
+  "back": "返回"
 }

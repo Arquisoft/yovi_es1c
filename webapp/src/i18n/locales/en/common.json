@@ -59,7 +59,7 @@
   "player1": "Player 1",
   "player2": "Player 2",
   "gameOver": "Game over!",
-  "winner": "Winner:",
+  "winnerMessage": "Winner: {{name}}!",
   "youMustBeLoggedInToJoinQueue": "You must be logged in to play online",
   "goLogin": "Go to Login",
   "matchMakingQueue": "Matchmaking queue",
@@ -109,5 +109,7 @@
   "matchSetup": "Match setup",
   "pieRule": "Pie Rule",
   "honey": "Honey (blocked cells)",
-  "noAccount": "Don't have an account?"
+  "noAccount": "Don't have an account?",
+  "restart": "New Game",
+  "back": "Back"
 }

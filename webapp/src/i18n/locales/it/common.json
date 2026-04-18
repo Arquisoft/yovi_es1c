@@ -59,7 +59,7 @@
   "player1": "Giocatore 1",
   "player2": "Giocatore 2",
   "gameOver": "Partita finita!",
-  "winner": "Vincitore:",
+  "winnerMessage": "Vincitore: {{name}}!",
   "youMustBeLoggedInToJoinQueue": "Devi aver effettuato l’accesso per giocare online",
   "goLogin": "Vai al login",
   "matchMakingQueue": "Coda di matchmaking",
@@ -109,5 +109,7 @@
   "matchSetup": "Configurazione della partita",
   "pieRule": "Pie Rule",
   "honey": "Honey (celle bloccate)",
-  "noAccount": "Non hai un account?"
+  "noAccount": "Non hai un account?",
+  "restart": "Nuova partita",
+  "back": "Indietro"
 }
