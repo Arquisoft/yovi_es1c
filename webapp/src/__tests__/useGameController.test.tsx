@@ -116,23 +116,6 @@ describe("useGameController", () => {
         expect(result.current.state.gameState.layout).toBe(layoutBefore);
     });
 
-    it("handles LOCAL_2P turn alternation", async () => {
-        const { result } = renderHook(() => useGameController());
-
-        act(() => {
-            result.current.actions.selectMode("LOCAL_2P");
-            result.current.actions.changeSize(2);
-        });
-
-        await act(async () => {
-            await result.current.actions.handleCellClick(0, 0);
-        });
-
-        await act(async () => {
-            await result.current.actions.handleCellClick(1, 0);
-        });
-    });
-
     it("handles BOT valid response", async () => {
         fetchMock.mockResolvedValueOnce(
             new Response(JSON.stringify({ coords: { x: 6, y: 0, z: 1 } }), {

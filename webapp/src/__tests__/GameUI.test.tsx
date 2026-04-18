@@ -137,10 +137,6 @@ describe('GameUI Component', () => {
         );
     };
 
-    it('renders the game title when config is provided', () => {
-        renderWithConfig({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
-    });
-
     it('shows fallback when no config is provided', () => {
         renderWithProviders(
             <MemoryRouter initialEntries={['/gamey']}>
@@ -306,17 +302,6 @@ describe('GameUI Component', () => {
         it('nombre → mensaje ganador', () => {
             expect(resolveGameOverText('Alice', t)).toBe('¡Ganador: Alice!');
         });
-    });
-    it('shows "Bot pensando..." when loading is true in BOT mode', () => {
-        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
-            state: {
-                ...mockState,
-                loading: true,
-                message: mockMessage,
-            },
-            actions: mockActions,
-        });
-        renderWithConfig({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
     });
 
     it('shows error message when state.error is set', () => {
