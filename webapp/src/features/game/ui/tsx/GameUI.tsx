@@ -24,6 +24,7 @@ import ChatBox from './ChatBox';
 import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
 import WinnerOverlay from './WinnerOverlay';
 import {useTranslation} from "react-i18next";
+import type { GameMessage } from '../../hooks/useGameController';
 
 type GameConfig = {
     matchId: string;
@@ -52,6 +53,38 @@ const RECOVERABLE_ERROR_CODES = new Set([
     'NOT_YOUR_TURN',
     'DUPLICATE_EVENT',
 ]);
+
+function resolveGameMessage(
+    message: GameMessage | null,
+    t: (key: string, options?: Record<string, unknown>) => string
+): string | null {
+    if (!message) return null;
+
+    switch (message.key) {
+        case 'clickACellToPlay':
+            return t('clickACellToPlay');
+
+        case 'botThinking':
+            return t('botThinking');
+
+        case 'errorCommunicatingWithBot':
+            return t('errorCommunicatingWithBot');
+
+        case 'onlineWaitingServer':
+            return t('onlineWaitingServer');
+
+        case 'invalidBotMove':
+            return t('invalidBotMove');
+
+        case 'winnerAnnouncement':
+            return t('winnerAnnouncement', {
+                label: message.params?.label,
+            });
+
+        default:
+            return null;
+    }
+}
 
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
     const {t} = useTranslation();
@@ -162,13 +195,25 @@ export default function GameUI() {
         t,
     );
 
-    const winnerLabel = isOnline
-        ? resolveWinnerLabel(displayState.winner, displayState.players, t)
-        : state.gameOver
-            ? displayState.turn === 1
-                ? t('winnerUser1')
-                : t('winnerUser2')
-            : null;
+    const winnerLabel = (() => {
+        if (!gameOver) return null;
+
+        if (isOnline) {
+            return resolveWinnerLabel(displayState.winner, displayState.players, t);
+        }
+
+        // 🔑 jugador ganador = el anterior al turno actual
+        const winnerIndex = displayState.turn === 0 ? 0 : 1;
+
+        const winnerName =
+            winnerIndex === 0
+                ? t('player1')
+                : (config.mode === 'BOT' ? 'Bot' : t('player2'));
+
+        return t('winnerAnnouncement', {
+            label: winnerName,
+        });
+    })();
 
     const handleBoardClick = (row: number, col: number) => {
         if (isOnline) {
@@ -206,6 +251,8 @@ export default function GameUI() {
             actions.applyPieSwap();
         }
     };
+
+    const gameMessageText = resolveGameMessage(state.message, t);
 
     return (
         <Box className={styles.container}>
@@ -343,7 +390,7 @@ export default function GameUI() {
 
                     {!isOnline && loading && (
                         <Paper sx={{ p: 2, my: 1 }}>
-                            {state.message.key === 'botThinking' && t('botThinking')}
+                            {gameMessageText}
                         </Paper>
                     )}
 

@@ -20,19 +20,19 @@ describe('RegisterForm', () => {
 
   test('shows validation error when username is empty', async () => {
     renderWithProviders(<RegisterForm />);
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
-    expect(screen.getByText(/please enter a username/i)).toBeInTheDocument();
+    expect(screen.getByText(/Por favor, introduce un nombre de usuario./i)).toBeInTheDocument();
   });
 
   test('shows validation error when password is too short', async () => {
     renderWithProviders(<RegisterForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'short' } });
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'short' } });
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
-    expect(screen.getByText(/at least 8 characters/i)).toBeInTheDocument();
+    expect(screen.getByText(/minimum 8 characters/i)).toBeInTheDocument();
   });
 
   test('submits and displays success response', async () => {
@@ -47,11 +47,11 @@ describe('RegisterForm', () => {
 
     renderWithProviders(<RegisterForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
-    expect(await screen.findByText(/hello pablo! welcome to yovi!/i)).toBeInTheDocument();
+    expect(await screen.findByText('¡Hola Pablo! ¡Bienvenido a YOVI!')).toBeInTheDocument();
   });
 
   test('shows API error message on non-ok responses', async () => {
@@ -63,9 +63,9 @@ describe('RegisterForm', () => {
 
     renderWithProviders(<RegisterForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
     expect(await screen.findByText('Username already exists')).toBeInTheDocument();
   });
@@ -75,9 +75,9 @@ describe('RegisterForm', () => {
 
     renderWithProviders(<RegisterForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Network down')).toBeInTheDocument();
@@ -96,11 +96,11 @@ describe('RegisterForm', () => {
 
     renderWithProviders(<RegisterForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
-    expect(await screen.findByText('Registration completed successfully.')).toBeInTheDocument();
+    expect(await screen.findByText('Registro completado con éxito.')).toBeInTheDocument();
   });
 
   test('shows fallback error when non-Error is thrown', async () => {
@@ -108,12 +108,12 @@ describe('RegisterForm', () => {
 
     renderWithProviders(<RegisterForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /let's go!/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /¡vamos!/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Network error')).toBeInTheDocument();
+      expect(screen.getByText('Error de red')).toBeInTheDocument();
     });
   });
 });

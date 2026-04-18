@@ -31,7 +31,13 @@ export function resolveWinnerLabel(
     return null;
 }
 
-export function resolveGameOverText(winnerLabel: string | null, t: TFunction): string {
+export function resolveGameOverText(
+    winnerLabel: string | null,
+    t: TFunction,
+): string {
     if (!winnerLabel) return t('gameOver');
-    return t('winner') + ` ${winnerLabel}!`;
+
+    return t('winnerMessage', {
+        name: winnerLabel,
+    });
 }

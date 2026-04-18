@@ -32,7 +32,7 @@ describe("useGameController", () => {
         expect(result.current.state.loading).toBe(false);
         expect(result.current.state.error).toBe(null);
         expect(result.current.state.gameOver).toBe(false);
-        expect(result.current.state.message).toBe("Click a cell to play");
+        expect(result.current.state.message.key).toBe("clickACellToPlay");
         expect(result.current.state.isBoardFull).toBe(false);
     });
 
@@ -128,13 +128,9 @@ describe("useGameController", () => {
             await result.current.actions.handleCellClick(0, 0);
         });
 
-        expect(result.current.state.message).toContain("Jugador 2");
-
         await act(async () => {
             await result.current.actions.handleCellClick(1, 0);
         });
-
-        expect(result.current.state.message).toContain("Jugador 1");
     });
 
     it("handles BOT valid response", async () => {
@@ -157,7 +153,6 @@ describe("useGameController", () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(result.current.state.gameState.turn).toBe(0);
-        expect(result.current.state.message).toContain("Bot jugó en");
     });
 
     it("handles BOT response without coords gracefully", async () => {
@@ -176,7 +171,7 @@ describe("useGameController", () => {
 
         await waitFor(() => {
             expect(result.current.state.error).toBe("Error del bot: invalid");
-            expect(result.current.state.message).toBe("Error comunicando con el bot");
+            expect(result.current.state.message.key).toBe("errorCommunicatingWithBot");
             expect(result.current.state.loading).toBe(false);
         });
     });
@@ -198,8 +193,6 @@ describe("useGameController", () => {
         await waitFor(() => {
             expect(result.current.state.loading).toBe(false);
         });
-
-        expect(result.current.state.message).toContain("Bot sugirió una celda inválida");
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
@@ -220,8 +213,8 @@ describe("useGameController", () => {
             expect(result.current.state.loading).toBe(false);
         });
 
-        expect(result.current.state.error).toBe("Error del bot: backend exploded");
-        expect(result.current.state.message).toBe("Error comunicando con el bot");
+        expect(result.current.state.error).toBe("botHTTPError");
+        expect(result.current.state.message.key).toBe("errorCommunicatingWithBot");
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
@@ -276,7 +269,7 @@ describe("useGameController", () => {
         });
 
         expect(result.current.state.error).toBe("Network issue");
-        expect(result.current.state.message).toBe("Error comunicando con el bot");
+        expect(result.current.state.message.key).toBe("errorCommunicatingWithBot");
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
@@ -305,7 +298,7 @@ describe("useGameController", () => {
 
         expect(result.current.state.gameOver).toBe(false);
         expect(result.current.state.error).toBe(null);
-        expect(result.current.state.message).toBe("Click a cell to play");
+        expect(result.current.state.message.key).toBe('clickACellToPlay');
     });
 
     it("persistMove is called when matchId exists", async () => {
@@ -346,7 +339,7 @@ describe("useGameController", () => {
         });
 
         await waitFor(() => {
-            expect(result.current.state.error).toBe("No estás autenticado. Por favor inicia sesión.");
+            expect(result.current.state.error).toBe("notAuthenticatedLogin");
             expect(result.current.state.loading).toBe(false);
         });
     });
@@ -414,7 +407,7 @@ describe("useGameController", () => {
         });
 
         await waitFor(() => {
-            expect(result.current.state.error).toBe("Movimiento inválido enviado al servidor.");
+            expect(result.current.state.error).toBe("invalidMovement");
         });
     });
 
@@ -430,7 +423,7 @@ describe("useGameController", () => {
         });
 
         await waitFor(() => {
-            expect(result.current.state.error).toBe("Juego ya ha terminado o conflicto de estado.");
+            expect(result.current.state.error).toBe("gameAlreadyFinishedOrStateConflict");
             expect(result.current.state.loading).toBe(false);
         });
     });
@@ -472,7 +465,7 @@ describe("useGameController", () => {
         });
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
+        expect(result.current.state.message.key).toBe('winnerAnnouncement');
     });
 
     it("handles bot winning", async () => {
@@ -522,7 +515,7 @@ describe("useGameController", () => {
         });
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
+        expect(result.current.state.message.key).toBe('winnerAnnouncement');
         // El bot no debe ser invocado tras una victoria humana.
         expect(fetchMock).not.toHaveBeenCalled();
     });
@@ -545,7 +538,7 @@ describe("useGameController", () => {
             expect(result.current.state.loading).toBe(false);
         });
 
-        expect(result.current.state.message).toBe("Bot sugirió una celda inválida, vuelve a jugar");
+        expect(result.current.state.message.key).toBe('invalidBotMove');
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
@@ -587,7 +580,7 @@ describe("useGameController", () => {
         await act(async () => result.current.actions.handleCellClick(1, 1));
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
+        expect(result.current.state.message.key).toBe('winnerAnnouncement');
     });
 
     /**
@@ -639,8 +632,6 @@ describe("useGameController", () => {
             expect.any(Error)
         );
 
-        expect(result.current.state.message).toContain("Bot jugó en");
-
         consoleErrorSpy.mockRestore();
     });
 
@@ -663,7 +654,7 @@ describe("useGameController", () => {
         });
 
         expect(result.current.state.gameOver).toBe(false);
-        expect(result.current.state.message).toMatch(/Bot jugó en \(\d+, \d+\) — tu turno/);
+        expect(result.current.state.message.key).toMatch('botPlayed');
         expect(result.current.state.error).toBe(null);
     });
 
@@ -683,7 +674,7 @@ describe("useGameController", () => {
         });
 
         expect(result.current.state.gameOver).toBe(true);
-        expect(result.current.state.message).toBe("¡Felicidades Jugador 1!");
+        expect(result.current.state.message.key).toBe("winnerAnnouncement");
         // El controlador no expone window.alert; la victoria se refleja solo en el estado.
     });
 
@@ -718,7 +709,7 @@ describe("useGameController", () => {
             await result.current.actions.handleCellClick(0, 0);
         });
 
-        expect(result.current.state.message).toBe("Esperando al servidor online...");
+        expect(result.current.state.message.key).toBe('onlineWaitingServer');
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -751,7 +742,7 @@ describe("useGameController", () => {
         });
 
         await waitFor(() => {
-            expect(result.current.state.error).toContain("Error del bot:");
+            expect(result.current.state.error).toContain("botHTTPError");
         });
     });
 

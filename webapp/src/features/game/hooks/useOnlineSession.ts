@@ -145,7 +145,7 @@ export function useOnlineSession(matchId: string | null) {
     if (!token) {
       setError({
         code: 'UNAUTHORIZED',
-        message: 'Not authenticated',
+        message: 'Missing auth token',
       });
       return;
     }
