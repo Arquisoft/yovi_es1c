@@ -41,8 +41,8 @@ describe('GameController ranking endpoints', () => {
                 limit: 20,
                 offset: 0,
                 entries: [
-                    { rank: 1, userId: 5, eloRating: 1500, gamesPlayed: 10, peakRating: 1500, lastUpdated: 'now' },
-                    { rank: 2, userId: 7, eloRating: 1300, gamesPlayed: 4, peakRating: 1320, lastUpdated: 'now' },
+                    { rank: 1, userId: 5, username: 'alice', eloRating: 1500, gamesPlayed: 10, peakRating: 1500, lastUpdated: 'now' },
+                    { rank: 2, userId: 7, username: 'bob', eloRating: 1300, gamesPlayed: 4, peakRating: 1320, lastUpdated: 'now' },
                 ],
             });
 
@@ -95,7 +95,7 @@ describe('GameController ranking endpoints', () => {
     describe('GET /api/game/rankings/:userId', () => {
         it('returns the ranking row for the requested user', async () => {
             vi.spyOn(mockRanking, 'getUserRanking').mockResolvedValue({
-                rank: 3, userId: 5, eloRating: 1250, gamesPlayed: 7, peakRating: 1260, lastUpdated: 'now',
+                rank: 3, userId: 5, username: 'alice', eloRating: 1250, gamesPlayed: 7, peakRating: 1260, lastUpdated: 'now',
             });
 
             const response = await request(app).get('/api/game/rankings/5');

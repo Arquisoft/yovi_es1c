@@ -74,6 +74,7 @@ describe('RankingService', () => {
         it('returns the stored elo_rating when the opponent has a ranking row', async () => {
             vi.spyOn(mockRepo, 'getByUserId').mockResolvedValue({
                 user_id: 7,
+                username: null,
                 elo_rating: 1450,
                 games_played: 12,
                 peak_rating: 1500,
@@ -93,6 +94,7 @@ describe('RankingService', () => {
     describe('applyRatingUpdate', () => {
         const existingRanking: PlayerRanking = {
             user_id: 1,
+            username: null,
             elo_rating: 1200,
             games_played: 5,
             peak_rating: 1250,
