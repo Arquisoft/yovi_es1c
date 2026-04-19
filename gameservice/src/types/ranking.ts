@@ -26,3 +26,28 @@ export interface RankingUpdateOutcome {
     ratingAfter: number;
     delta: number;
 }
+
+export interface LeaderboardEntry {
+    rank: number;
+    userId: number;
+    eloRating: number;
+    gamesPlayed: number;
+    peakRating: number;
+    lastUpdated: string;
+}
+
+export interface LeaderboardResponse {
+    total: number;
+    limit: number;
+    offset: number;
+    entries: LeaderboardEntry[];
+}
+
+export interface UserRankingDto {
+    rank: number;
+    userId: number;
+    eloRating: number;
+    gamesPlayed: number;
+    peakRating: number;
+    lastUpdated: string;
+}
