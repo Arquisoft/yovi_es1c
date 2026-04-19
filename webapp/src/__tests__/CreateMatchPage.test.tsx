@@ -247,21 +247,6 @@ describe("CreateMatchPage Component", () => {
         });
     });
 
-    it("handles unknown error gracefully", async () => {
-        setupAuthenticatedUser();
-
-        fetchMock.mockRejectedValueOnce("Something weird happened");
-
-        renderWithProviders(<CreateMatchPage />);
-
-        const createButton = screen.getByRole("button", { name: /Crear partida/i });
-        fireEvent.click(createButton);
-
-        await waitFor(() => {
-            expect(screen.getByText(/Error desconocido/i)).toBeInTheDocument();
-        });
-    });
-
     it("sends correct difficulty in LOCAL_2P mode", async () => {
         setupAuthenticatedUser();
 

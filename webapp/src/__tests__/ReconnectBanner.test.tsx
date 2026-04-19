@@ -56,7 +56,7 @@ describe('Reconnect banner', () => {
 
   it('navigates to online game when clicking reconnect', async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Reconectarme' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reconectar' }));
 
     await waitFor(() => {
       expect(screen.getByText('Game')).toBeInTheDocument();

@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import esCommon from './i18n/locales/es/common.json';
+import { beforeAll } from 'vitest';
 
 declare global {
     interface Window {
@@ -91,3 +95,25 @@ Object.defineProperty(window, 'localStorage', {
 Object.defineProperty(globalThis, 'localStorage', {
     value: localStorageMock,
 })
+
+beforeAll(async () => {
+    await i18n
+        .use(initReactI18next)
+        .init({
+            lng: 'es',
+            fallbackLng: 'es',
+
+            ns: ['common'],
+            defaultNS: 'common',
+
+            resources: {
+                es: {
+                    common: esCommon,
+                },
+            },
+
+            interpolation: {
+                escapeValue: false,
+            },
+        });
+});

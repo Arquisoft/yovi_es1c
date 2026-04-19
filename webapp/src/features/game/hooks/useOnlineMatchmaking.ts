@@ -21,7 +21,11 @@ export function useOnlineMatchmaking(boardSize: number, rules: MatchRulesDto) {
   const [waiting, setWaiting] = useState(false);
   const [waitedSec, setWaitedSec] = useState(0);
   const [matched, setMatched] = useState<{ matchId: string; opponent: string; revealAfterGame: boolean } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+
+  type OnlineError =
+      | "notAuthenticated"
+      | "socketConnectionFailed"
+  const [error, setError] = useState<OnlineError | null>(null);
 
   const queueState = useMemo(() => (waiting ? 'searching' : 'idle'), [waiting]);
   const joinedRef = useRef(false);
@@ -79,7 +83,7 @@ export function useOnlineMatchmaking(boardSize: number, rules: MatchRulesDto) {
 
     const token = localStorage.getItem(AUTH_STORAGE_KEYS.ACCESS_TOKEN);
     if (!token) {
-      setError('Not authenticated. Please log in again.');
+      setError('notAuthenticated');
       return undefined;
     }
 
@@ -104,9 +108,10 @@ export function useOnlineMatchmaking(boardSize: number, rules: MatchRulesDto) {
       joinedRef.current = false;
     });
 
-    const unsubscribeConnectError = onlineSocketClient.on<Error>('connect_error', (payload) => {
-      const message = payload instanceof Error ? payload.message : 'Socket connection failed';
-      setError(message);
+    const unsubscribeConnectError = onlineSocketClient.on<Error>('connect_error', () => {
+      const error: OnlineError = 'socketConnectionFailed';
+
+      setError(error);
       setWaiting(false);
     });
 

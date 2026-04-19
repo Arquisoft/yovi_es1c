@@ -10,6 +10,7 @@ import {
     Stack,
     Typography,
 } from '@mui/material';
+
 import { Board } from './Board.tsx';
 import { useAuth } from '../../../auth';
 import { useGameController, type BotDifficulty } from '../../hooks/useGameController.ts';
@@ -22,6 +23,8 @@ import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
 import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
 import WinnerOverlay from './WinnerOverlay';
+import {useTranslation} from "react-i18next";
+import type { GameMessage } from '../../hooks/useGameController';
 
 type GameConfig = {
     matchId: string;
@@ -51,23 +54,59 @@ const RECOVERABLE_ERROR_CODES = new Set([
     'DUPLICATE_EVENT',
 ]);
 
+function resolveGameMessage(
+    message: GameMessage | null,
+    t: (key: string, options?: Record<string, unknown>) => string
+): string | null {
+    if (!message) return null;
+
+    switch (message.key) {
+        case 'clickACellToPlay':
+            return t('clickACellToPlay');
+
+        case 'botThinking':
+            return t('botThinking');
+
+        case 'errorCommunicatingWithBot':
+            return t('errorCommunicatingWithBot');
+
+        case 'onlineWaitingServer':
+            return t('onlineWaitingServer');
+
+        case 'invalidBotMove':
+            return t('invalidBotMove');
+
+        case 'winnerAnnouncement':
+            return t('winnerAnnouncement', {
+                label: message.params?.label,
+            });
+
+        default:
+            return null;
+    }
+}
+
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
+    const {t} = useTranslation();
+
     return (
         <Paper sx={{ p: 4, mt: 10, textAlign: 'center', maxWidth: 600, margin: '100px auto' }}>
             <Typography variant="h5" color="primary" sx={{ mb: 2 }}>
-                No se encontró la configuración de la partida
+                {t('noConfigTitle')}
             </Typography>
             <Typography color="text.secondary" sx={{ mb: 2 }}>
-                Vuelve a la página de crear partida para iniciar un juego.
+                {t('noConfigSubtitle')}
             </Typography>
             <Button variant="contained" onClick={onNavigate}>
-                Crear partida
+                {t('createMatch')}
             </Button>
         </Paper>
     );
 }
 
 export default function GameUI() {
+    const {t} = useTranslation();
+
     const location = useLocation();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -95,6 +134,7 @@ export default function GameUI() {
     } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
+
     const { messages, sendMessage } = useChatSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
@@ -129,8 +169,8 @@ export default function GameUI() {
             winner: null,
             rules: localState.rules ?? config.rules ?? { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
             players: [
-                { userId: 0, username: 'Jugador 1', symbol: 'B' as const },
-                { userId: 1, username: config.mode === 'BOT' ? 'Bot' : 'Jugador 2', symbol: 'R' as const },
+                { userId: 0, username: t('player1'), symbol: 'B' as const },
+                { userId: 1, username: config.mode === 'BOT' ? 'Bot' : t('player2'), symbol: 'R' as const },
             ],
         };
 
@@ -152,15 +192,28 @@ export default function GameUI() {
         displayState.turn,
         displayState.players,
         config.mode,
+        t,
     );
 
-    const winnerLabel = isOnline
-        ? resolveWinnerLabel(displayState.winner, displayState.players)
-        : state.gameOver
-            ? displayState.turn === 1
-                ? `¡Felicidades, ${displayState.players[0].username} gana!`
-                : `¡Felicidades, ${displayState.players[1].username} gana!`
-            : null;
+    const winnerLabel = (() => {
+        if (!gameOver) return null;
+
+        if (isOnline) {
+            return resolveWinnerLabel(displayState.winner, displayState.players, t);
+        }
+
+        // 🔑 jugador ganador = el anterior al turno actual
+        const winnerIndex = displayState.turn === 0 ? 0 : 1;
+
+        const winnerName =
+            winnerIndex === 0
+                ? t('player1')
+                : (config.mode === 'BOT' ? 'Bot' : t('player2'));
+
+        return t('winnerAnnouncement', {
+            label: winnerName,
+        });
+    })();
 
     const handleBoardClick = (row: number, col: number) => {
         if (isOnline) {
@@ -199,21 +252,20 @@ export default function GameUI() {
         }
     };
 
+    const gameMessageText = resolveGameMessage(state.message, t);
+
     return (
         <Box className={styles.container}>
-            <Box
-                className={styles.mainBox}
-                sx={{
-                    display: 'flex',
-                    flexDirection: { xs: 'column', md: 'row' },
-                    width: '100%',
-                    maxWidth: 1180,
-                    minHeight: 'calc(100dvh - 140px)',
-                }}
-            >
+            <Box className={styles.mainBox} sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                width: '100%',
+                maxWidth: 1180,
+                minHeight: 'calc(100dvh - 140px)',
+            }}>
                 <Box className={styles.sidebar} sx={{ width: { xs: '100%', md: 300 } }}>
                     <Typography variant="h5" className={styles.title}>
-                        Información de partida
+                        {t('matchInfo')}
                     </Typography>
 
                     <Stack spacing={2} mt={2}>
@@ -221,15 +273,21 @@ export default function GameUI() {
                             <CardContent className={styles.cardContent}>
                                 <Avatar className={styles.avatarStatic} sx={{ bgcolor: avatarColor }} />
                                 <Box textAlign="center">
-                                    <Typography variant="subtitle1" color="primary">Turno</Typography>
-                                    <Typography variant="body2" color="text.secondary">{currentTurnLabel}</Typography>
+                                    <Typography variant="subtitle1" color="primary">
+                                        {t('turn')}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {currentTurnLabel}
+                                    </Typography>
                                 </Box>
                             </CardContent>
                         </Card>
 
                         <Card className={styles.cardStatic}>
                             <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                <Typography variant="subtitle2" color="primary">Modo</Typography>
+                                <Typography variant="subtitle2" color="primary">
+                                    {t('mode')}
+                                </Typography>
                                 <Typography variant="body2" color="text.secondary">
                                     {modeLabel[config.mode]}
                                 </Typography>
@@ -239,7 +297,9 @@ export default function GameUI() {
                         {config.mode === 'BOT' && (
                             <Card className={styles.cardStatic}>
                                 <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                    <Typography variant="subtitle2" color="primary">Dificultad</Typography>
+                                    <Typography variant="subtitle2" color="primary">
+                                        {t('difficulty')}
+                                    </Typography>
                                     <Typography variant="body2" color="text.secondary">
                                         {difficultyLabels[config.difficulty]}
                                     </Typography>
@@ -266,13 +326,14 @@ export default function GameUI() {
                         {isOnline && sessionState && (
                             <>
                                 <Card className={styles.cardStatic}>
-                                    <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                        <Box>
-                                            <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Conexión</Typography>
-                                            <ConnectionBadge state={connectionStatus} />
-                                        </Box>
+                                    <CardContent className={styles.cardContent}>
+                                        <Typography variant="subtitle2" color="primary">
+                                            {t('connection')}
+                                        </Typography>
+                                        <ConnectionBadge state={connectionStatus} />
                                     </CardContent>
                                 </Card>
+
                                 <Card className={styles.cardStatic}>
                                     <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
                                         <Box>
@@ -289,50 +350,28 @@ export default function GameUI() {
                     </Stack>
 
                     <Stack spacing={2} sx={{ mt: 'auto', pt: 2 }}>
-                        {isOnline ? (
-                            <Button
-                                variant="outlined"
-                                onClick={() => navigate('/create-match')}
-                                className={styles.restartButton}
-                            >
-                                Volver
-                            </Button>
-                        ) : (
-                            <>
-                                <Button
-                                    variant="outlined"
-                                    onClick={actions.newGame}
-                                    className={styles.restartButton}
-                                >
-                                    Reiniciar partida
-                                </Button>
+                        <Button variant="outlined" onClick={() => navigate('/create-match')}>
+                            {t('back')}
+                        </Button>
 
-                                {}
-                                <Button
-                                    variant="contained"
-                                    color="secondary"
-                                    onClick={() => navigate('/create-match')}
-                                >
-                                    Nueva Partida
-                                </Button>
-                            </>
+                        {!isOnline && (
+                            <Button variant="outlined" onClick={actions.newGame}>
+                                {t('restart')}
+                            </Button>
                         )}
                     </Stack>
                 </Box>
 
-                <Box
-                    sx={{
-                        flexGrow: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        p: { xs: 2, md: 4 },
-                        minHeight: 0,
-                    }}
-                >
+                <Box sx={{
+                    flexGrow: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    p: { xs: 2, md: 4 },
+                }}>
                     <Typography variant="h3" className={styles.gameTitle} sx={{ mb: 2 }}>
-                        ¡Tu partida de Y!
+                        {t('title')}
                     </Typography>
 
                     {/* Error terminal o de juego: bloquea visualmente con color rojo */}
@@ -350,8 +389,8 @@ export default function GameUI() {
                     )}
 
                     {!isOnline && loading && (
-                        <Paper sx={{ p: 2, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center' }}>
-                            Bot pensando...
+                        <Paper sx={{ p: 2, my: 1 }}>
+                            {gameMessageText}
                         </Paper>
                     )}
 
@@ -385,18 +424,18 @@ export default function GameUI() {
                             />
                         )}
 
-                        {isOnline && (
-                            <ChatBox
-                                matchId={sessionState?.matchId ?? null}
-                                winner={displayState.winner ?? null}
-                                localUserId={user?.id ?? null}
-                                messages={messages}
-                                sendMessage={sendMessage}
-                            />
-                        )}
-                    </Box>
+                    {isOnline && (
+                        <ChatBox
+                            matchId={sessionState?.matchId ?? null}
+                            winner={displayState.winner ?? null}
+                            localUserId={user?.id ?? null}
+                            messages={messages}
+                            sendMessage={sendMessage}
+                        />
+                    )}
                 </Box>
             </Box>
         </Box>
+    </Box>
     );
 }

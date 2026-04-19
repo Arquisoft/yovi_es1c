@@ -5,6 +5,9 @@ import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
 import { useAuth } from '../../features/auth';
 import { logoutSession } from '../../features/auth/api/authApi';
+import {useTranslation} from "react-i18next";
+import LanguageSwitcher from './LanguageSwitcher';
+
 
 export default function Nav() {
   const { user, logout } = useAuth();
@@ -13,6 +16,7 @@ export default function Nav() {
   const [isDark, setIsDark] = useState(globalThis.matchMedia('(prefers-color-scheme: dark)').matches);
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const { t } = useTranslation();
 
   const handleLogout = async () => {
     await logoutSession();
@@ -55,13 +59,16 @@ export default function Nav() {
 
       <ul className={styles.links}>
         <li>
-          <Link to="/" className={linkClass('/')}>Home</Link>
+          <Link to="/" className={linkClass('/')}>{t('home')}</Link>
         </li>
         <li>
-          <Link to="/create-match" className={linkClass('/create-match')}>New game</Link>
+          <Link to="/create-match" className={linkClass('/create-match')}>{t('newGame')}</Link>
         </li>
         <li>
-          <Link to="/stats" className={linkClass('/stats')}>Stats</Link>
+          <Link to="/stats" className={linkClass('/stats')}>{t('stats')}</Link>
+        </li>
+        <li>
+            <LanguageSwitcher />
         </li>
         {user ? (
           <>
@@ -70,17 +77,19 @@ export default function Nav() {
             </li>
             <li>
               <button type="button" onClick={handleLogout} className={`${styles.link} ${styles.logoutButton}`}>
-                Logout
+                {t('logout')}
               </button>
             </li>
+
+             
           </>
         ) : (
           <>
             <li>
-              <Link to="/login" className={linkClass('/login')}>Login</Link>
+              <Link to="/login" className={linkClass('/login')}>{t('login')}</Link>
             </li>
             <li>
-              <Link to="/register" className={linkClass('/register')}>Register</Link>
+              <Link to="/register" className={linkClass('/register')}>{t('register')}</Link>
             </li>
           </>
         )}

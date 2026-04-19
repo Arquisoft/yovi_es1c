@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { API_CONFIG } from '../../../config/api.config';
 import { fetchWithAuth } from '../../../shared/api/fetchWithAuth';
 import { useAuth } from '../../auth/context/useAuth';
+import {useTranslation} from "react-i18next";
 
 interface ActiveSessionResponse {
   matchId: string;
@@ -17,6 +18,7 @@ export function useActiveSession() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const {t} = useTranslation();
 
   useEffect(() => {
     let isMounted = true;
@@ -47,7 +49,7 @@ export function useActiveSession() {
         }
 
         if (!response.ok) {
-          throw new Error('No se pudo comprobar la sesión activa');
+          throw new Error(t('activeSessionCouldNotBeChecked'));
         }
 
         const data = (await response.json()) as ActiveSessionResponse;
@@ -57,7 +59,7 @@ export function useActiveSession() {
         setStatus(data.status ?? null);
       } catch (err) {
         if (!isMounted) return;
-        setError(err instanceof Error ? err.message : 'Error de red');
+        setError(err instanceof Error ? err.message : t('networkError'));
       } finally {
         if (isMounted) setLoading(false);
       }

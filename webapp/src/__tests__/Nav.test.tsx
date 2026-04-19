@@ -26,16 +26,16 @@ describe('Nav Component', () => {
     it('renders navigation links', () => {
         renderNav();
 
-        expect(screen.getByText('Home')).toBeInTheDocument();
-        expect(screen.getByText('New game')).toBeInTheDocument(); // actualizado
-        expect(screen.getByText('Stats')).toBeInTheDocument();
+        expect(screen.getByText('Inicio')).toBeInTheDocument();
+        expect(screen.getByText('Nueva partida')).toBeInTheDocument(); // actualizado
+        expect(screen.getByText('Estadísticas')).toBeInTheDocument();
     });
 
     it('shows login and register links when not authenticated', () => {
         renderNav();
 
-        expect(screen.getByText('Login')).toBeInTheDocument();
-        expect(screen.getByText('Register')).toBeInTheDocument();
+        expect(screen.getByText('Iniciar sesión')).toBeInTheDocument();
+        expect(screen.getByText('Registrarse')).toBeInTheDocument();
     });
 
     it('handles dark mode detection at mount', () => {
@@ -51,8 +51,8 @@ describe('Nav Component', () => {
     it('shows login and register links when not authenticated', () => {
         renderNav();
 
-        expect(screen.getByText('Login')).toBeInTheDocument();
-        expect(screen.getByText('Register')).toBeInTheDocument();
+        expect(screen.getByText('Iniciar sesión')).toBeInTheDocument();
+        expect(screen.getByText('Registrarse')).toBeInTheDocument();
     });
 
     it('applies dark mode class if prefers-color-scheme is dark', () => {
@@ -79,7 +79,7 @@ describe('Nav Component', () => {
             g.__setMatchMedia?.(false);
         });
 
-        expect(screen.getByText('Home')).toBeInTheDocument();
+        expect(screen.getByText('Inicio')).toBeInTheDocument();
     });
 
     it('handles scroll events to show/hide nav', () => {
@@ -94,7 +94,7 @@ describe('Nav Component', () => {
         Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 0 });
         fireEvent.scroll(globalThis as unknown as Window);
 
-        expect(screen.getByText('Home')).toBeInTheDocument();
+        expect(screen.getByText('Inicio')).toBeInTheDocument();
     });
 
     it('shows username and logout button when authenticated', () => {
@@ -104,7 +104,7 @@ describe('Nav Component', () => {
         renderNav();
 
         expect(screen.getByText('Pablo')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /logout/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument();
 
         localStorage.clear();
     });
@@ -114,7 +114,7 @@ describe('Nav Component', () => {
         localStorage.setItem('auth_user', JSON.stringify({ id: 1, username: 'Pablo' }));
 
         renderNav();
-        fireEvent.click(screen.getByRole('button', { name: /logout/i }));
+        fireEvent.click(screen.getByRole('button', { name: /cerrar sesión/i }));
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalled());
         expect(localStorage.getItem('auth_token')).toBeNull();
