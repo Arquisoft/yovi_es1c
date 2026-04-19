@@ -63,6 +63,9 @@ export default function Nav() {
         <li>
           <Link to="/stats" className={linkClass('/stats')}>Stats</Link>
         </li>
+        <li>
+          <Link to="/ranking" className={linkClass('/ranking')}>Ranking</Link>
+        </li>
         {user ? (
           <>
             <li>
