@@ -1,7 +1,9 @@
-import { Box, Card, CardContent, Paper, Typography } from '@mui/material';
+import { Box, Paper, Typography } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { useRankingController } from '../hooks/useRankingController';
 import { useAuth } from '../../auth';
+import StatCard from '../../../components/StatCard';
+import { dataGridStyles } from '../../../app/theme/dataGridStyles';
 import styles from './LeaderboardUI.module.css';
 
 export default function LeaderboardUI() {
@@ -85,65 +87,11 @@ export default function LeaderboardUI() {
               autoHeight
               pageSizeOptions={[5, 10, 25]}
               initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
-              sx={{
-                border: 'none',
-                color: '#9dff95',
-                backgroundColor: 'transparent',
-                fontFamily: "'VT323', 'Courier New', monospace",
-                fontSize: '1rem',
-                letterSpacing: '0.08em',
-                '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'rgba(2, 11, 2, 0.96) !important',
-                  borderBottom: '1px solid rgba(57, 255, 20, 0.3)',
-                },
-                '& .MuiDataGrid-columnHeader': {
-                  backgroundColor: 'transparent !important',
-                  color: 'rgba(157, 255, 149, 0.72)',
-                  textTransform: 'uppercase',
-                },
-                '& .MuiDataGrid-cell': {
-                  borderBottom: '1px solid rgba(57, 255, 20, 0.08)',
-                },
-                '& .MuiDataGrid-row:hover': {
-                  backgroundColor: 'rgba(57, 255, 20, 0.06)',
-                },
-                '& .MuiDataGrid-footerContainer': {
-                  borderTop: '1px solid rgba(57, 255, 20, 0.18)',
-                  color: 'rgba(157, 255, 149, 0.62)',
-                },
-                '& .MuiTablePagination-root': {
-                  color: 'rgba(157, 255, 149, 0.62)',
-                  fontFamily: "'VT323', 'Courier New', monospace",
-                },
-                '& .MuiSvgIcon-root': {
-                  color: 'rgba(157, 255, 149, 0.62)',
-                },
-              }}
+              sx={dataGridStyles}
             />
           )}
         </Paper>
       </div>
     </div>
-  );
-}
-
-function StatCard({ title, value }: Readonly<{ title: string; value: string | number }>) {
-  return (
-    <Card
-      className="crt-panel"
-      sx={{
-        minWidth: 200,
-        background: 'linear-gradient(180deg, rgba(7, 22, 7, 0.94) 0%, rgba(2, 13, 2, 0.94) 100%)',
-      }}
-    >
-      <CardContent sx={{ textAlign: 'center' }}>
-        <Typography className="crt-screen-label" sx={{ mb: 1, fontSize: '0.78rem' }}>
-          {title}
-        </Typography>
-        <Typography variant="h4" className="crt-heading" sx={{ fontSize: '2.2rem' }}>
-          {value}
-        </Typography>
-      </CardContent>
-    </Card>
   );
 }
