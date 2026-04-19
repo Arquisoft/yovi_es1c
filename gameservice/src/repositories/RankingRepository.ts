@@ -3,6 +3,7 @@ import type { LeaderboardEntry, PlayerRanking, UserRankingDto } from '../types/r
 
 export interface RatingChange {
     userId: number;
+    username?: string;
     matchId: number;
     ratingBefore: number;
     ratingAfter: number;
@@ -16,7 +17,7 @@ export class RankingRepository {
 
     async getByUserId(userId: number): Promise<PlayerRanking | null> {
         const result = await this.db.query<PlayerRanking>(
-            `SELECT user_id, elo_rating, games_played, peak_rating, last_updated
+            `SELECT user_id, username, elo_rating, games_played, peak_rating, last_updated
              FROM player_rankings
              WHERE user_id = $1`,
             [userId],
@@ -27,6 +28,7 @@ export class RankingRepository {
     async getLeaderboard(limit: number, offset: number): Promise<LeaderboardEntry[]> {
         const result = await this.db.query<{
             user_id: number;
+            username: string | null;
             elo_rating: number;
             games_played: number;
             peak_rating: number;
@@ -35,6 +37,7 @@ export class RankingRepository {
         }>(
             `SELECT
                  user_id,
+                 username,
                  elo_rating,
                  games_played,
                  peak_rating,
@@ -49,6 +52,7 @@ export class RankingRepository {
         return result.rows.map((row) => ({
             rank: Number(row.rank),
             userId: row.user_id,
+            username: row.username,
             eloRating: row.elo_rating,
             gamesPlayed: row.games_played,
             peakRating: row.peak_rating,
@@ -66,6 +70,7 @@ export class RankingRepository {
     async getUserRanking(userId: number): Promise<UserRankingDto | null> {
         const result = await this.db.query<{
             user_id: number;
+            username: string | null;
             elo_rating: number;
             games_played: number;
             peak_rating: number;
@@ -75,6 +80,7 @@ export class RankingRepository {
             `WITH ranked AS (
                  SELECT
                      user_id,
+                     username,
                      elo_rating,
                      games_played,
                      peak_rating,
@@ -91,6 +97,7 @@ export class RankingRepository {
         return {
             rank: Number(row.rank),
             userId: row.user_id,
+            username: row.username,
             eloRating: row.elo_rating,
             gamesPlayed: row.games_played,
             peakRating: row.peak_rating,
@@ -104,14 +111,15 @@ export class RankingRepository {
             await client.query('BEGIN');
 
             await client.query(
-                `INSERT INTO player_rankings (user_id, elo_rating, games_played, peak_rating, last_updated)
-                 VALUES ($1, $2, $3, $4, NOW())
+                `INSERT INTO player_rankings (user_id, username, elo_rating, games_played, peak_rating, last_updated)
+                 VALUES ($1, $2, $3, $4, $5, NOW())
                  ON CONFLICT (user_id) DO UPDATE SET
+                     username     = COALESCE(EXCLUDED.username, player_rankings.username),
                      elo_rating   = EXCLUDED.elo_rating,
                      games_played = EXCLUDED.games_played,
                      peak_rating  = EXCLUDED.peak_rating,
                      last_updated = NOW()`,
-                [change.userId, change.ratingAfter, change.gamesPlayedAfter, change.peakRating],
+                [change.userId, change.username ?? null, change.ratingAfter, change.gamesPlayedAfter, change.peakRating],
             );
 
             await client.query(
