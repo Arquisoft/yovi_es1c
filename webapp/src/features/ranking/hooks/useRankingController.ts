@@ -7,6 +7,7 @@ const GAME_API_URL = API_CONFIG.GAME_SERVICE_API;
 export type LeaderboardEntry = {
   rank: number;
   userId: number;
+  username: string | null;
   eloRating: number;
   gamesPlayed: number;
   peakRating: number;
