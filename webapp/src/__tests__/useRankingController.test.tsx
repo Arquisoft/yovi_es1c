@@ -33,11 +33,11 @@ describe('useRankingController', () => {
       limit: 20,
       offset: 0,
       entries: [
-        { rank: 1, userId: 42, eloRating: 1600, gamesPlayed: 10, peakRating: 1650, lastUpdated: 'now' },
+        { rank: 1, userId: 42, username: 'alice', eloRating: 1600, gamesPlayed: 10, peakRating: 1650, lastUpdated: 'now' },
       ],
     };
     const userRanking = {
-      rank: 1, userId: 42, eloRating: 1600, gamesPlayed: 10, peakRating: 1650, lastUpdated: 'now',
+      rank: 1, userId: 42, username: 'alice', eloRating: 1600, gamesPlayed: 10, peakRating: 1650, lastUpdated: 'now',
     };
 
     fetchMock.mockResolvedValueOnce(jsonResponse(leaderboard));
@@ -79,6 +79,7 @@ describe('useRankingController', () => {
     expect(result.current.state.userRanking).toBeNull();
   });
 
+
   it('surfaces errors when the leaderboard request fails', async () => {
     fetchMock.mockResolvedValueOnce(new Response('boom', { status: 500 }));
 
@@ -108,7 +109,7 @@ describe('useRankingController', () => {
         total: 1,
         limit: 20,
         offset: 0,
-        entries: [{ rank: 1, userId: 1, eloRating: 1500, gamesPlayed: 3, peakRating: 1500, lastUpdated: 'now' }],
+        entries: [{ rank: 1, userId: 1, username: 'solo', eloRating: 1500, gamesPlayed: 3, peakRating: 1500, lastUpdated: 'now' }],
       }));
 
     const { result } = renderHook(() => useRankingController({}));
