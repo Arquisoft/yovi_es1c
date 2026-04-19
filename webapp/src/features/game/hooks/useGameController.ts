@@ -166,7 +166,7 @@ export const useGameController = (
     const [message, setMessage] = useState<string>("Click a cell to play");
     const [gameOver, setGameOver] = useState(false);
 
-    const [matchId] = useState<string | null>(initialMatchId ?? null);
+    const [matchId, setMatchId] = useState<string | null>(initialMatchId ?? null);
     const [botFailureCount, setBotFailureCount] = useState(0);
 
     const isBoardFull = useMemo(() => !gameState.layout.includes("."), [gameState.layout]);
@@ -176,13 +176,40 @@ export const useGameController = (
         setMessage(`¡Felicidades ${label}!`);
     };
 
-    const resetGame = (nextMode: GameMode) => {
+    const resetGame = async (nextMode: GameMode) => {
         setGameMode(nextMode);
         setGameState(createEmptyYEN(initialSize, resolvedInitialRules));
         setLoading(false);
         setError(null);
         setGameOver(false);
+        setBotFailureCount(0);
         setMessage("Click a cell to play");
+
+        if (nextMode === "ONLINE") return;
+
+        try {
+            const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    boardSize: initialSize,
+                    difficulty: botDifficulty,
+                    mode: nextMode,
+                    rules: resolvedInitialRules,
+                }),
+            });
+            if (!res.ok) {
+                console.error("Reset match: backend rejected match creation", res.status);
+                return;
+            }
+            const data = await res.json();
+            setMatchId(data.matchId ?? null);
+            if (data.initialYEN) {
+                setGameState({ ...data.initialYEN, rules: normalizeRules(data.initialYEN.rules ?? resolvedInitialRules) });
+            }
+        } catch (err) {
+            console.error("Reset match error:", err);
+        }
     };
 
     const changeSize = (newSize: number) => {
