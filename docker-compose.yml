@@ -27,10 +27,11 @@ services:
     networks:
       - monitor-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth_user -d authdb"]
+      test: [ "CMD-SHELL", "pg_isready -U auth_user -d authdb && psql -U auth_user -d authdb -c 'SELECT 1' -q --no-align -t" ]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 15s
 
   auth:
     build: ./auth
@@ -101,10 +102,11 @@ services:
     networks:
       - monitor-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U game_user -d gamedb"]
+      test: [ "CMD-SHELL", "pg_isready -U game_user -d gamedb && psql -U game_user -d gamedb -c 'SELECT 1' -q --no-align -t" ]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 15s
 
   gameservice:
     build: ./gameservice
