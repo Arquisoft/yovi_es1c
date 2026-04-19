@@ -214,7 +214,7 @@ export const useGameController = (
         setBotFailureCount(0);
         setMessage({ key: "clickACellToPlay" });
 
-        if (nextMode === "ONLINE") return;
+        if (nextMode !== "BOT") return;
 
         try {
             const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
