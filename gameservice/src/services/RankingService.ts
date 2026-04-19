@@ -68,6 +68,7 @@ export class RankingService {
 
         const current = (await this.rankingRepo.getByUserId(input.userId)) ?? {
             user_id: input.userId,
+            username: null,
             elo_rating: DEFAULT_RATING,
             games_played: 0,
             peak_rating: DEFAULT_RATING,
@@ -85,6 +86,7 @@ export class RankingService {
 
         await this.rankingRepo.applyRatingChange({
             userId: input.userId,
+            username: input.username,
             matchId: input.matchId,
             ratingBefore: current.elo_rating,
             ratingAfter: newRating,
