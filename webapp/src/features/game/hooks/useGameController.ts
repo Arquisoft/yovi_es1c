@@ -205,17 +205,7 @@ export const useGameController = (
         });
     };
 
-    const resetGame = async (nextMode: GameMode) => {
-        setGameMode(nextMode);
-        setGameState(createEmptyYEN(initialSize, resolvedInitialRules));
-        setLoading(false);
-        setError(null);
-        setGameOver(false);
-        setBotFailureCount(0);
-        setMessage({ key: "clickACellToPlay" });
-
-        if (nextMode !== "BOT") return;
-
+    const createNewBotMatch = async () => {
         try {
             const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
                 method: "POST",
@@ -223,7 +213,7 @@ export const useGameController = (
                 body: JSON.stringify({
                     boardSize: initialSize,
                     difficulty: botDifficulty,
-                    mode: nextMode,
+                    mode: "BOT",
                     rules: resolvedInitialRules,
                 }),
             });
@@ -238,6 +228,20 @@ export const useGameController = (
             }
         } catch (err) {
             console.error("Reset match error:", err);
+        }
+    };
+
+    const resetGame = (nextMode: GameMode) => {
+        setGameMode(nextMode);
+        setGameState(createEmptyYEN(initialSize, resolvedInitialRules));
+        setLoading(false);
+        setError(null);
+        setGameOver(false);
+        setBotFailureCount(0);
+        setMessage({ key: "clickACellToPlay" });
+
+        if (nextMode === "BOT") {
+            void createNewBotMatch();
         }
     };
 
