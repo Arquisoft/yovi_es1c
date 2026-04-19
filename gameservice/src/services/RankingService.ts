@@ -1,9 +1,11 @@
 import { RankingRepository } from '../repositories/RankingRepository';
 import type {
+    LeaderboardResponse,
     MatchDifficulty,
     MatchResult,
     RankingUpdateInput,
     RankingUpdateOutcome,
+    UserRankingDto,
 } from '../types/ranking';
 
 const DEFAULT_RATING = 1200;
@@ -38,6 +40,23 @@ export class RankingService {
 
     getOpponentRatingForBot(difficulty: MatchDifficulty): number {
         return BOT_RATING_BY_DIFFICULTY[difficulty];
+    }
+
+    async getOpponentRatingForUser(userId: number): Promise<number> {
+        const ranking = await this.rankingRepo.getByUserId(userId);
+        return ranking?.elo_rating ?? DEFAULT_RATING;
+    }
+
+    async getLeaderboard(limit: number, offset: number): Promise<LeaderboardResponse> {
+        const [entries, total] = await Promise.all([
+            this.rankingRepo.getLeaderboard(limit, offset),
+            this.rankingRepo.getTotalRankedPlayers(),
+        ]);
+        return { total, limit, offset, entries };
+    }
+
+    async getUserRanking(userId: number): Promise<UserRankingDto | null> {
+        return this.rankingRepo.getUserRanking(userId);
     }
 
     async applyRatingUpdate(input: RankingUpdateInput): Promise<RankingUpdateOutcome | null> {

@@ -70,6 +70,26 @@ describe('RankingService', () => {
         });
     });
 
+    describe('getOpponentRatingForUser', () => {
+        it('returns the stored elo_rating when the opponent has a ranking row', async () => {
+            vi.spyOn(mockRepo, 'getByUserId').mockResolvedValue({
+                user_id: 7,
+                elo_rating: 1450,
+                games_played: 12,
+                peak_rating: 1500,
+                last_updated: '2026-04-01T00:00:00Z',
+            });
+
+            await expect(service.getOpponentRatingForUser(7)).resolves.toBe(1450);
+        });
+
+        it('falls back to 1200 when the opponent has no ranking row yet', async () => {
+            vi.spyOn(mockRepo, 'getByUserId').mockResolvedValue(null);
+
+            await expect(service.getOpponentRatingForUser(99)).resolves.toBe(1200);
+        });
+    });
+
     describe('applyRatingUpdate', () => {
         const existingRanking: PlayerRanking = {
             user_id: 1,
