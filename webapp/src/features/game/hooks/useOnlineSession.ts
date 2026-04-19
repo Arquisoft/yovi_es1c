@@ -80,9 +80,54 @@ interface SessionStateSocketPayload {
   connectionStatus?: ConnectionBadgeState;
 }
 
+/**
+ * UI / i18n error codes (camelCase)
+ */
+// type SessionErrorCode =
+//     | 'sessionNotFound'
+//     | 'sessionTerminal'
+//     | 'notAuthenticated'
+//     | 'socketError'
+//     | 'versionConflict'
+//     | 'notYourTurn'
+//     | 'invalidMove'
+//     | 'sessionError';
+
+/**
+ * Backend error codes (UPPER_CASE contract)
+ */
+// type BackendSessionErrorCode =
+//     | 'VERSION_CONFLICT'
+//     | 'NOT_YOUR_TURN'
+//     | 'INVALID_MOVE'
+//     | 'SESSION_NOT_FOUND'
+//     | 'RECONNECT_EXPIRED'
+//     | 'SESSION_TERMINAL'
+//     | 'UNAUTHORIZED'
+//     | 'DUPLICATE_EVENT';
+
+// function mapSessionError(code?: BackendSessionErrorCode | string): SessionErrorCode {
+//   switch (code) {
+//     case 'SESSION_NOT_FOUND':
+//       return 'sessionNotFound';
+//     case 'SESSION_TERMINAL':
+//       return 'sessionTerminal';
+//     case 'UNAUTHORIZED':
+//       return 'notAuthenticated';
+//     case 'VERSION_CONFLICT':
+//       return 'versionConflict';
+//     case 'NOT_YOUR_TURN':
+//       return 'notYourTurn';
+//     case 'INVALID_MOVE':
+//       return 'invalidMove';
+//     default:
+//       return 'sessionError';
+//   }
+// }
+
 export function useOnlineSession(matchId: string | null) {
   const [sessionState, setSessionState] = useState<OnlineSnapshotPayload | null>(null);
-  const [error, setError] = useState<SessionErrorPayload | null>(null);
+  const [error, setError] = useState<SessionErrorPayload  | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   // Ref que siempre tiene el último estado conocido de forma síncrona.
@@ -98,7 +143,10 @@ export function useOnlineSession(matchId: string | null) {
     const token = localStorage.getItem(AUTH_STORAGE_KEYS.ACCESS_TOKEN);
 
     if (!token) {
-      setError({ code: 'SESSION_NOT_FOUND', message: 'Missing auth token' });
+      setError({
+        code: 'UNAUTHORIZED',
+        message: 'Missing auth token',
+      });
       return;
     }
 
@@ -163,7 +211,10 @@ export function useOnlineSession(matchId: string | null) {
 
     const handleConnect = () => {
       setIsConnected(true);
-      onlineSocketClient.emit('match:join', { matchId, clientEventId: uuidv4() });
+      onlineSocketClient.emit('match:join', {
+        matchId,
+        clientEventId: uuidv4(),
+      });
     };
 
     const handleDisconnect = () => {
