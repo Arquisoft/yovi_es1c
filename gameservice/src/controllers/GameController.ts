@@ -1,18 +1,39 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { MatchService } from "../services/MatchService";
 import { StatsService } from "../services/StatsService";
-import { InvalidMoveError, MatchAlreadyFinishedError, MatchNotFoundError, UnauthorizedMatchError } from "../errors/domain-errors";
+import { RankingService } from "../services/RankingService";
+import { InvalidMoveError, MatchAlreadyFinishedError, MatchNotFoundError, UnauthorizedMatchError, ValidationError } from "../errors/domain-errors";
 import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId, validateFinishMatch } from "../validation/game.schemas";
 import { MatchmakingService } from "../services/MatchmakingService";
 import { OnlineSessionError, OnlineSessionService } from "../services/OnlineSessionService";
 import { validateQueueJoin } from "../validation/online.schemas";
 import { apiError } from "../errors/error-catalog";
 
+const DEFAULT_LEADERBOARD_LIMIT = 20;
+const MAX_LEADERBOARD_LIMIT = 100;
+
+function parseLeaderboardPagination(query: Record<string, unknown>): { limit: number; offset: number } {
+  const rawLimit = query.limit;
+  const rawOffset = query.offset;
+
+  const limit = rawLimit === undefined ? DEFAULT_LEADERBOARD_LIMIT : Number(rawLimit);
+  const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+
+  if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_LEADERBOARD_LIMIT) {
+    throw new ValidationError(`limit must be an integer between 1 and ${MAX_LEADERBOARD_LIMIT}`);
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new ValidationError('offset must be a non-negative integer');
+  }
+  return { limit, offset };
+}
+
 export function createGameController(
     matchService: MatchService,
     statsService: StatsService,
     matchmakingService?: MatchmakingService,
     onlineSessionService?: OnlineSessionService,
+    rankingService?: RankingService,
 ) {
   const router = Router();
 
@@ -114,6 +135,35 @@ export function createGameController(
 
       await matchService.finishMatch(matchId, validated.winner);
       res.status(200).json({ message: "Match finished" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/rankings", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!rankingService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Ranking service not available'));
+      }
+      const { limit, offset } = parseLeaderboardPagination(req.query as Record<string, unknown>);
+      const leaderboard = await rankingService.getLeaderboard(limit, offset);
+      res.json(leaderboard);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/rankings/:userId", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!rankingService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Ranking service not available'));
+      }
+      const userId = validateUserId(req.params.userId);
+      const ranking = await rankingService.getUserRanking(userId);
+      if (!ranking) {
+        return res.status(404).json(apiError('RANKING_NOT_FOUND', 'User has no ranking yet'));
+      }
+      res.json(ranking);
     } catch (error) {
       next(error);
     }

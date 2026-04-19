@@ -4,8 +4,10 @@ import { createServer } from "node:http";
 import { initDB } from "./database/database";
 import { MatchRepository } from "./repositories/MatchRepository";
 import { StatsRepository } from "./repositories/StatsRepository";
+import { RankingRepository } from "./repositories/RankingRepository";
 import { MatchService } from "./services/MatchService";
 import { StatsService } from "./services/StatsService";
+import { RankingService } from "./services/RankingService";
 import { createGameController } from "./controllers/GameController";
 import { errorHandler } from "./middleware/error-handler";
 import { verifyJwtMiddleware } from "./middleware/verify-jwt";
@@ -36,8 +38,10 @@ app.get('/metrics', async (_req, res) => {
 
     const matchRepo = new MatchRepository(db);
     const statsRepo = new StatsRepository(db);
+    const rankingRepo = new RankingRepository(db);
 
-    const matchService = new MatchService(matchRepo);
+    const rankingService = new RankingService(rankingRepo);
+    const matchService = new MatchService(matchRepo, rankingService);
     const statsService = new StatsService(statsRepo);
 
     const server = createServer(app);
@@ -51,6 +55,7 @@ app.get('/metrics', async (_req, res) => {
             statsService,
             realtimeBundle?.matchmakingService,
             realtimeBundle?.onlineSessionService,
+            rankingService,
         )
     );
 
