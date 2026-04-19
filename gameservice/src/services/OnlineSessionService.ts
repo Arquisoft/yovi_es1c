@@ -600,14 +600,15 @@ export class OnlineSessionService {
     this.persistedSessions.add(state.matchId);
 
     await Promise.all(
-        state.players.map(async (player) => {
+        state.players.map(async (player, idx) => {
+          const opponent = state.players[idx === 0 ? 1 : 0];
           try {
             const matchId = await this.matchService!.createMatch(
                 player.userId, state.size, 'medium', 'ONLINE'
             );
             if (matchId == null) return;
             const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
-            await this.matchService!.finishMatch(matchId, winner);
+            await this.matchService!.finishMatch(matchId, winner, opponent.userId);
           } catch (err) {
             console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
           }

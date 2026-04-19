@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MatchService } from '../src/services/MatchService';
 import { MatchRepository } from '../src/repositories/MatchRepository';
+import { RankingService } from '../src/services/RankingService';
 import { MatchRules } from '../src/types/rules';
 
 const classicRules: MatchRules = {
@@ -349,6 +350,102 @@ describe('MatchService', () => {
       await matchService.finishMatch(matchId, winner);
 
       expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(matchId, winner);
+    });
+  });
+
+  describe('finishMatch ranking integration', () => {
+    let mockRanking: RankingService;
+    let serviceWithRanking: MatchService;
+
+    beforeEach(() => {
+      mockRanking = {
+        applyRatingUpdate: vi.fn().mockResolvedValue(null),
+        getOpponentRatingForUser: vi.fn().mockResolvedValue(1350),
+      } as unknown as RankingService;
+      serviceWithRanking = new MatchService(mockMatchRepository, mockRanking);
+    });
+
+    it('triggers BOT rating update using match difficulty', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 10, user_id: 5, mode: 'BOT', difficulty: 'hard',
+      } as any);
+
+      await serviceWithRanking.finishMatch(10, 'USER');
+
+      expect(mockRanking.applyRatingUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 5,
+            matchId: 10,
+            mode: 'BOT',
+            difficulty: 'hard',
+            result: 'WIN',
+          }),
+      );
+    });
+
+    it('maps BOT winner as LOSS for the human player', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 11, user_id: 5, mode: 'BOT', difficulty: 'medium',
+      } as any);
+
+      await serviceWithRanking.finishMatch(11, 'BOT');
+
+      expect(mockRanking.applyRatingUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ mode: 'BOT', result: 'LOSS' }),
+      );
+    });
+
+    it('skips ranking for LOCAL_2P matches', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 12, user_id: 5, mode: 'LOCAL_2P',
+      } as any);
+
+      await serviceWithRanking.finishMatch(12, 'USER');
+
+      expect(mockRanking.applyRatingUpdate).not.toHaveBeenCalled();
+    });
+
+    it('resolves opponent rating from opponent userId for ONLINE matches', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 20, user_id: 5, mode: 'ONLINE',
+      } as any);
+
+      await serviceWithRanking.finishMatch(20, 'USER', 99);
+
+      expect(mockRanking.getOpponentRatingForUser).toHaveBeenCalledWith(99);
+      expect(mockRanking.applyRatingUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: 5,
+            matchId: 20,
+            mode: 'ONLINE',
+            result: 'WIN',
+            opponentRating: 1350,
+          }),
+      );
+    });
+
+    it('does not block the finish when the ranking update fails', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 30, user_id: 5, mode: 'BOT', difficulty: 'easy',
+      } as any);
+      (mockRanking.applyRatingUpdate as any).mockRejectedValueOnce(new Error('ranking down'));
+
+      await expect(serviceWithRanking.finishMatch(30, 'USER')).resolves.toBeUndefined();
+      expect(mockMatchRepository.finishMatch).toHaveBeenCalledWith(30, 'USER');
+    });
+
+    it('is a no-op when no RankingService is injected', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      const getSpy = vi.spyOn(mockMatchRepository, 'getMatchById');
+
+      await matchService.finishMatch(40, 'USER');
+
+      expect(getSpy).not.toHaveBeenCalled();
     });
   });
 });
