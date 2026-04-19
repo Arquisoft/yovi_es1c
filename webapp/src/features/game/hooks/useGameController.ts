@@ -188,6 +188,8 @@ export const useGameController = (
 
     const [matchId, setMatchId] = useState<string | null>(initialMatchId ?? null);
     const [botFailureCount, setBotFailureCount] = useState(0);
+    const [message, setMessage] = useState<GameMessage>({ key: "clickACellToPlay" });
+    const [gameOver, setGameOver] = useState(false);
 
     const isBoardFull = useMemo(
         () => !gameState.layout.includes("."),
@@ -210,7 +212,7 @@ export const useGameController = (
         setError(null);
         setGameOver(false);
         setBotFailureCount(0);
-        setMessage("Click a cell to play");
+        setMessage({ key: "clickACellToPlay" });
 
         if (nextMode === "ONLINE") return;
 
