@@ -608,7 +608,7 @@ export class OnlineSessionService {
             );
             if (matchId == null) return;
             const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
-            await this.matchService!.finishMatch(matchId, winner, opponent.userId);
+            await this.matchService!.finishMatch(matchId, winner, opponent.userId, player.username);
           } catch (err) {
             console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
           }

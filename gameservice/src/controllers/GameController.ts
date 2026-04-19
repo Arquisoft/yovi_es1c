@@ -133,7 +133,7 @@ export function createGameController(
         throw new MatchAlreadyFinishedError();
       }
 
-      await matchService.finishMatch(matchId, validated.winner);
+      await matchService.finishMatch(matchId, validated.winner, undefined, req.username);
       res.status(200).json({ message: "Match finished" });
     } catch (error) {
       next(error);
