@@ -127,7 +127,7 @@ export default function LeaderboardUI() {
   );
 }
 
-function StatCard({ title, value }: { title: string; value: string | number }) {
+function StatCard({ title, value }: Readonly<{ title: string; value: string | number }>) {
   return (
     <Card
       className="crt-panel"

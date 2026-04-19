@@ -105,12 +105,12 @@ export class RankingService {
     private resolveOpponentRating(input: RankingUpdateInput): number {
         if (input.mode === 'BOT') {
             if (!input.difficulty) {
-                throw new Error('BOT matches require a difficulty to compute ranking');
+                throw new TypeError('BOT matches require a difficulty to compute ranking');
             }
             return this.getOpponentRatingForBot(input.difficulty);
         }
         if (typeof input.opponentRating !== 'number') {
-            throw new Error('ONLINE matches require opponentRating to compute ranking');
+            throw new TypeError('ONLINE matches require opponentRating to compute ranking');
         }
         return input.opponentRating;
     }

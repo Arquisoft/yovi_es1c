@@ -827,4 +827,70 @@ describe("useGameController", () => {
             winner: "BOT",
         });
     });
+
+    it("creates a fresh match on the server when switching back to BOT mode", async () => {
+        fetchMock.mockResolvedValue(
+            new Response(JSON.stringify({ matchId: "match-new", initialYEN: null }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            })
+        );
+
+        const { result } = renderHook(() => useGameController(8, "LOCAL_2P"));
+
+        await act(async () => {
+            result.current.actions.selectMode("BOT");
+        });
+
+        await waitFor(() => {
+            const createCall = fetchMock.mock.calls.find(([url]) =>
+                String(url).endsWith("/api/game/matches"),
+            );
+            expect(createCall).toBeTruthy();
+        });
+
+        expect(result.current.state.gameMode).toBe("BOT");
+    });
+
+    it("swallows backend errors when the new match creation fails", async () => {
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        fetchMock.mockResolvedValue(new Response("boom", { status: 500 }));
+
+        const { result } = renderHook(() => useGameController(8, "LOCAL_2P"));
+
+        await act(async () => {
+            result.current.actions.selectMode("BOT");
+        });
+
+        await waitFor(() => {
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                "Reset match: backend rejected match creation",
+                500,
+            );
+        });
+
+        expect(result.current.state.gameMode).toBe("BOT");
+        consoleErrorSpy.mockRestore();
+    });
+
+    it("logs a reset-match error when the fetch itself throws", async () => {
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        fetchMock.mockRejectedValue(new Error("network down"));
+
+        const { result } = renderHook(() => useGameController(8, "LOCAL_2P"));
+
+        await act(async () => {
+            result.current.actions.selectMode("BOT");
+        });
+
+        await waitFor(() => {
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                "Reset match error:",
+                expect.any(Error),
+            );
+        });
+
+        expect(result.current.state.gameMode).toBe("BOT");
+        consoleErrorSpy.mockRestore();
+    });
 });

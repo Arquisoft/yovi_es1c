@@ -21,8 +21,6 @@ export type LeaderboardResponse = {
   entries: LeaderboardEntry[];
 };
 
-export type UserRankingDto = LeaderboardEntry;
-
 export type UseRankingControllerOptions = {
   userId?: string | number | null;
   limit?: number;
@@ -35,7 +33,7 @@ const DEFAULT_OFFSET = 0;
 export const useRankingController = (options: UseRankingControllerOptions = {}) => {
   const { userId, limit = DEFAULT_LIMIT, offset = DEFAULT_OFFSET } = options;
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
-  const [userRanking, setUserRanking] = useState<UserRankingDto | null>(null);
+  const [userRanking, setUserRanking] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,12 +63,12 @@ export const useRankingController = (options: UseRankingControllerOptions = {}) 
           method: 'GET',
           headers,
         });
-        if (userRes.status === 404) {
-          setUserRanking(null);
-        } else if (!userRes.ok) {
-          throw new Error(`Error obteniendo ranking del usuario: ${userRes.status}`);
-        } else {
+        if (userRes.ok) {
           setUserRanking(await userRes.json());
+        } else if (userRes.status === 404) {
+          setUserRanking(null);
+        } else {
+          throw new Error(`Error obteniendo ranking del usuario: ${userRes.status}`);
         }
       } else {
         setUserRanking(null);
