@@ -25,9 +25,11 @@ import LeaderboardUI from '../features/ranking/ui/LeaderboardUI.tsx';
 import { useActiveSession } from '../features/game/hooks/useActiveSession';
 import { fetchWithAuth } from '../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../config/api.config';
+import { useTranslation } from 'react-i18next';
 
 function HomeScreen() {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -43,18 +45,18 @@ function HomeScreen() {
   ╚██╔╝  ██║   ██║╚██╗ ██╔╝██║       ██╔══╝  ╚════██║ ██║██║     
    ██║   ╚██████╔╝ ╚████╔╝ ██║ ══════███████╗███████║ ██║╚██████╗
    ╚═╝    ╚═════╝   ╚═══╝  ╚═╝       ╚══════╝╚══════╝ ╚═╝ ╚═════╝`}</pre>
-        <div className={`${styles.statusLine} crt-blink`}>Player 1 up</div>
-        <h1 className={styles.heroTitle}>Welcome</h1>
+        <div className={`${styles.statusLine} crt-blink`}>{t('player1Up')}</div>
+        <h1 className={styles.heroTitle}>{t('welcome')}</h1>
         <p className={styles.heroUser}>{user.username}</p>
         <div className={styles.actionRow}>
           <RouterLink to="/create-match" className={styles.primaryAction}>
-            Play
+            {t('play')}
           </RouterLink>
           <RouterLink to="/stats" className={styles.secondaryAction}>
-            Stats
+            {t('stats')}
           </RouterLink>
         </div>
-        <p className={`${styles.promptLine} crt-blink`}>Press start</p>
+        <p className={`${styles.promptLine} crt-blink`}>{t('pressStart')}</p>
       </div>
     </section>
   );
@@ -66,6 +68,7 @@ function AppContent() {
   const { user } = useAuth();
   const { matchId, boardSize } = useActiveSession();
   const [dismissedMatchId, setDismissedMatchId] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   const storageKey = useMemo(() => (matchId ? `abandoned:${matchId}` : null), [matchId]);
   const isDismissed = useMemo(
@@ -83,10 +86,10 @@ function AppContent() {
   );
 
   useEffect(() => {
-    if (!matchId) {
+    if (!matchId && dismissedMatchId !== null) {
       setDismissedMatchId(null);
     }
-  }, [matchId]);
+  }, [matchId, dismissedMatchId]);
 
   const handleReconnect = async () => {
     if (!matchId || !boardSize) return;
@@ -149,19 +152,19 @@ function AppContent() {
           }}
       >
       <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-          Partida activa detectada
+        {t('activeMatchTitle')}
         </DialogTitle>
         <DialogContent>
           <Typography>
-            Tienes una partida en curso. ¿Quieres reconectarte?
+            {t('activeMatchMessage')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="outlined" onClick={handleAbandon}>
-            Abandonar partida
+            {t('abandon')}
           </Button>
           <Button variant="contained" onClick={handleReconnect}>
-            Reconectarme
+            {t('reconnect')}
           </Button>
         </DialogActions>
       </Dialog>

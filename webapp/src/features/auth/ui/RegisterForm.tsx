@@ -5,6 +5,7 @@ import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import { registerUser } from '../api/authApi';
 import { useAuth } from '../context/useAuth';
 import AuthFormCard from './AuthFormCard';
+import {useTranslation} from "react-i18next";
 
 const RegisterForm: React.FC = () => {
   const { login } = useAuth();
@@ -14,6 +15,7 @@ const RegisterForm: React.FC = () => {
   const [responseMessage, setResponseMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation()
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -21,12 +23,12 @@ const RegisterForm: React.FC = () => {
     setError(null);
 
     if (!username.trim()) {
-      setError('Please enter a username.');
+      setError(t('pleaseEnterUsername'));
       return;
     }
 
     if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError(t('passwordMustBe8Characters'));
       return;
     }
 
@@ -36,26 +38,27 @@ const RegisterForm: React.FC = () => {
       login(session.accessToken, session.refreshToken, session.user);
 
       if (session?.user?.username) {
-        setResponseMessage(`Hello ${session.user.username}! Welcome to YOVI!`);
+        setResponseMessage(t('welcomeUser', { username: session.user.username }));
       } else {
-        setResponseMessage('Registration completed successfully.');
+        setResponseMessage(t('registrationSuccess'));
       }
 
       setUsername('');
       setPassword('');
       setTimeout(() => navigate('/'), 1000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error');
+      const key = err instanceof Error ? err.message : 'networkError';
+      setError(t(key))
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AuthFormCard icon={<PersonAddOutlinedIcon />} iconBgColor="secondary.main" title="Create your account">
+    <AuthFormCard icon={<PersonAddOutlinedIcon />} iconBgColor="secondary.main" title={t('createAccount')}>
       <Box component="form" onSubmit={handleSubmit} noValidate>
         <TextField
-          label="Username"
+          label={t('username')}
           fullWidth
           margin="normal"
           value={username}
@@ -65,14 +68,14 @@ const RegisterForm: React.FC = () => {
           disabled={loading}
         />
         <TextField
-          label="Password"
+          label={t('password')}
           type="password"
           fullWidth
           margin="normal"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="new-password"
-          helperText="Minimum 8 characters"
+          helperText={t('minimum8Characters')}
           disabled={loading}
         />
 
@@ -96,13 +99,13 @@ const RegisterForm: React.FC = () => {
           disabled={loading}
           sx={{ mt: 3, mb: 2, py: 1.35 }}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Let's go!"}
+          {loading ? <CircularProgress size={24} color="inherit" /> : t('letsGo')}
         </Button>
 
         <Typography variant="body2" align="center" className="crt-muted" sx={{ letterSpacing: '0.12em' }}>
-          Already have an account?{' '}
+          {t('alreadyHaveAnAccount')}{' '}
           <Link component={RouterLink} to="/login" underline="none" fontWeight={400} sx={{ letterSpacing: '0.12em' }}>
-            Login here
+            {t('loginHere')}
           </Link>
         </Typography>
       </Box>

@@ -3,17 +3,21 @@ import { DataGrid } from '@mui/x-data-grid';
 import { useStatsController } from '../hooks/useStatsController';
 import { useAuth } from '../../auth';
 import styles from './StatsUI.module.css';
+import { useTranslation } from 'react-i18next';
+
 
 export default function StatsUI() {
   const { user } = useAuth();
   const userId = user?.id != null ? String(user.id) : '';
   const { state } = useStatsController(userId);
   const { stats, loading, error } = state;
+  const {t, i18n} = useTranslation();
+
 
   if (loading) {
     return (
       <Typography color="text.primary" textAlign="center" mt={10}>
-        Cargando estadísticas...
+          {t('loadingStats')}...
       </Typography>
     );
   }
@@ -32,43 +36,58 @@ export default function StatsUI() {
   const winrate = stats.totalMatches ? ((stats.wins / stats.totalMatches) * 100).toFixed(1) : 0;
 
   const columns = [
-    {
-      field: 'createdAt',
-      headerName: 'Fecha',
-      flex: 1,
-      valueFormatter: (value: any) => {
-        if (!value) return 'N/A';
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
-      },
+  {
+    field: 'createdAt',
+    headerName: t('date'),
+    flex: 1,
+    valueFormatter: (value: any) => {
+      if (!value) return t('nA');
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return t('nA');
+
+      return date.toLocaleString(i18n.language, {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
     },
-    { field: 'mode', headerName: 'Modo', flex: 1 },
-    { field: 'status', headerName: 'Resultado', flex: 1 },
-  ];
+  },
+  {
+    field: 'mode',
+    headerName: t('mode'),
+    flex: 1,
+  },
+  {
+    field: 'status',
+    headerName: t('result'),
+    flex: 1,
+  },
+];
 
   return (
     <div className={styles.container}>
       <div style={{ maxWidth: 1120, width: '100%' }}>
         <Typography variant="h3" className={styles.header}>
-          Estadísticas del jugador
+          {t('playerStats')}
         </Typography>
-        <Typography className={`${styles.subheader} crt-blink`}>monitor de rendimiento</Typography>
+        <Typography className={`${styles.subheader} crt-blink`}>
+          {t('performanceMonitor')}
+        </Typography>
 
 <Box className={styles.statGrid}>
-          <StatCard title="Partidas jugadas" value={stats.totalMatches} />
-          <StatCard title="Victorias" value={stats.wins} />
-          <StatCard title="Derrotas" value={stats.losses} />
-          <StatCard title="Winrate" value={`${winrate}%`} />
+          <StatCard title= {t('matchPlayed')} value={stats.totalMatches} />
+          <StatCard title={t('wins')} value={stats.wins} />
+          <StatCard title={t('losses')} value={stats.losses} />
+          <StatCard title={t('winrate')} value={`${winrate}%`} />
         </Box>
 
         <Paper className={styles.paper}>
           <Typography variant="h6" className="crt-heading" sx={{ mb: 2 }}>
-            Historial de partidas
+            {t('matchHistory')}
           </Typography>
 
           {matches.length === 0 ? (
             <Typography color="text.secondary" textAlign="center" py={4}>
-              No hay partidas registradas todavía
+              {t('noMatchesRegistered')}
             </Typography>
           ) : (
             <DataGrid
