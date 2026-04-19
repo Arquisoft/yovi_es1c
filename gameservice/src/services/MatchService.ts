@@ -70,17 +70,17 @@ export class MatchService {
     this.botTasks.set(matchId, task);
   }
 
-  async finishMatch(matchId: number, winner: string, opponentUserId?: number) {
+  async finishMatch(matchId: number, winner: string, opponentUserId?: number, username?: string) {
     const result = await this.matchRepo.finishMatch(matchId, winner);
     gamesFinished.inc({ winner });
     activeGames.dec();
 
-    await this.applyRankingSafely(matchId, winner, opponentUserId);
+    await this.applyRankingSafely(matchId, winner, opponentUserId, username);
 
     return result;
   }
 
-  private async applyRankingSafely(matchId: number, winner: string, opponentUserId?: number) {
+  private async applyRankingSafely(matchId: number, winner: string, opponentUserId?: number, username?: string) {
     if (!this.rankingService) return;
     try {
       const match = await this.matchRepo.getMatchById(matchId);
@@ -98,6 +98,7 @@ export class MatchService {
 
       await this.rankingService.applyRatingUpdate({
         userId: match.user_id,
+        username,
         matchId,
         mode,
         result,
