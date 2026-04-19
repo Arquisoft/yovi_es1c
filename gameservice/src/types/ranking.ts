@@ -4,6 +4,7 @@ export type MatchResult = 'WIN' | 'LOSS';
 
 export interface PlayerRanking {
     user_id: number;
+    username: string | null;
     elo_rating: number;
     games_played: number;
     peak_rating: number;
@@ -15,6 +16,7 @@ export interface RankingUpdateInput {
     matchId: number;
     mode: MatchMode;
     result: MatchResult;
+    username?: string;
     // required when mode === 'BOT'
     difficulty?: MatchDifficulty;
     // required when mode === 'ONLINE'
@@ -30,6 +32,7 @@ export interface RankingUpdateOutcome {
 export interface LeaderboardEntry {
     rank: number;
     userId: number;
+    username: string | null;
     eloRating: number;
     gamesPlayed: number;
     peakRating: number;
@@ -46,6 +49,7 @@ export interface LeaderboardResponse {
 export interface UserRankingDto {
     rank: number;
     userId: number;
+    username: string | null;
     eloRating: number;
     gamesPlayed: number;
     peakRating: number;
