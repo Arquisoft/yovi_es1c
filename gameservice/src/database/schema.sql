@@ -41,11 +41,14 @@ GROUP BY user_id;
 -- Expected range: ~800 (beginner) to ~2400 (expert).
 CREATE TABLE IF NOT EXISTS player_rankings (
     user_id        INTEGER     PRIMARY KEY,
+    username       TEXT,
     elo_rating     INTEGER     NOT NULL DEFAULT 1200,
     games_played   INTEGER     NOT NULL DEFAULT 0,
     peak_rating    INTEGER     NOT NULL DEFAULT 1200,
     last_updated   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE player_rankings ADD COLUMN IF NOT EXISTS username TEXT;
 
 -- Audit log of every rating change (per finished, ranked match).
 CREATE TABLE IF NOT EXISTS ranking_history (
