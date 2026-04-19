@@ -32,7 +32,12 @@ export default function LeaderboardUI() {
 
   const columns = [
     { field: 'rank', headerName: '#', width: 80 },
-    { field: 'userId', headerName: 'Jugador', flex: 1 },
+    {
+      field: 'username',
+      headerName: 'Jugador',
+      flex: 1,
+      valueGetter: (_value: any, row: any) => row.username ?? `#${row.userId}`,
+    },
     { field: 'eloRating', headerName: 'ELO', flex: 1 },
     { field: 'gamesPlayed', headerName: 'Partidas', flex: 1 },
     { field: 'peakRating', headerName: 'Pico', flex: 1 },
