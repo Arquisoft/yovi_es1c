@@ -382,6 +382,7 @@ package "Game Service (Node.js + TypeScript)" {
   package "Services" <<frame>> {
     component [MatchService] <<TS>>
     component [StatsService] <<TS>>
+    component [RankingService] <<TS>>
     component [MatchmakingService] <<TS>>
     component [OnlineSessionService] <<TS>>
     component [TurnTimerService] <<TS>>
@@ -391,6 +392,7 @@ package "Game Service (Node.js + TypeScript)" {
   package "Repositories" <<frame>> {
     component [MatchRepository] <<TS>>
     component [StatsRepository] <<TS>>
+    component [RankingRepository] <<TS>>
     component [MatchmakingRepository] <<TS>>
     component [OnlineSessionRepository] <<TS>>
   }
@@ -410,6 +412,7 @@ database "Redis" as redis <<database>>
 
 [GameController] ..> [MatchService]
 [GameController] ..> [StatsService]
+[GameController] ..> [RankingService]
 [GameController] ..> [MatchmakingService]
 [GameController] ..> [OnlineSessionService]
 
@@ -417,12 +420,15 @@ database "Redis" as redis <<database>>
 [OnlineSessionService] ..> [BotFallbackService]
 
 [MatchService] ..> [MatchRepository]
+[MatchService] ..> [RankingService]
 [StatsService] ..> [StatsRepository]
+[RankingService] ..> [RankingRepository]
 [MatchmakingService] ..> [MatchmakingRepository]
 [OnlineSessionService] ..> [OnlineSessionRepository]
 
 [MatchRepository] --> gamedb
 [StatsRepository] --> gamedb
+[RankingRepository] --> gamedb
 [MatchmakingRepository] --> redis
 [OnlineSessionRepository] --> redis
 
@@ -434,6 +440,8 @@ note right of [GameController]
   GET    /api/game/matches/:id
   POST   /api/game/matches/:id/moves
   GET    /api/game/stats/:userId
+  GET    /api/game/rankings
+  GET    /api/game/rankings/:userId
   POST   /api/game/online/queue
   GET    /api/game/online/queue/match
   DELETE /api/game/online/queue
@@ -499,6 +507,12 @@ a| • Match creation and lifecycle management for AI matches
 a| • Aggregates player statistics (wins/losses)
 • Calculates win rate and other performance metrics
 • Provides historical match data per user
+
+| **RankingService**
+a| • Computes ELO rating changes after each ranked match (BOT and ONLINE; LOCAL_2P skipped)
+• Adapts the K-factor by experience (K=40 under 30 games, K=20 afterwards)
+• Maps bot difficulty to a fixed opponent rating and resolves the real opponent rating for online matches
+• Exposes the leaderboard and per-user ranking queries consumed by `GameController`
 
 | **MatchmakingService**
 a| • Manages the Redis-backed matchmaking queue
