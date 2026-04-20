@@ -4,8 +4,10 @@ import { OnlineChatMessage, OnlineSessionState } from '../types/online';
 import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
-import {onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
+import { onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts } from '../metrics';
 import { randomFillSync } from 'crypto';
+import { ChatFilter, ChatFilterError } from './ChatFilter';
+
 export type MoveErrorCode =
     | 'VERSION_CONFLICT'
     | 'NOT_YOUR_TURN'
@@ -51,6 +53,7 @@ export class OnlineSessionService {
   private readonly dedupeTtlMs = 60_000;
   private readonly dedupeTtlSec = Math.ceil(this.dedupeTtlMs / 1000);
   private readonly persistedSessions = new Set<string>();
+  private readonly chatFilter: ChatFilter;
 
   constructor(
       private readonly repository: OnlineSessionRepository,
@@ -59,7 +62,10 @@ export class OnlineSessionService {
       private readonly reconnectGraceSec = 60,
       private readonly deps: SessionDeps = {},
       private readonly matchService?: MatchService,
-  ) {}
+      chatFilter?: ChatFilter,
+  ) {
+    this.chatFilter = chatFilter ?? new ChatFilter();
+  }
 
   async createSession(
       matchId: string,
@@ -117,10 +123,31 @@ export class OnlineSessionService {
       throw new OnlineSessionError('INVALID_MOVE', 'Chat message must be between 1 and 200 characters');
     }
 
+    // Filtering chat
+    let finalText: string;
+    try {
+      const result = await this.chatFilter.filter(normalizedText);
+
+      if (result.wasFiltered) {
+        console.warn(`[ChatFilter] Tier-1 match — user ${userId} in match ${matchId}`);
+      }
+      if (result.toxicityScore !== undefined) {
+        console.info(`[ChatFilter] Perspective score ${result.toxicityScore.toFixed(2)} — user ${userId} in match ${matchId}`);
+      }
+
+      finalText = result.sanitized;
+    } catch (err) {
+      if (err instanceof ChatFilterError) {
+        console.warn(`[ChatFilter] Tier-2 reject score=${err.score.toFixed(2)} — user ${userId} in match ${matchId}`);
+        throw new OnlineSessionError('INVALID_MOVE', 'Message contains inappropriate content');
+      }
+      throw err;
+    }
+
     const message: OnlineChatMessage = {
       userId,
       username,
-      text: normalizedText,
+      text: finalText,
       timestamp: Date.now(),
     };
 
@@ -187,6 +214,7 @@ export class OnlineSessionService {
       return nextState;
     });
   }
+
   async handlePieSwap(matchId: string, userId: number, expectedVersion: number): Promise<OnlineSessionState> {
     return this.withMatchLock(matchId, async () => {
       const state = await this.getState(matchId);
@@ -282,7 +310,6 @@ export class OnlineSessionService {
     });
   }
 
-
   async expireGrace(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
     return this.withMatchLock(matchId, async () => {
       const state = await this.getState(matchId);
@@ -308,7 +335,6 @@ export class OnlineSessionService {
       return state;
     });
   }
-
 
   async getSnapshot(matchId: string): Promise<OnlineSessionState | null> {
     return this.getState(matchId);
@@ -518,6 +544,7 @@ export class OnlineSessionService {
       message: error.message,
     });
   }
+
   async handleTurnTimeout(matchId: string, userId: number, expectedVersion: number): Promise<void> {
     return this.withMatchLock(matchId, async () => {
       const state = await this.getState(matchId);
@@ -600,15 +627,14 @@ export class OnlineSessionService {
     this.persistedSessions.add(state.matchId);
 
     await Promise.all(
-        state.players.map(async (player, idx) => {
-          const opponent = state.players[idx === 0 ? 1 : 0];
+        state.players.map(async (player) => {
           try {
             const matchId = await this.matchService!.createMatch(
                 player.userId, state.size, 'medium', 'ONLINE'
             );
             if (matchId == null) return;
             const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
-            await this.matchService!.finishMatch(matchId, winner, opponent.userId, player.username);
+            await this.matchService!.finishMatch(matchId, winner);
           } catch (err) {
             console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
           }
