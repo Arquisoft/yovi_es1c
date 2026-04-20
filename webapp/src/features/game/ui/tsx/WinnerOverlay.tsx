@@ -1,4 +1,5 @@
 import { Box, Typography, Button, Paper } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
     winnerLabel: string;
@@ -7,6 +8,8 @@ interface Props {
 }
 
 export default function WinnerOverlay({ winnerLabel, onNewGame, onNavigateHome }: Props) {
+    const {t} = useTranslation();
+
     return (
         <Box
             sx={{
@@ -33,7 +36,7 @@ export default function WinnerOverlay({ winnerLabel, onNewGame, onNavigateHome }
                 }}
             >
                 <Typography variant="h2" sx={{ color: '#39ff14', textShadow: '0 0 10px #39ff14', mb: 2 }}>
-                    ¡FIN DEL JUEGO!
+                    {t('gameOver')}
                 </Typography>
                 <Typography variant="h5" sx={{ color: 'white', mb: 4 }}>
                     {winnerLabel}
@@ -41,10 +44,10 @@ export default function WinnerOverlay({ winnerLabel, onNewGame, onNavigateHome }
 
                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                     <Button variant="outlined" onClick={onNavigateHome} sx={{ color: '#39ff14', borderColor: '#39ff14' }}>
-                        Nueva configuración
+                        {t('newConfiguration')}
                     </Button>
                     <Button variant="contained" onClick={onNewGame} sx={{ backgroundColor: '#39ff14', color: 'black' }}>
-                        Jugar de nuevo
+                        {t('playAgain')}
                     </Button>
                 </Box>
             </Paper>

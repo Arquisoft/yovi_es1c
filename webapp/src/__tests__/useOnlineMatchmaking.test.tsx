@@ -163,7 +163,7 @@ describe('useOnlineMatchmaking', () => {
       await result.current.joinQueue();
     });
 
-    expect(result.current.error).toContain('Not authenticated');
+    expect(result.current.error).toContain('notAuthenticated');
   });
 
   it('registers connect listener when socket starts disconnected', async () => {
@@ -206,7 +206,7 @@ describe('useOnlineMatchmaking', () => {
       handlers.get('connect_error')?.(new Error('socket down'));
     });
 
-    expect(result.current.error).toBe('socket down');
+    expect(result.current.error).toBe('socketConnectionFailed');
     expect(result.current.waiting).toBe(false);
   });
   it('keeps joinQueue reference stable across rerenders with same board size', () => {

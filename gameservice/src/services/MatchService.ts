@@ -1,6 +1,8 @@
 import { MatchRepository } from "../repositories/MatchRepository";
+import { RankingService } from "./RankingService";
 import { gamesCreated, activeGames, gamesFinished } from '../metrics';
 import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from "../types/rules.js";
+import type { MatchDifficulty, MatchMode } from "../types/ranking";
 
 type MatchMove = {
   position_yen: string;
@@ -12,7 +14,10 @@ export class MatchService {
   private readonly botStatus = new Map<number, 'processing' | 'done'>();
   private readonly botTasks = new Map<number, Promise<void>>();
 
-  constructor(private readonly matchRepo: MatchRepository) {}
+  constructor(
+      private readonly matchRepo: MatchRepository,
+      private readonly rankingService?: RankingService,
+  ) {}
 
   async createMatch(
       userId: number,
@@ -65,11 +70,44 @@ export class MatchService {
     this.botTasks.set(matchId, task);
   }
 
-  async finishMatch(matchId: number, winner: string) {
+  async finishMatch(matchId: number, winner: string, opponentUserId?: number, username?: string) {
     const result = await this.matchRepo.finishMatch(matchId, winner);
     gamesFinished.inc({ winner });
     activeGames.dec();
+
+    await this.applyRankingSafely(matchId, winner, opponentUserId, username);
+
     return result;
+  }
+
+  private async applyRankingSafely(matchId: number, winner: string, opponentUserId?: number, username?: string) {
+    if (!this.rankingService) return;
+    try {
+      const match = await this.matchRepo.getMatchById(matchId);
+      if (!match) return;
+
+      const mode = match.mode as MatchMode;
+      if (mode === 'LOCAL_2P') return;
+
+      const result: 'WIN' | 'LOSS' = winner === 'USER' ? 'WIN' : 'LOSS';
+
+      let opponentRating: number | undefined;
+      if (mode === 'ONLINE' && typeof opponentUserId === 'number') {
+        opponentRating = await this.rankingService.getOpponentRatingForUser(opponentUserId);
+      }
+
+      await this.rankingService.applyRatingUpdate({
+        userId: match.user_id,
+        username,
+        matchId,
+        mode,
+        result,
+        difficulty: mode === 'BOT' ? (match.difficulty as MatchDifficulty) : undefined,
+        opponentRating,
+      });
+    } catch (err) {
+      console.error(`[MatchService] Ranking update failed for match ${matchId}:`, err);
+    }
   }
 
   private async applyBotMove(matchId: number) {

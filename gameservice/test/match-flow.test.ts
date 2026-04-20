@@ -106,7 +106,7 @@ describe('Game match flow integration tests', () => {
           .send({ winner: 'USER' });
 
       expect(finishResponse.status).toBe(200);
-      expect(mockMatchService.finishMatch).toHaveBeenCalledWith(matchId, 'USER');
+      expect(mockMatchService.finishMatch).toHaveBeenCalledWith(matchId, 'USER', undefined, undefined);
 
       // Step 5: Get final stats
       const mockDto = { totalMatches: 1, wins: 1, losses: 0, matches: [] };

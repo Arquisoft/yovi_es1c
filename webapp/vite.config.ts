@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest';
 export default defineConfig({
   plugins: [react()],
   test: {
+    pool: 'threads',
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/setupTests.ts',

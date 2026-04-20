@@ -4,6 +4,7 @@ import { Box, Button, Paper, Typography } from '@mui/material';
 import { useOnlineMatchmaking } from '../../hooks/useOnlineMatchmaking';
 import { useAuth } from '../../../auth/context/useAuth';
 import type { MatchRulesDto } from '../../../../shared/contracts';
+import {useTranslation} from "react-i18next";
 
 export default function OnlineMatchmakingPage() {
     const navigate = useNavigate();
@@ -17,6 +18,8 @@ export default function OnlineMatchmakingPage() {
     };
     const { waiting, waitedSec, matched, error, joinQueue, cancelQueue } = useOnlineMatchmaking(boardSize, rules);
 
+    const {t} = useTranslation();
+    
     useEffect(() => {
         if (!token) return;
         let cleanup: (() => void) | undefined;
@@ -55,10 +58,10 @@ export default function OnlineMatchmakingPage() {
         return (
             <Box sx={{ textAlign: 'center', mt: 10 }}>
                 <Typography variant="h5" color="error">
-                    Debes iniciar sesión para jugar online
+                    {t('youMustBeLoggedInToJoinQueue')}
                 </Typography>
                 <Button variant="contained" onClick={() => navigate('/login')} sx={{ mt: 2 }}>
-                    Ir a Login
+                    {t('goLogin')}
                 </Button>
             </Box>
         );
@@ -80,14 +83,14 @@ export default function OnlineMatchmakingPage() {
         >
             <Paper className="crt-panel" sx={{ width: '100%', maxWidth: 560, p: 4, textAlign: 'center' }}>
                 <Typography variant="overline" className="crt-screen-label" sx={{ display: 'block', mb: 1 }}>
-                    Matchmaking queue
+                    {t('matchMakingQueue')}
                 </Typography>
                 <Typography variant="h4" className="crt-heading" sx={{ mb: 2 }}>
-                    Buscando rival online
+                    {t('searchingOpponentOnline')}
                 </Typography>
-                <Typography sx={{ mb: 1 }}>Tablero: {boardSize} x {boardSize}</Typography>
-                <Typography sx={{ mb: 1 }}>Estado: {waiting ? 'Buscando partida' : 'Preparando cola'}</Typography>
-                <Typography sx={{ mb: 3 }}>Tiempo en cola: {waitedSec}s</Typography>
+                <Typography sx={{ mb: 1 }}> {t('board')}: {boardSize} x {boardSize}</Typography>
+                <Typography sx={{ mb: 1 }}>{t('status')}: {waiting ? t('searchingMatch') : t('preparingQueue')}</Typography>
+                <Typography sx={{ mb: 3 }}>{t('timeInQueue')}: {waitedSec}s</Typography>
 
                 {error && (
                     <Typography color="error" sx={{ mb: 2 }}>
@@ -102,7 +105,7 @@ export default function OnlineMatchmakingPage() {
                         navigate('/create-match');
                     }}
                 >
-                    Cancelar
+                    {t('cancel')}
                 </Button>
             </Paper>
         </Box>

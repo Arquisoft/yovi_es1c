@@ -20,18 +20,18 @@ describe('LoginForm', () => {
 
   test('shows validation error when username is empty', () => {
     renderWithProviders(<LoginForm />);
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
-    expect(screen.getByText(/please enter a username/i)).toBeInTheDocument();
+    expect(screen.getByText(/introduce un nombre de usuario/i)).toBeInTheDocument();
   });
 
   test('shows validation error when password is empty', () => {
     renderWithProviders(<LoginForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
-    expect(screen.getByText(/please enter a password/i)).toBeInTheDocument();
+    expect(screen.getByText(/por favor, introduce una contraseña/i)).toBeInTheDocument();
   });
 
   test('calls fetch and logs in on success', async () => {
@@ -46,9 +46,9 @@ describe('LoginForm', () => {
 
     renderWithProviders(<LoginForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalled();
@@ -64,9 +64,9 @@ describe('LoginForm', () => {
 
     renderWithProviders(<LoginForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'wrongpass' } });
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'wrongpass' } });
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
   });
@@ -76,9 +76,9 @@ describe('LoginForm', () => {
 
     renderWithProviders(<LoginForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Network down')).toBeInTheDocument();
@@ -90,12 +90,12 @@ describe('LoginForm', () => {
 
     renderWithProviders(<LoginForm />);
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Pablo' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'Pablo' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Network error')).toBeInTheDocument();
+      expect(screen.getByText('Error de red')).toBeInTheDocument();
     });
   });
 });
