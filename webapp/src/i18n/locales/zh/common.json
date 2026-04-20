@@ -128,5 +128,19 @@
   "help.game.turns": "双方轮流落子；左侧面板会显示当前回合和状态。",
   "help.game.pieRule": "启用 Pie Rule 时，2 号玩家可在首步后立即交换。",
   "help.game.honey": "Honey 模式会封锁部分格子，封锁格不可落子。",
-  "noConfigSubtitle": "请先创建一局新对战并使用有效配置开始游戏。"
+  "noConfigSubtitle": "请先创建一局新对战并使用有效配置开始游戏。",
+  "ranking.loading": "正在加载排行榜...",
+  "ranking.title": "全球排行榜",
+  "ranking.subtitle": "赛季 elo 排行",
+  "ranking.stats.players": "玩家",
+  "ranking.stats.position": "你的排名",
+  "ranking.stats.elo": "你的 ELO",
+  "ranking.stats.peak": "你的峰值",
+  "ranking.topPlayers": "顶级玩家",
+  "ranking.empty": "暂无对局记录",
+  "ranking.columns.player": "玩家",
+  "ranking.columns.elo": "ELO",
+  "ranking.columns.gamesPlayed": "对局",
+  "ranking.columns.peak": "峰值",
+  "ranking.columns.updatedAt": "更新时间"
 }

@@ -128,5 +128,19 @@
   "help.game.turns": "Take turns placing stones; the turn and status panel is shown on the left.",
   "help.game.pieRule": "When Pie Rule is active, player 2 may swap right after the opening move.",
   "help.game.honey": "Honey mode blocks cells that cannot be played during the match.",
-  "noConfigSubtitle": "Create a new match to start playing with a valid game configuration."
+  "noConfigSubtitle": "Create a new match to start playing with a valid game configuration.",
+  "ranking.loading": "Loading leaderboard...",
+  "ranking.title": "Global leaderboard",
+  "ranking.subtitle": "Season elo table",
+  "ranking.stats.players": "Players",
+  "ranking.stats.position": "Your position",
+  "ranking.stats.elo": "Your ELO",
+  "ranking.stats.peak": "Your peak",
+  "ranking.topPlayers": "Top players",
+  "ranking.empty": "No matches registered yet",
+  "ranking.columns.player": "Player",
+  "ranking.columns.elo": "ELO",
+  "ranking.columns.gamesPlayed": "Games",
+  "ranking.columns.peak": "Peak",
+  "ranking.columns.updatedAt": "Updated"
 }

@@ -129,5 +129,19 @@
   "help.game.turns": "Los turnos alternan colocación de fichas; el panel izquierdo muestra el estado.",
   "help.game.pieRule": "Si Pie Rule está activa, el jugador 2 puede intercambiar tras la apertura.",
   "help.game.honey": "En modo Honey hay celdas bloqueadas que no se pueden jugar.",
-  "noConfigSubtitle": "Crea una nueva partida para iniciar con una configuración válida."
+  "noConfigSubtitle": "Crea una nueva partida para iniciar con una configuración válida.",
+  "ranking.loading": "Cargando ranking...",
+  "ranking.title": "Ranking global",
+  "ranking.subtitle": "tabla elo de la temporada",
+  "ranking.stats.players": "Jugadores",
+  "ranking.stats.position": "Tu posición",
+  "ranking.stats.elo": "Tu ELO",
+  "ranking.stats.peak": "Tu pico",
+  "ranking.topPlayers": "Top jugadores",
+  "ranking.empty": "No hay partidas registradas todavía",
+  "ranking.columns.player": "Jugador",
+  "ranking.columns.elo": "ELO",
+  "ranking.columns.gamesPlayed": "Partidas",
+  "ranking.columns.peak": "Pico",
+  "ranking.columns.updatedAt": "Actualizado"
 }

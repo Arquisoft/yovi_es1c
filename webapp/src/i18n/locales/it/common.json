@@ -128,5 +128,19 @@
   "help.game.turns": "I turni alternano il posizionamento; il pannello sinistro mostra lo stato.",
   "help.game.pieRule": "Con Pie Rule attiva, il giocatore 2 può scambiare subito dopo l'apertura.",
   "help.game.honey": "In modalità Honey alcune celle sono bloccate e non giocabili.",
-  "noConfigSubtitle": "Crea una nuova partita con configurazione valida per iniziare."
+  "noConfigSubtitle": "Crea una nuova partita con configurazione valida per iniziare.",
+  "ranking.loading": "Caricamento classifica...",
+  "ranking.title": "Classifica globale",
+  "ranking.subtitle": "tabella elo della stagione",
+  "ranking.stats.players": "Giocatori",
+  "ranking.stats.position": "La tua posizione",
+  "ranking.stats.elo": "Il tuo ELO",
+  "ranking.stats.peak": "Il tuo picco",
+  "ranking.topPlayers": "Top giocatori",
+  "ranking.empty": "Nessuna partita registrata al momento",
+  "ranking.columns.player": "Giocatore",
+  "ranking.columns.elo": "ELO",
+  "ranking.columns.gamesPlayed": "Partite",
+  "ranking.columns.peak": "Picco",
+  "ranking.columns.updatedAt": "Aggiornato"
 }

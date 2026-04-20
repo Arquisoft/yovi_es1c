@@ -128,5 +128,19 @@
   "help.game.turns": "Les joueurs posent à tour de rôle ; le panneau de gauche indique l'état.",
   "help.game.pieRule": "Si la Pie Rule est active, le joueur 2 peut échanger après le coup d'ouverture.",
   "help.game.honey": "Le mode Honey bloque des cases qui deviennent injouables.",
-  "noConfigSubtitle": "Créez une nouvelle partie avec une configuration valide pour commencer."
+  "noConfigSubtitle": "Créez une nouvelle partie avec une configuration valide pour commencer.",
+  "ranking.loading": "Chargement du classement...",
+  "ranking.title": "Classement global",
+  "ranking.subtitle": "tableau elo de la saison",
+  "ranking.stats.players": "Joueurs",
+  "ranking.stats.position": "Votre position",
+  "ranking.stats.elo": "Votre ELO",
+  "ranking.stats.peak": "Votre pic",
+  "ranking.topPlayers": "Top joueurs",
+  "ranking.empty": "Aucune partie enregistrée pour le moment",
+  "ranking.columns.player": "Joueur",
+  "ranking.columns.elo": "ELO",
+  "ranking.columns.gamesPlayed": "Parties",
+  "ranking.columns.peak": "Pic",
+  "ranking.columns.updatedAt": "Mis à jour"
 }
