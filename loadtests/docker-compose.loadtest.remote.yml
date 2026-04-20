@@ -14,7 +14,7 @@ services:
       - TARGET_URL=${TARGET_URL:-https://localhost}
       - TARGET_URL_REMOTE=${TARGET_URL_REMOTE:-https://yovi-es1c.duckdns.org}
       - K6_INSECURE_TLS=${K6_INSECURE_TLS:-false}
-      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL_REMOTE:-http://yovi-es1c.duckdns.org:9090/api/v1/write}
+      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL_REMOTE:-https://yovi-es1c.duckdns.org/prometheus/api/v1/write}
     command: run --out experimental-prometheus-rw /scripts/auth.js
     profiles:
       - auth
@@ -30,7 +30,7 @@ services:
       - TARGET_URL=${TARGET_URL:-https://localhost}
       - TARGET_URL_REMOTE=${TARGET_URL_REMOTE:-https://yovi-es1c.duckdns.org}
       - K6_INSECURE_TLS=${K6_INSECURE_TLS:-false}
-      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL_REMOTE:-http://yovi-es1c.duckdns.org:9090/api/v1/write}
+      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL_REMOTE:-https://yovi-es1c.duckdns.org/prometheus/api/v1/write}
     command: run --out experimental-prometheus-rw /scripts/game.js
     profiles:
       - game
@@ -46,7 +46,7 @@ services:
       - TARGET_URL=${TARGET_URL:-https://localhost}
       - TARGET_URL_REMOTE=${TARGET_URL_REMOTE:-https://yovi-es1c.duckdns.org}
       - K6_INSECURE_TLS=${K6_INSECURE_TLS:-false}
-      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL_REMOTE:-http://yovi-es1c.duckdns.org:9090/api/v1/write}
+      - K6_PROMETHEUS_RW_SERVER_URL=${K6_PROMETHEUS_RW_SERVER_URL_REMOTE:-https://yovi-es1c.duckdns.org/prometheus/api/v1/write}
     command: run --out experimental-prometheus-rw /scripts/matchmaking.js
     profiles:
       - matchmaking

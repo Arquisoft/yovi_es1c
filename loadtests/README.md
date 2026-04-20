@@ -119,5 +119,5 @@ k6 writes metrics to Prometheus remote-write. Open Grafana at `http://localhost:
 | `TARGET_URL_REMOTE` | Base URL for remote mode (deployed environment) | `https://yovi-es1c.duckdns.org` |
 | `K6_INSECURE_TLS` | Skip TLS verification in k6 | `true` (local), set to `false` for remote |
 | `LOADTEST_PASSWORD` | Password used for generated test users | `loadtest_pass_123` |
-| `K6_PROMETHEUS_RW_SERVER_URL` | Prometheus remote write endpoint | `http://prometheus:9090/api/v1/write` |
+| `K6_PROMETHEUS_RW_SERVER_URL` | Prometheus remote write endpoint | `http://prometheus:9090/prometheus/api/v1/write` |
 | `GAME_SETUP_VUS` | Number of pre-created users in `game.js` setup | `50` |
