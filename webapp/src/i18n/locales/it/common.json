@@ -111,5 +111,22 @@
   "honey": "Honey (celle bloccate)",
   "noAccount": "Non hai un account?",
   "restart": "Nuova partita",
-  "back": "Indietro"
+  "back": "Indietro",
+  "help.open": "Apri aiuto contestuale",
+  "help.close": "Chiudi aiuto",
+  "help.createMatch.title": "Come configurare la partita",
+  "help.createMatch.boardSize": "Scegli la dimensione del tabellone: più grande significa partite più lunghe e strategiche.",
+  "help.createMatch.mode": "Seleziona la modalità: VS Bot, locale 2 giocatori o matchmaking online.",
+  "help.createMatch.rules": "Le regole possono cambiare apertura e celle valide prima dell'inizio.",
+  "help.createMatch.extras": "Pie Rule consente lo scambio dopo la prima mossa; Honey blocca celle predefinite.",
+  "help.matchmaking.title": "Aiuto matchmaking online",
+  "help.matchmaking.queue": "Sei in coda con dimensione tabellone e regole selezionate.",
+  "help.matchmaking.fallback": "Se non trovi avversari, il sistema può proporre una partita contro bot.",
+  "help.matchmaking.cancel": "Puoi annullare in qualsiasi momento e tornare alla configurazione.",
+  "help.game.title": "Aiuto durante la partita",
+  "help.game.objective": "Obiettivo: collegare i tre lati del triangolo prima dell'avversario.",
+  "help.game.turns": "I turni alternano il posizionamento; il pannello sinistro mostra lo stato.",
+  "help.game.pieRule": "Con Pie Rule attiva, il giocatore 2 può scambiare subito dopo l'apertura.",
+  "help.game.honey": "In modalità Honey alcune celle sono bloccate e non giocabili.",
+  "noConfigSubtitle": "Crea una nuova partita con configurazione valida per iniziare."
 }

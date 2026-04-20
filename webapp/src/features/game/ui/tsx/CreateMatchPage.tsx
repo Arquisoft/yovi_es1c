@@ -22,6 +22,7 @@ import { API_CONFIG } from '../../../../config/api.config';
 import type { BotDifficulty } from '../../hooks/useGameController';
 import type { MatchRulesDto } from '../../../../shared/contracts';
 import {useTranslation} from "react-i18next";
+import { HelpButton } from '../../../../components/HelpButton';
 
 type CreateMatchMode = 'BOT' | 'LOCAL_2P' | 'ONLINE';
 
@@ -138,7 +139,15 @@ export default function CreateMatchPage() {
                 overflow: 'auto',
             }}
         >
-            {}
+            <HelpButton
+                titleKey="help.createMatch.title"
+                contentKeys={[
+                    'help.createMatch.boardSize',
+                    'help.createMatch.mode',
+                    'help.createMatch.rules',
+                    'help.createMatch.extras',
+                ]}
+            />
             <Paper sx={{ width: '100%', maxWidth: 540, p: 4 }} className="crt-panel">
                 <Box textAlign="center" mb={4}>
                     <Typography

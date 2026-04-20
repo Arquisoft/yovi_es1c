@@ -74,7 +74,7 @@ const t = ((key: string, options?: any) => {
 }) as unknown as TFunction;
 
 const mockMessage: GameMessage = {
-  key: "clickACellToPlay"
+    key: "clickACellToPlay"
 };
 
 describe('GameUI Component', () => {
@@ -341,7 +341,7 @@ describe('GameUI Component', () => {
         expect(screen.queryByText(/No se encontró/i)).not.toBeInTheDocument();
     });
 
-    it('navigates to /create-match and alerts on terminal online error', async () => {
+    it('shows terminal online error without forcing navigation', () => {
         const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
         vi.mocked(useOnlineSession).mockReturnValue({
             sessionState: null,
@@ -351,7 +351,8 @@ describe('GameUI Component', () => {
             playMove: vi.fn(),
         } as any);
         renderWithConfig({ boardSize: 8, mode: 'ONLINE', difficulty: 'easy', matchId: 'm5' });
-        await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('La partida ya no está disponible'));
+        expect(screen.getByText('expired')).toBeInTheDocument();
+        expect(alertSpy).not.toHaveBeenCalled();
         alertSpy.mockRestore();
     });
 
@@ -589,12 +590,14 @@ describe('GameUI Component', () => {
             expect(screen.queryByText('err msg')).not.toBeInTheDocument();
         });
 
-        it('RECONNECT_EXPIRED: navega a /create-match y muestra alert (terminal)', async () => {
+        it('RECONNECT_EXPIRED: muestra error terminal y mantiene la pantalla', async () => {
             const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
             vi.mocked(useOnlineSession).mockReturnValue(onlineSession('RECONNECT_EXPIRED', 'Reconexión expirada') as any);
             renderWithConfigAndRoutes(onlineConfig);
 
-            await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('La partida ya no está disponible'));
+            expect(screen.getByText('Reconexión expirada')).toBeInTheDocument();
+            await waitFor(() => {}, { timeout: 200 });
+            expect(alertSpy).not.toHaveBeenCalled();
             alertSpy.mockRestore();
         });
     });
