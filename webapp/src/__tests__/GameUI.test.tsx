@@ -443,24 +443,7 @@ describe('GameUI Component', () => {
         expect(screen.getByText('Nueva Partida')).toBeInTheDocument();
     });
 
-    it('renders offline winner label for player 1', () => {
-        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
-            state: {
-                ...mockState,
-                gameOver: true,
-                message: { key: "clickACellToPlay" },
-                gameState: { ...mockState.gameState, turn: 0 },
-            },
-            actions: mockActions,
-        });
-
-
-        renderWithConfigAndRoutes({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
-
-        expect(screen.getByText('¡Felicidades, Jugador 1 gana!')).toBeInTheDocument();
-    });
-
-    it('renders offline winner label for player 2', () => {
+    it('renders offline winner label for player 1 when turn points to player 2', () => {
         vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
             state: {
                 ...mockState,
@@ -474,7 +457,56 @@ describe('GameUI Component', () => {
 
         renderWithConfigAndRoutes({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
 
+        expect(screen.getByText('¡Felicidades, Jugador 1 gana!')).toBeInTheDocument();
+    });
+
+    it('renders offline winner label for player 2 when turn points to player 1', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                message: { key: "clickACellToPlay" },
+                gameState: { ...mockState.gameState, turn: 0 },
+            },
+            actions: mockActions,
+        });
+
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'LOCAL_2P', difficulty: 'easy', matchId: 'm1' });
+
         expect(screen.getByText('¡Felicidades, Jugador 2 gana!')).toBeInTheDocument();
+    });
+
+    it('renders BOT winner as human when next turn is bot', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                message: { key: "clickACellToPlay" },
+                gameState: { ...mockState.gameState, turn: 1 },
+            },
+            actions: mockActions,
+        });
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+
+        expect(screen.getByText('¡Felicidades, Jugador 1 gana!')).toBeInTheDocument();
+    });
+
+    it('renders BOT winner as bot when next turn is player 1', () => {
+        vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+            state: {
+                ...mockState,
+                gameOver: true,
+                message: { key: "clickACellToPlay" },
+                gameState: { ...mockState.gameState, turn: 0 },
+            },
+            actions: mockActions,
+        });
+
+        renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
+
+        expect(screen.getByText('¡Felicidades, Bot gana!')).toBeInTheDocument();
     });
 
     it('calls actions.newGame from WinnerOverlay', () => {
