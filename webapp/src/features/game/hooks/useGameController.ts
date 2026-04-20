@@ -186,13 +186,10 @@ export const useGameController = (
 
     const [error, setError] = useState<string | null>(null);
 
-    const [message, setMessage] = useState<GameMessage>({
-        key: "clickACellToPlay"
-    });
-
-    const [gameOver, setGameOver] = useState(false);
-    const [matchId] = useState<string | null>(initialMatchId ?? null);
+    const [matchId, setMatchId] = useState<string | null>(initialMatchId ?? null);
     const [botFailureCount, setBotFailureCount] = useState(0);
+    const [message, setMessage] = useState<GameMessage>({ key: "clickACellToPlay" });
+    const [gameOver, setGameOver] = useState(false);
 
     const isBoardFull = useMemo(
         () => !gameState.layout.includes("."),
@@ -208,16 +205,44 @@ export const useGameController = (
         });
     };
 
+    const createNewBotMatch = async () => {
+        try {
+            const res = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    boardSize: initialSize,
+                    difficulty: botDifficulty,
+                    mode: "BOT",
+                    rules: resolvedInitialRules,
+                }),
+            });
+            if (!res.ok) {
+                console.error("Reset match: backend rejected match creation", res.status);
+                return;
+            }
+            const data = await res.json();
+            setMatchId(data.matchId ?? null);
+            if (data.initialYEN) {
+                setGameState({ ...data.initialYEN, rules: normalizeRules(data.initialYEN.rules ?? resolvedInitialRules) });
+            }
+        } catch (err) {
+            console.error("Reset match error:", err);
+        }
+    };
+
     const resetGame = (nextMode: GameMode) => {
         setGameMode(nextMode);
         setGameState(createEmptyYEN(initialSize, resolvedInitialRules));
         setLoading(false);
         setError(null);
         setGameOver(false);
+        setBotFailureCount(0);
+        setMessage({ key: "clickACellToPlay" });
 
-        setMessage({
-            key: "clickACellToPlay"
-        });
+        if (nextMode === "BOT") {
+            void createNewBotMatch();
+        }
     };
 
     const changeSize = (newSize: number) => {

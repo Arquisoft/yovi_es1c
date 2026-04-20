@@ -70,6 +70,9 @@ export default function Nav() {
         <li>
             <LanguageSwitcher />
         </li>
+        <li>
+          <Link to="/ranking" className={linkClass('/ranking')}>Ranking</Link>
+        </li>
         {user ? (
           <>
             <li>

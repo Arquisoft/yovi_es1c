@@ -13,6 +13,7 @@ export type ApiErrorCode =
   | 'SESSION_TERMINAL'
   | 'DUPLICATE_EVENT'
   | 'MATCH_ALREADY_FINISHED'
+  | 'RANKING_NOT_FOUND'
   | 'INTERNAL_ERROR';
 
 export interface ApiErrorPayload {
