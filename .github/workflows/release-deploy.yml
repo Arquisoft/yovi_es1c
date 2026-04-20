@@ -368,6 +368,7 @@ jobs:
             wget -q "$RAW/monitoring/grafana/grafana.ini" -O monitoring/grafana/grafana.ini
             wget -q "$RAW/monitoring/grafana/provisioning/datasources/datasource.yml" -O monitoring/grafana/provisioning/datasources/datasource.yml
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/dashboard.yml" -O monitoring/grafana/provisioning/dashboards/dashboard.yml
+            wget -q "$RAW/monitoring/grafana/provisioning/dashboards/dashboard.json" -O monitoring/grafana/provisioning/dashboards/dashboard.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/auth-internals.json" -O monitoring/grafana/provisioning/dashboards/auth-internals.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/auth-overview.json" -O monitoring/grafana/provisioning/dashboards/auth-overview.json
             wget -q "$RAW/monitoring/grafana/provisioning/dashboards/gameservice-overview.json" -O monitoring/grafana/provisioning/dashboards/gameservice-overview.json
