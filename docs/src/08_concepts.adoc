@@ -185,6 +185,59 @@ Redis is used exclusively by the Game Service for data that is short-lived and m
 
 Redis data is ephemeral and requires no host volume. If Redis restarts, ongoing online sessions are lost, but durable match history in `gamedb` (PostgreSQL) is unaffected.
 
+=== Player Ranking (ELO)
+
+The Game Service keeps a global ranking of players so that competitive results have a
+persistent, comparable meaning across matches.
+
+**Rating algorithm.**
+We use the classical ELO rating formula:
+
+----
+expected = 1 / (1 + 10 ^ ((opponentRating - currentRating) / 400))
+newRating = currentRating + K * (actualScore - expected)
+----
+
+`actualScore` is `1` for a win and `0` for a loss; draws are not modelled because Y has no
+ties. The K-factor adapts to player experience: `K = 40` while the player has fewer than
+30 ranked games and `K = 20` afterwards, so new players converge fast while established
+players are protected against single-match volatility.
+
+**Opponent rating.**
+The opponent rating depends on the match mode:
+
+* **BOT matches** use a fixed difficulty ladder (`easy = 1000`, `medium = 1300`,
+`hard = 1600`, `expert = 1900`). This lets the bots act as a stable calibration scale.
+* **ONLINE matches** use the actual opponent's current rating, resolved at the moment
+the match is finished.
+* **LOCAL_2P matches** are explicitly excluded from ranking: no call is made to the ranking
+service and no history row is written.
+
+**Persistence.**
+Two tables in `gamedb` (PostgreSQL) back the feature. `player_rankings` stores one row per
+user with `elo_rating`, `games_played`, `peak_rating` and `last_updated`; a new player is
+implicitly created at `1200` the first time `applyRatingUpdate` runs for them. Each rating
+change also appends a row to `ranking_history`, which links to the originating match via
+foreign key so the match timeline and the rating timeline stay consistent.
+
+**Integration with match lifecycle.**
+`MatchService.finishMatch` invokes `RankingService.applyRatingUpdate` after the match row
+is marked as `FINISHED`. The ranking update is best-effort: a failure inside
+`applyRatingUpdate` is logged but never aborts the finish transaction, because the match
+result is more important than the rating bookkeeping. The database write that updates the
+ranking and inserts into `ranking_history` is itself wrapped in a single transaction so
+the two tables cannot diverge.
+
+**Public API.**
+Two endpoints under `/api/game` expose the ranking to the frontend:
+
+* `GET /rankings?limit=20&offset=0` returns a paginated leaderboard. `limit` is capped at
+`100` to keep payloads bounded and to make denial-of-service amplification harder.
+* `GET /rankings/{userId}` returns the ranking row and position of a specific user, or
+`404` if the user has not played a ranked match yet.
+
+Both endpoints require a valid JWT, the same as the rest of `/api/game`.
+
 === Error Handling
 
 The application includes a consistent error handling strategy to deal with the different types of errors that may

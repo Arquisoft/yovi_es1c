@@ -21,6 +21,7 @@ import { AuthProvider, useAuth } from '../features/auth';
 import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
 import OnlineMatchmakingPage from '../features/game/ui/tsx/OnlineMatchmakingPage.tsx';
 import StatsUI from '../features/stats/ui/StatsUI.tsx';
+import LeaderboardUI from '../features/ranking/ui/LeaderboardUI.tsx';
 import { useActiveSession } from '../features/game/hooks/useActiveSession';
 import { fetchWithAuth } from '../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../config/api.config';
@@ -134,6 +135,7 @@ function AppContent() {
           <Route path="/online/matchmaking" element={<OnlineMatchmakingPage />} />
           <Route path="/gamey" element={<GameUI />} />
           <Route path="/stats" element={<StatsUI />} />
+          <Route path="/ranking" element={<LeaderboardUI />} />
         </Routes>
       </div>
 

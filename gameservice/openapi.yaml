@@ -243,6 +243,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /rankings:
+    get:
+      summary: Get the global ELO leaderboard
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of entries to return (1..100).
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of entries to skip before collecting the page.
+      responses:
+        '200':
+          description: Leaderboard page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaderboardResponse'
+              example:
+                total: 125
+                limit: 20
+                offset: 0
+                entries:
+                  - rank: 1
+                    userId: 42
+                    eloRating: 1875
+                    gamesPlayed: 128
+                    peakRating: 1902
+                    lastUpdated: '2026-04-18T09:32:10Z'
+                  - rank: 2
+                    userId: 17
+                    eloRating: 1790
+                    gamesPlayed: 88
+                    peakRating: 1821
+                    lastUpdated: '2026-04-17T21:15:44Z'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Ranking service not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /rankings/{userId}:
+    get:
+      summary: Get the ranking entry for a single user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User ranking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRankingDto'
+              example:
+                rank: 7
+                userId: 42
+                eloRating: 1432
+                gamesPlayed: 22
+                peakRating: 1450
+                lastUpdated: '2026-04-18T09:32:10Z'
+        '400':
+          description: Invalid userId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User has no ranking yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Ranking service not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /online/queue:
     post:
       summary: Join matchmaking queue
@@ -594,6 +698,48 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MatchDto'
+
+    LeaderboardEntry:
+      type: object
+      required: [rank, userId, eloRating, gamesPlayed, peakRating, lastUpdated]
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+        userId:
+          type: integer
+        eloRating:
+          type: integer
+        gamesPlayed:
+          type: integer
+          minimum: 0
+        peakRating:
+          type: integer
+        lastUpdated:
+          type: string
+          format: date-time
+
+    LeaderboardResponse:
+      type: object
+      required: [total, limit, offset, entries]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardEntry'
+
+    UserRankingDto:
+      allOf:
+        - $ref: '#/components/schemas/LeaderboardEntry'
 
     ErrorResponse:
       type: object
