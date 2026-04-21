@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import i18n from '../i18n';
 import { renderWithProviders } from './test-utils';
 import LeaderboardUI from '../features/ranking/ui/LeaderboardUI';
 import * as rankingControllerModule from '../features/ranking/hooks/useRankingController';
@@ -12,8 +13,9 @@ vi.mock('../features/auth', async () => {
 });
 
 describe('LeaderboardUI', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
+        await i18n.changeLanguage('es');
         vi.mocked(authModule.useAuth).mockReturnValue({
             user: { id: 1, username: 'alice' },
         } as any);
@@ -31,7 +33,7 @@ describe('LeaderboardUI', () => {
 
         renderWithProviders(<LeaderboardUI />);
 
-        expect(screen.getByText(/Cargando ranking/i)).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('ranking.loading'))).toBeInTheDocument();
     });
 
     it('shows the error message when the fetch fails', () => {
@@ -68,11 +70,11 @@ describe('LeaderboardUI', () => {
 
         renderWithProviders(<LeaderboardUI />);
 
-        expect(screen.getByText(/No hay partidas registradas todavía/i)).toBeInTheDocument();
-        expect(screen.getByText(/Top jugadores/i)).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('ranking.empty'))).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('ranking.topPlayers'))).toBeInTheDocument();
     });
 
-    it('renders the stat cards and the data grid when entries are present', () => {
+    it('renders localized stat cards and the data grid when entries are present', () => {
         vi.mocked(rankingControllerModule.useRankingController).mockReturnValue({
             state: {
                 leaderboard: {
@@ -93,10 +95,14 @@ describe('LeaderboardUI', () => {
 
         renderWithProviders(<LeaderboardUI />);
 
-        expect(screen.getByText(/Ranking global/i)).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('ranking.title'))).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('ranking.subtitle'))).toBeInTheDocument();
+        expect(screen.getByRole('columnheader', { name: i18n.t('ranking.columns.player') })).toBeInTheDocument();
+        expect(screen.getByRole('columnheader', { name: i18n.t('ranking.columns.updatedAt') })).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('ranking.stats.players'))).toBeInTheDocument();
         expect(screen.getByText('alice')).toBeInTheDocument();
         expect(screen.getByText('#7')).toBeInTheDocument();
-        expect(screen.getByText('#1')).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('nA'))).toBeInTheDocument();
     });
 
     it('falls back to dashes when the user has no ranking row', () => {

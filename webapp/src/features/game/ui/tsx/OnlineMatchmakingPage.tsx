@@ -5,6 +5,7 @@ import { useOnlineMatchmaking } from '../../hooks/useOnlineMatchmaking';
 import { useAuth } from '../../../auth/context/useAuth';
 import type { MatchRulesDto } from '../../../../shared/contracts';
 import {useTranslation} from "react-i18next";
+import { HelpButton } from '../../../../components/HelpButton';
 
 export default function OnlineMatchmakingPage() {
     const navigate = useNavigate();
@@ -19,7 +20,7 @@ export default function OnlineMatchmakingPage() {
     const { waiting, waitedSec, matched, error, joinQueue, cancelQueue } = useOnlineMatchmaking(boardSize, rules);
 
     const {t} = useTranslation();
-    
+
     useEffect(() => {
         if (!token) return;
         let cleanup: (() => void) | undefined;
@@ -81,6 +82,16 @@ export default function OnlineMatchmakingPage() {
                 p: 2,
             }}
         >
+            <HelpButton
+                titleKey="help.matchmaking.title"
+                contentKeys={[
+                    'help.matchmaking.queue',
+                    'help.matchmaking.fallback',
+                    'help.matchmaking.cancel',
+                ]}
+                buttonSx={{ top: 12, right: 12 }}
+            />
+
             <Paper className="crt-panel" sx={{ width: '100%', maxWidth: 560, p: 4, textAlign: 'center' }}>
                 <Typography variant="overline" className="crt-screen-label" sx={{ display: 'block', mb: 1 }}>
                     {t('matchMakingQueue')}

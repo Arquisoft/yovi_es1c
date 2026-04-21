@@ -387,22 +387,22 @@ jobs:
             printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> .env
 
             find_cert_name() {
-              docker run --rm -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" alpine sh -c "
-                if [ -f \"/letsencrypt/live/${DOMAIN}/fullchain.pem\" ] && [ -f \"/letsencrypt/live/${DOMAIN}/privkey.pem\" ]; then
-                  printf '%s\n' '${DOMAIN}'
-                  exit 0
-                fi
-
-                for f in /letsencrypt/renewal/*.conf; do
-                  [ -e \"\$f\" ] || continue
-                  if grep -q \"domains = .*${DOMAIN}\" \"\$f\"; then
-                    basename \"\$f\" .conf
-                    exit 0
-                  fi
-                done
-
+              docker run --rm -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" alpine sh -c '
+              if [ -f "/letsencrypt/live/'"${DOMAIN}"'/fullchain.pem" ] && [ -f "/letsencrypt/live/'"${DOMAIN}"'/privkey.pem" ]; then
+              printf "%s\n" "'"${DOMAIN}"'"
+              exit 0
+              fi
+                
+              for f in /letsencrypt/renewal/*.conf; do
+              [ -e "$f" ] || continue
+              if grep -q "domains = .*'"${DOMAIN}"'" "$f"; then
+                basename "$f" .conf
                 exit 0
-              "
+              fi
+              done
+              
+              exit 0
+              '
             }
 
             CERT_NAME="$(find_cert_name || true)"

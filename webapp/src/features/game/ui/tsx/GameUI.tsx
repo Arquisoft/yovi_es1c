@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Avatar,
@@ -25,6 +24,7 @@ import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts'
 import WinnerOverlay from './WinnerOverlay';
 import {useTranslation} from "react-i18next";
 import type { GameMessage } from '../../hooks/useGameController';
+import { HelpButton } from '../../../../components/HelpButton';
 
 type GameConfig = {
     matchId: string;
@@ -130,7 +130,6 @@ export default function GameUI() {
         playMove,
         applyPieSwapOnline,
         emitTurnTimeout,
-        isTerminalError,
     } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
@@ -138,13 +137,6 @@ export default function GameUI() {
     const { messages, sendMessage } = useChatSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
     );
-
-    useEffect(() => {
-        if (config?.mode !== 'ONLINE') return;
-        if (!isTerminalError) return;
-        globalThis.alert('La partida ya no está disponible');
-        navigate('/create-match');
-    }, [config?.mode, navigate, isTerminalError]);
 
     if (!config) {
         return <NoConfigFallback onNavigate={() => navigate('/create-match')} />;
@@ -202,8 +194,7 @@ export default function GameUI() {
             return resolveWinnerLabel(displayState.winner, displayState.players, t);
         }
 
-        // 🔑 jugador ganador = el anterior al turno actual
-        const winnerIndex = displayState.turn === 0 ? 0 : 1;
+        const winnerIndex = displayState.turn === 0 ? 1 : 0;
 
         const winnerName =
             winnerIndex === 0
@@ -255,7 +246,17 @@ export default function GameUI() {
     const gameMessageText = resolveGameMessage(state.message, t);
 
     return (
-        <Box className={styles.container}>
+        <Box className={styles.container} sx={{ position: 'relative' }}>
+            <HelpButton
+                titleKey="help.game.title"
+                contentKeys={[
+                    'help.game.objective',
+                    'help.game.turns',
+                    'help.game.pieRule',
+                    'help.game.honey',
+                ]}
+                buttonSx={{ position: 'fixed', top: 74, right: 16, zIndex: 1400 }}
+            />
             <Box className={styles.mainBox} sx={{
                 display: 'flex',
                 flexDirection: { xs: 'column', md: 'row' },
@@ -424,18 +425,18 @@ export default function GameUI() {
                             />
                         )}
 
-                    {isOnline && (
-                        <ChatBox
-                            matchId={sessionState?.matchId ?? null}
-                            winner={displayState.winner ?? null}
-                            localUserId={user?.id ?? null}
-                            messages={messages}
-                            sendMessage={sendMessage}
-                        />
-                    )}
+                        {isOnline && (
+                            <ChatBox
+                                matchId={sessionState?.matchId ?? null}
+                                winner={displayState.winner ?? null}
+                                localUserId={user?.id ?? null}
+                                messages={messages}
+                                sendMessage={sendMessage}
+                            />
+                        )}
+                    </Box>
                 </Box>
             </Box>
         </Box>
-    </Box>
     );
 }
