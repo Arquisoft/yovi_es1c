@@ -27,10 +27,11 @@ services:
     networks:
       - monitor-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth_user -d authdb"]
+      test: [ "CMD-SHELL", "pg_isready -U auth_user -d authdb && psql -U auth_user -d authdb -c 'SELECT 1' -q --no-align -t" ]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 15s
 
   auth:
     build: ./auth
@@ -101,10 +102,11 @@ services:
     networks:
       - monitor-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U game_user -d gamedb"]
+      test: [ "CMD-SHELL", "pg_isready -U game_user -d gamedb && psql -U game_user -d gamedb -c 'SELECT 1' -q --no-align -t" ]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 15s
 
   gameservice:
     build: ./gameservice
@@ -194,10 +196,18 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--web.enable-remote-write-receiver'
+      - '--web.external-url=https://${PUBLIC_HOST:-localhost}/prometheus/'
+      - '--web.route-prefix=/prometheus'
     networks:
       - monitor-net
 
   grafana:
+    environment:
+      - GF_SERVER_PROTOCOL=http
+      - GF_SERVER_DOMAIN=${PUBLIC_HOST:-localhost}
+      - GF_SERVER_ROOT_URL=https://${PUBLIC_HOST:-localhost}/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SECURITY_COOKIE_SECURE=false
     image: grafana/grafana
     container_name: grafana
     ports:

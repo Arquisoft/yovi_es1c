@@ -25,6 +25,7 @@ pub mod state;
 pub mod version;
 pub mod bot_alias_resolver;
 pub mod play;
+pub mod play_competition;
 pub mod metrics;
 
 use std::collections::HashMap;
@@ -61,6 +62,7 @@ pub fn create_router(state: AppState) -> axum::Router {
         .route(
             "/{api_version}/ybot/play",
             axum::routing::post(play::play), )
+        .route("/play", axum::routing::get(play_competition::play_competition))
         .layer(cors)
         .with_state(state)
 }
@@ -245,6 +247,5 @@ mod tests {
         let _ = state;
     }
 }
-
 
 
