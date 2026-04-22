@@ -26,6 +26,8 @@ import { useActiveSession } from '../features/game/hooks/useActiveSession';
 import { fetchWithAuth } from '../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../config/api.config';
 import { useTranslation } from 'react-i18next';
+import { ProfilePage } from '../features/profile'
+
 
 function HomeScreen() {
   const { user } = useAuth();
@@ -136,6 +138,7 @@ function AppContent() {
           <Route path="/gamey" element={<GameUI />} />
           <Route path="/stats" element={<StatsUI />} />
           <Route path="/ranking" element={<LeaderboardUI />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </div>
 

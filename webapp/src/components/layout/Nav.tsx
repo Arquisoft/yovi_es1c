@@ -5,7 +5,7 @@ import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
 import { useAuth } from '../../features/auth';
 import { logoutSession } from '../../features/auth/api/authApi';
-import {useTranslation} from "react-i18next";
+import { useTranslation } from "react-i18next";
 import LanguageSwitcher from './LanguageSwitcher';
 
 
@@ -68,7 +68,7 @@ export default function Nav() {
           <Link to="/stats" className={linkClass('/stats')}>{t('stats')}</Link>
         </li>
         <li>
-            <LanguageSwitcher />
+          <LanguageSwitcher />
         </li>
         <li>
           <Link to="/ranking" className={linkClass('/ranking')}>Ranking</Link>
@@ -76,7 +76,12 @@ export default function Nav() {
         {user ? (
           <>
             <li>
-              <span className={`${styles.link} ${styles.username}`}>{user.username}</span>
+              <Link
+                to="/profile"
+                className={`${linkClass('/profile')} ${styles.username}`}
+              >
+                {user.username}
+              </Link>
             </li>
             <li>
               <button type="button" onClick={handleLogout} className={`${styles.link} ${styles.logoutButton}`}>
@@ -84,7 +89,7 @@ export default function Nav() {
               </button>
             </li>
 
-             
+
           </>
         ) : (
           <>
