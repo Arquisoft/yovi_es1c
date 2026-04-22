@@ -6,16 +6,16 @@ export class UsersController {
     constructor(
         private readonly usersService: UsersService,
         private readonly userRepository: UserRepository
-    ) {}
+    ) { }
 
     async createProfile(req: Request, res: Response): Promise<void> {
-        const { username, avatar } = req.body;
-        if (!username) {
-            res.status(400).json({ error: 'username is required' });
+        const { userId, username, avatar } = req.body;
+        if (!userId || !username) {
+            res.status(400).json({ error: 'userId and username are required' });
             return;
         }
         try {
-            const profile = await this.userRepository.createProfile(username, avatar);
+            const profile = await this.userRepository.createProfile(userId, username, avatar);
             this.usersService.onUserCreated();
             res.status(201).json(profile);
         } catch (err: any) {
@@ -48,6 +48,24 @@ export class UsersController {
             res.status(404).json({ error: 'Profile not found' });
             return;
         }
+        res.json(profile);
+    }
+
+    async getMyProfile(req: Request, res: Response): Promise<void> {
+        const userId = Number((req as any).userId);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const profile = await this.userRepository.getById(userId);
+
+        if (!profile) {
+            res.status(404).json({ error: 'Profile not found' });
+            return;
+        }
+
         res.json(profile);
     }
 

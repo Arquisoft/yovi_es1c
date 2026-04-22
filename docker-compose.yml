@@ -44,6 +44,7 @@ services:
       - PGDATABASE=authdb
       - PGUSER=auth_user
       - PGPASSWORD=${AUTH_DB_PASSWORD:-changeme}
+      - USERS_SERVICE_URL=http://users:3000
     networks:
       - monitor-net
     depends_on:

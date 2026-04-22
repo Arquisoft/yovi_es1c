@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 declare global {
     namespace Express {
         interface Request {
-            userId?: string;
+            userId?: number;
             username?: string;
         }
     }
@@ -26,8 +26,7 @@ export function verifyJwtMiddleware(req: Request, res: Response, next: NextFunct
 
     try {
         const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as jwt.JwtPayload;
-        const userId = typeof decoded.sub === 'string' ? decoded.sub : undefined;
-
+        const userId = typeof decoded.sub === 'string' ? Number(decoded.sub) : undefined;
         if (!userId || decoded.tokenType !== 'access') {
             return res.status(401).json({ error: 'unauthorized', message: 'Invalid token claims' });
         }
