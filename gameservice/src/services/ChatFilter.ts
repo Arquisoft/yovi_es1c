@@ -123,22 +123,24 @@ interface MatchRange {
 function findBadWords(norm: string, map: number[]): MatchRange[] {
     const ranges: MatchRange[] = [];
     const len = norm.length;
+
     let i = 0;
 
     while (i < len) {
-        // Solo empezar en límite de palabra
-        if (i > 0 && ALPHA.test(norm[i - 1])) { i++; continue; }
-
-        const maxEnd = Math.min(i + MAX_WORD_LEN, len);
         let matched = false;
 
-        for (let j = maxEnd; j >= i + MIN_WORD_LEN; j--) {
-            // Solo terminar en límite de palabra
-            if (j < len && ALPHA.test(norm[j])) continue;
+        const maxEnd = Math.min(i + MAX_WORD_LEN, len);
 
-            if (BAD_WORDS.has(norm.slice(i, j))) {
-                ranges.push({ origStart: map[i], origEnd: map[j - 1] });
-                i = j; // Saltar al final del match
+        for (let j = maxEnd; j >= i + MIN_WORD_LEN; j--) {
+            const slice = norm.slice(i, j);
+
+            if (BAD_WORDS.has(slice)) {
+                ranges.push({
+                    origStart: map[i],
+                    origEnd: map[j - 1],
+                });
+
+                i = j;
                 matched = true;
                 break;
             }
