@@ -28,8 +28,7 @@ export default function LanguageSwitcher() {
   return (
     <>
       <Button
-        className={styles.button}
-        color="inherit"
+        className={styles.langButton}
         onClick={(event) => setAnchorEl(event.currentTarget)}
         endIcon={<KeyboardArrowDownIcon />}
       >
