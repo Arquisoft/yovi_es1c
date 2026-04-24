@@ -139,6 +139,7 @@ jobs:
       - name: Build and start all services with Docker Compose
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PERSPECTIVE_API_KEY: ${{ secrets.PERSPECTIVE_API_KEY }}
         run: |
           docker compose up -d --build
 
@@ -326,11 +327,12 @@ jobs:
           AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
           DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
           DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
+          PERSPECTIVE_API_KEY: ${{ secrets.PERSPECTIVE_API_KEY }}
         with:
           host: ${{ needs.resolve-host.outputs.deploy_host }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN,DUCKDNS_TOKEN
+          envs: JWT_SECRET,IMAGE_TAG,GAME_DB_PASSWORD,AUTH_DB_PASSWORD,DUCKDNS_DOMAIN,DUCKDNS_TOKEN,PERSPECTIVE_API_KEY
           timeout: 60s
           command_timeout: 30m
           script: |
@@ -378,13 +380,14 @@ jobs:
 
             # .env a partir de la plantilla
             wget -q "$RAW/.env.example" -O .env.example
-            grep -Ev '^(JWT_SECRET|AUTH_DB_PASSWORD|GAME_DB_PASSWORD|DUCKDNS_TOKEN|DUCKDNS_DOMAIN|IMAGE_TAG)=' .env.example > .env || true
+            grep -Ev '^(JWT_SECRET|AUTH_DB_PASSWORD|GAME_DB_PASSWORD|DUCKDNS_TOKEN|DUCKDNS_DOMAIN|IMAGE_TAG|PERSPECTIVE_API_KEY)=' .env.example > .env || true
             printf 'JWT_SECRET=%s\n' "$JWT_SECRET" >> .env
             printf 'AUTH_DB_PASSWORD=%s\n' "$AUTH_DB_PASSWORD" >> .env
             printf 'GAME_DB_PASSWORD=%s\n' "$GAME_DB_PASSWORD" >> .env
             printf 'DUCKDNS_TOKEN=%s\n' "$DUCKDNS_TOKEN" >> .env
             printf 'DUCKDNS_DOMAIN=%s\n' "$DUCKDNS_DOMAIN" >> .env
             printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> .env
+            printf 'PERSPECTIVE_API_KEY=%s\n' "$PERSPECTIVE_API_KEY" >> .env
 
             find_cert_name() {
               docker run --rm -v "${LETSENCRYPT_VOLUME}:/letsencrypt:ro" alpine sh -c '
@@ -447,6 +450,7 @@ jobs:
             export IMAGE_TAG="${IMAGE_TAG}"
             export GAME_DB_PASSWORD="${GAME_DB_PASSWORD}"
             export AUTH_DB_PASSWORD="${AUTH_DB_PASSWORD}"
+            export PERSPECTIVE_API_KEY="${PERSPECTIVE_API_KEY}"
 
             # Deploy
             docker-compose down
