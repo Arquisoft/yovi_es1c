@@ -73,6 +73,7 @@ export default function () {
     }
 
     let matched = false;
+    let matchId = null;
     for (let i = 0; i < 5; i += 1) {
         const pollRes = http.get(`${BASE_URL}/api/game/online/queue/match`, {
             headers,
@@ -84,13 +85,24 @@ export default function () {
                 'match found': (r) => r.json('matchId') !== undefined,
             });
             matched = true;
+            matchId = pollRes.json('matchId');
             break;
         }
 
         sleep(2);
     }
 
-    if (!matched) {
+    if (matched && matchId) {
+        const abandonRes = http.post(
+            `${BASE_URL}/api/game/online/sessions/${matchId}/abandon`,
+            JSON.stringify({}),
+            { headers, tags: { operation: 'session_abandon' } },
+        );
+
+        check(abandonRes, {
+            'session abandon accepted': (r) => r.status === 204,
+        });
+    } else {
         const cancelRes = http.del(`${BASE_URL}/api/game/online/queue`, null, {
             headers,
             tags: { operation: 'queue_cancel' },

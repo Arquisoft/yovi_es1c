@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Local mode: use this file when TARGET_ENV=local.
 # Services are attached to the internal stack network.
 services:
@@ -66,8 +64,8 @@ services:
       - ./artillery:/scripts
     environment:
       - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
-      - NODE_TLS_REJECT_UNAUTHORIZED=0
-    command: run /scripts/online-session.yml
+      - LOADTEST_INSECURE_TLS=true
+    command: run /scripts/online-session.local.yml
     networks:
       - yovi_net
     profiles:
@@ -82,8 +80,8 @@ services:
       - ./artillery:/scripts
     environment:
       - TARGET_URL=${TARGET_URL_DOCKER:-https://nginx}
-      - NODE_TLS_REJECT_UNAUTHORIZED=0
-    command: run /scripts/turn-timeout.yml
+      - LOADTEST_INSECURE_TLS=true
+    command: run /scripts/turn-timeout.local.yml
     networks:
       - yovi_net
     profiles:

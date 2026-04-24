@@ -3,7 +3,7 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-quality-scenarios]]
 == Quality Requirements
 
-This project is mainly focused on 4 basic quality attributes for an online game as GameY is. Those are good performance, high usability, easy maintainability and strong security.
+The architecture is optimized around five quality attributes: performance, reliability, security, maintainability and observability.
 
 === Quality Tree
 
@@ -12,51 +12,78 @@ This project is mainly focused on 4 basic quality attributes for an online game 
 @startmindmap
 * Quality
 ** Performance
-*** Response time
-*** Concurrency
-** Usability
-*** Intuitiveness
-*** Continuity
-** Maintainability
-*** Extensibility
-*** Modularization
+*** bot latency
+*** REST latency
+*** matchmaking latency
+** Reliability
+*** online session continuity
+*** timeout handling
+*** reconnect behavior
 ** Security
-*** API Access
-*** User's information
+*** token verification
+*** gateway isolation
+*** data ownership
+** Maintainability
+*** modular services
+*** automated regression tests
+*** documented contracts
+** Observability
+*** Prometheus metrics
+*** Grafana dashboards
+*** repeatable load and benchmark suites
 @endmindmap
 ----
 
 === Quality Scenarios
 
-[cols="1,3,3", options="header"]
+[cols="1,4,3", options="header"]
 |===
-| Attribute | Description | Metric
+| Attribute | Scenario | Metric / acceptance target
 
-| **Response time**
-| Time the system takes to react after a user's abstraction
-| The system should respond to user actions within 1 second
+| Performance
+| A user creates, reads, plays and finishes a local or bot-backed match through the REST API.
+| Local k6 thresholds: create/finish p95 < `800 ms`, get p95 < `500 ms`, move p95 < `2000 ms`.
 
-| **Currency**
-| System's capacity to support different games and users at the same time
-| The system should support at least 25 simultaneous games or users without noticeable lag
+| Performance
+| A user authenticates through the public API.
+| Local k6 thresholds: register p95 < `1500 ms`, login/refresh p95 < `1200 ms`, success rate > `95%`.
 
-| **Intuitiveness**
-| Ease with which players can understand and play the game in a short period of time
-| New players should be able to understand and play the game within 10 minutes.
+| Performance
+| A player joins and cancels matchmaking through REST fallback endpoints.
+| Local k6 thresholds: queue join, poll, cancel and abandon p95 < `800 ms`.
 
-| **Continuity**
-| System's capacity to keep games and sessions active, keeping their progress updated
-| At least 90% of games and sessions should maintain their progress after interruptions.
+| Performance
+| The Rust engine evaluates a board or batch for neural inference.
+| Criterion benchmarks exist for `neural_evaluate` and `neural_evaluate_batch`; regressions are detected from benchmark reports rather than by anecdote.
 
-| **Modularization**
-| Organizational quality, where different functionalities of the program are located in different modules, so that changes in one part do not affect others
-| The program should be organized in at least 3 independent modules to isolate changes
+| Reliability
+| Two players enter the online queue and complete the realtime flow under load.
+| Artillery online profile should complete without websocket or response-timeout failures. Latest validated local run: `640 created`, `640 completed`, `0 failed`.
 
-| **API access**
-| Secure control to the game funcitionalities, avoiding non authorized uses of the game
-| All unauthorized API requests should be blocked to prevent misuse
+| Reliability
+| A player disconnects or lets a turn expire.
+| The session remains coherent through reconnect APIs and bot fallback. Timeout smoke profile completes without scenario failures.
 
-| **User's information**
-| Users' data protection, granting privacy and integrity.
-| User critical data should be properly protected and encrypted
+| Security
+| A protected game or profile endpoint receives a missing, invalid or unverifiable token.
+| Request must fail closed with `401` or `503`; protected routes never accept unverifiable tokens.
+
+| Security
+| An external client attempts to call the internal verification endpoint.
+| `GET/POST /api/auth/verify` through Nginx must be blocked (`403`).
+
+| Maintainability
+| A developer changes one domain without touching unrelated persistence code.
+| Each service owns its own database and automated tests cover its public behavior.
+
+| Observability
+| The team needs to diagnose latency or load anomalies quickly.
+| Prometheus metrics exist for auth, users, game service and gamey; Grafana overview exposes health, active games, socket peaks, bot latency and matchmaking latency.
 |===
+
+=== Supporting Measures
+
+* Load thresholds are versioned in `loadtests/k6/config.js`.
+* Realtime regression scenarios are versioned in `loadtests/artillery/*.yml`.
+* In-process performance evidence is versioned in `gamey/benches/gamey_benchmarks.rs`.
+* Coverage targets are tracked through `vitest --coverage` and `cargo test`.

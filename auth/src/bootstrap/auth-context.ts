@@ -3,12 +3,10 @@ import { CredentialsRepository } from '../repositories/credentials.repository.js
 import { initAuthDatabase } from '../db/init-auth-db.js';
 import { setActiveRefreshTokens } from '../metrics.js';
 
-const DEFAULT_AUTH_DB_PATH = '/app/auth/data/auth.db';
-
 let authService: AuthService | null = null;
 
 export function getAuthDbPath(): string {
-    return process.env.AUTH_DB_PATH?.trim() || DEFAULT_AUTH_DB_PATH;
+    return process.env.AUTH_DB_PATH?.trim() || '';
 }
 
 export async function initializeAuthContext(): Promise<void> {
@@ -18,10 +16,9 @@ export async function initializeAuthContext(): Promise<void> {
         throw new Error('JWT_SECRET is required to start Auth Service');
     }
 
-    const dbPath = getAuthDbPath();
-    await initAuthDatabase(dbPath);
+    await initAuthDatabase();
 
-    const repo = new CredentialsRepository(dbPath);
+    const repo = new CredentialsRepository();
     const activeRefreshTokens = await repo.countActiveRefreshTokens();
 
     setActiveRefreshTokens(activeRefreshTokens);

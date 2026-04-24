@@ -3,6 +3,29 @@ const http = require('http');
 
 const tokenCache = {};
 
+function isInsecureTlsEnabled(rawValue = process.env.LOADTEST_INSECURE_TLS) {
+    return String(rawValue).toLowerCase() === 'true';
+}
+
+function buildHttpRequestOptions(parsedUrl, path, contentLength, insecureTls = isInsecureTlsEnabled()) {
+    const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+        path,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': contentLength,
+        },
+    };
+
+    if (parsedUrl.protocol === 'https:' && insecureTls) {
+        options.rejectUnauthorized = false;
+    }
+
+    return options;
+}
+
 async function getAuthToken(context, events, done) {
     if (!context.vars.__uid) {
         context.vars.__uid = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -24,16 +47,7 @@ async function getAuthToken(context, events, done) {
         const lib = parsed.protocol === 'https:' ? https : http;
         const bodyStr = JSON.stringify(body);
         return new Promise((resolve, reject) => {
-            const req = lib.request({
-                hostname: parsed.hostname,
-                port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-                path,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(bodyStr),
-                },
-            }, (res) => {
+            const req = lib.request(buildHttpRequestOptions(parsed, path, Buffer.byteLength(bodyStr)), (res) => {
                 let data = '';
                 res.on('data', (chunk) => (data += chunk));
                 res.on('end', () => {
@@ -71,4 +85,8 @@ async function getAuthToken(context, events, done) {
     return done();
 }
 
-module.exports = { getAuthToken };
+module.exports = {
+    buildHttpRequestOptions,
+    getAuthToken,
+    isInsecureTlsEnabled,
+};

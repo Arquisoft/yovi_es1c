@@ -4,7 +4,7 @@ import { BotFallbackService } from './BotFallbackService';
 import {OnlineMatchAssignment, OnlinePlayerState, OnlineQueueEntry, OnlineSessionState} from '../types/online';
 import { MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { StatsService } from './StatsService';
-import { matchmakingDuration, matchmakingEvents } from '../metrics';
+import { activeGames, matchmakingDuration, matchmakingEvents, onlineSessionEvents } from '../metrics';
 
 export interface RedisCommandClient {
   zAdd(key: string, members: { score: number; value: string }[]): Promise<number>;
@@ -33,6 +33,8 @@ interface QueueScanResult {
   boardSize: number;
   players: OnlineQueueEntry[];
 }
+
+const ONLINE_SESSION_INDEX_KEY = 'session:online:index';
 
 export const ATOMIC_CLAIM_PAIR_LUA = `
 local queueKey = KEYS[1]
@@ -149,21 +151,21 @@ export class MatchmakingService {
   ): Promise<OnlineMatchAssignment | null> {
     const waitedSec = (now - self.joinedAt) / 1000;
     const skillRange = waitedSec >= 20 ? 2 : 1;
-    const rival = allCandidates.find(
+    const rivals = allCandidates.filter(
         (entry) =>
             entry.userId !== self.userId
             && Math.abs(entry.skillBand - self.skillBand) <= skillRange
             && this.areRulesCompatible(self.rules, entry.rules),
     );
 
-    if (rival) {
+    for (const rival of rivals) {
       const claimed = this.deps.redis
           ? await this.claimPairAtomicallyRedis(boardSize, self.userId, rival.userId)
           : await this.repository.claimPair(self, rival);
 
       if (!claimed) {
         matchmakingEvents.inc({ event: 'assignment', result: 'claim_conflict' });
-        return null;
+        continue;
       }
 
       matchmakingDuration.observe(waitedSec);
@@ -334,11 +336,15 @@ export class MatchmakingService {
     };
 
     await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial), { EX: 3600 });
+    await redis.zAdd(ONLINE_SESSION_INDEX_KEY, [{ score: initial.timerEndsAt, value: assignment.matchId }]);
     await redis.set(`session:user-active:${assignment.playerA.userId}`, assignment.matchId, { EX: 3600 });
 
     if (assignment.playerB) {
       await redis.set(`session:user-active:${assignment.playerB.userId}`, assignment.matchId, { EX: 3600 });
     }
+
+    activeGames.inc();
+    onlineSessionEvents.inc({ event: 'created' });
   }
 
   private areRulesCompatible(left: MatchRules, right: MatchRules): boolean {

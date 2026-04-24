@@ -19,6 +19,26 @@ const registerFailures = new Counter('loadtest_auth_register_failures_total');
 const loginFailures = new Counter('loadtest_auth_login_failures_total');
 const refreshFailures = new Counter('loadtest_auth_refresh_failures_total');
 
+function logoutSession(accessToken, sessionId) {
+    if (!accessToken) return;
+
+    const body = sessionId ? { sessionId } : {};
+    http.post(
+        `${BASE_URL}/api/auth/logout`,
+        JSON.stringify(body),
+        {
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+            },
+            tags: {
+                suite: 'auth',
+                operation: 'logout',
+            },
+        },
+    );
+}
+
 export default function () {
     const headers = { 'Content-Type': 'application/json' };
     const uniqueSuffix = `${__VU}_${__ITER}_${Date.now()}`;
@@ -79,6 +99,7 @@ export default function () {
     if (!loginOk) {
         loginFailures.add(1);
         flowSuccessRate.add(false);
+        logoutSession(registerRes.json('accessToken'), registerRes.json('session.sessionId'));
         sleep(1);
         return;
     }
@@ -110,6 +131,12 @@ export default function () {
     if (!refreshOk) {
         refreshFailures.add(1);
     }
+
+    logoutSession(
+        refreshOk ? refreshRes.json('accessToken') : loginRes.json('accessToken'),
+        refreshOk ? refreshRes.json('session.sessionId') : loginRes.json('session.sessionId'),
+    );
+    logoutSession(registerRes.json('accessToken'), registerRes.json('session.sessionId'));
 
     flowSuccessRate.add(registerOk && loginOk && refreshOk);
 

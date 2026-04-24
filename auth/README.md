@@ -1,74 +1,87 @@
 # Auth Service
 
-Servicio de autenticación del sistema. Gestiona registro/login, ciclo de vida de JWT (`access` + `refresh`) y verificación interna de tokens para comunicación servicio-a-servicio.
+Node.js + Express + TypeScript service that owns credentials, sessions and JWT lifecycle for YOVI.
+
+## Responsibilities
+
+- Register users and persist password credentials in PostgreSQL.
+- Login users and issue access/refresh JWT pairs.
+- Refresh access tokens from refresh tokens.
+- Logout one session or all sessions for a user.
+- Verify access tokens for internal service-to-service authentication.
+- Export Prometheus metrics at `/metrics`.
+- Initialize its PostgreSQL schema on startup through `scripts/init-auth-db.sql`.
+
+## Runtime
+
+- Default port: `3001`.
+- Main entry point: `src/index.ts`.
+- Express app: `src/app.ts`.
+- Routes are mounted under `/api/auth`.
+- OpenAPI contract: `openapi.yaml`.
 
 ## Endpoints
 
-Base path: `/api/auth`
+| Method | Path | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Create credentials and return tokens. |
+| `POST` | `/api/auth/login` | Public | Validate credentials and return tokens. |
+| `POST` | `/api/auth/refresh` | Public | Rotate/use a refresh token to issue a new access token. |
+| `POST` | `/api/auth/logout` | Authenticated access token | Revoke the current session, or a supplied `sessionId`. |
+| `POST` | `/api/auth/logout-all` | Authenticated access token | Revoke all refresh sessions for the token user. |
+| `POST` | `/api/auth/verify` | Internal only | Verify an access token and return claims. Blocked by Nginx externally. |
+| `GET` | `/metrics` | Internal/ops | Prometheus metrics. |
 
-- `POST /api/auth/register` (público)
-- `POST /api/auth/login` (público)
-- `POST /api/auth/refresh` (público)
-- `POST /api/auth/verify` (**interno**)
+`/api/auth/verify` is meant for calls from other containers such as `gameservice` and `users`. Nginx returns `403` for external requests to that exact path.
 
-> `POST /api/auth/verify` está **bloqueado externamente por Nginx** y sólo debe invocarse desde la red interna (por ejemplo, desde otros contenedores/servicios).
+## Error Contract
 
-La especificación OpenAPI está en [`openapi.yaml`](./openapi.yaml).
-
-### Contrato de errores real del servicio
-
-Los errores HTTP del servicio se devuelven como:
+Most HTTP errors use:
 
 ```json
 {
-  "error": "invalid_input | bad_credentials | invalid_refresh_token | user_already_exists | unexpected_error",
-  "message": "...",
+  "error": "invalid_input",
+  "message": "Human readable message",
   "details": []
 }
 ```
 
-Excepción: `POST /api/auth/verify` devuelve `401` con `{ "valid": false }`.
+`/api/auth/verify` returns `401` with `{ "valid": false }` when a token is not valid.
 
-## Variables de entorno
+## Environment Variables
 
-- `JWT_SECRET` (obligatoria): clave para firmar/verificar JWT. El servicio debe fallar en arranque si falta.
-- `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` (opcionales): configuración de PostgreSQL para Auth (por defecto en compose: `auth-db:5432/authdb`, usuario `auth_user`).
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `JWT_SECRET` | Yes | None | Secret used to sign and verify JWTs. The service fails startup if missing. |
+| `PORT` | No | `3001` | HTTP port. |
+| `PGHOST` | No | `localhost` | PostgreSQL host. Compose sets `auth-db`. |
+| `PGPORT` | No | `5432` | PostgreSQL port. |
+| `PGDATABASE` | No | `authdb` | Database name. |
+| `PGUSER` | No | `auth_user` | Database user. |
+| `PGPASSWORD` | No | `changeme` | Database password. |
 
-## Ejecución local
+## Local Development
 
 ```bash
 npm install
-npm run start
+npm run dev
 ```
 
-## Tests y cobertura
+`npm run start` runs `src/index.ts` directly with `tsx`. `npm run build` compiles TypeScript.
+
+## Tests
 
 ```bash
 npm test
 npm run test:coverage
 ```
 
-## Verificar conectividad a PostgreSQL (Auth)
+## Database Initialization
 
-Con Docker Compose puedes comprobar disponibilidad del motor con:
+Startup calls the same initializer used by:
 
 ```bash
-pg_isready -h auth-db -p 5432 -U auth_user -d authdb
+npm run db:init
 ```
 
-## Consumo interno de `/verify` por otros servicios
-
-Para validación interna de access tokens, usar:
-
-- `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
-- Timeout recomendado por llamada: **500ms–1s**
-
-Ejemplo de request interno:
-
-```http
-POST /api/auth/verify
-Authorization: Bearer <access-token>
-Content-Type: application/json
-
-{}
-```
+The SQL file is `scripts/init-auth-db.sql`.

@@ -6,11 +6,21 @@ use std::time::Instant;
 pub static INFERENCE_LATENCY: Lazy<HistogramVec> = Lazy::new(|| {
     register_histogram_vec!(
         "gamey_inference_latency_seconds",
-        "ONNX bot inference latency in seconds",
+        "Deprecated compatibility metric for bot move latency in seconds",
         &["bot_id"],
         vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
     )
         .expect("failed to register gamey_inference_latency_seconds")
+});
+
+pub static BOT_MOVE_DURATION: Lazy<HistogramVec> = Lazy::new(|| {
+    register_histogram_vec!(
+        "gamey_bot_move_duration_seconds",
+        "Full bot move duration in seconds",
+        &["endpoint", "bot_id"],
+        vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0]
+    )
+    .expect("failed to register gamey_bot_move_duration_seconds")
 });
 
 pub fn start_inference_timer() -> Instant {
@@ -20,6 +30,13 @@ pub fn start_inference_timer() -> Instant {
 pub fn observe_inference_latency(bot_id: &str, start: Instant) {
     let elapsed = start.elapsed().as_secs_f64();
     INFERENCE_LATENCY.with_label_values(&[bot_id]).observe(elapsed);
+}
+
+pub fn observe_bot_move_duration(endpoint: &str, bot_id: &str, start: Instant) {
+    let elapsed = start.elapsed().as_secs_f64();
+    BOT_MOVE_DURATION
+        .with_label_values(&[endpoint, bot_id])
+        .observe(elapsed);
 }
 
 pub async fn metrics_handler() -> Response {
@@ -81,6 +98,19 @@ mod tests {
         assert!(latency_family.is_some());
     }
 
+    #[test]
+    fn observe_bot_move_duration_records_endpoint_and_bot_labels() {
+        let start = start_inference_timer();
+        std::thread::sleep(Duration::from_millis(2));
+        observe_bot_move_duration("choose", "expert_fast", start);
+
+        let families = prometheus::gather();
+        let found = families
+            .iter()
+            .any(|family| family.get_name() == "gamey_bot_move_duration_seconds");
+        assert!(found, "metric gamey_bot_move_duration_seconds not found in registry");
+    }
+
     #[tokio::test]
     async fn metrics_handler_returns_200_with_content_type() {
         let response = metrics_handler().await;
@@ -105,5 +135,20 @@ mod tests {
         let body = String::from_utf8(body_bytes.to_vec()).unwrap();
         assert!(body.contains("gamey_inference_latency_seconds"),
                 "body missing expected metric:\n{body}");
+    }
+
+    #[tokio::test]
+    async fn metrics_handler_body_contains_gamey_bot_move_metric() {
+        use http_body_util::BodyExt;
+
+        observe_bot_move_duration("play", "test_bot", start_inference_timer());
+
+        let response = metrics_handler().await;
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("gamey_bot_move_duration_seconds"),
+            "body missing expected metric:\n{body}"
+        );
     }
 }

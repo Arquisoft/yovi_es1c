@@ -5,65 +5,60 @@ ifndef::imagesdir[:imagesdir: ../images]
 
 === Overview
 
-This section outlines the fundamental architectural and technological decisions that shape the Yovi system. These decisions were made based on project requirements, quality goals, and technical constraints imposed by the academic context.
+The solution strategy is driven by four concerns:
 
-=== Technology Decisions
+* keep game computation fast enough for interactive play,
+* isolate data and failures by domain,
+* centralize authentication semantics in one service,
+* make realtime online play observable and load-testable.
 
-==== Distributed Architecture with Microservices
+=== Main Strategic Decisions
 
 [cols="1,3", options="header"]
 |===
-| Decision | Rationale
+| Decision | Why it is the chosen strategy
 
-| **Nginx as API Gateway**
-a| • **Security**: Single public entry point isolates backend services from direct access
-• **Routing**: Centralized request routing based on URL paths (`/api/auth/*`, `/api/users/*`, `/api/gamey/*`, `/api/game/*`)
-• **Cross-cutting concerns**: Handles CORS, rate limiting, and static file serving in one place
-• **Performance**: Efficient reverse proxy with minimal overhead
-• **Simplicity**: Easy configuration and widely adopted in production environments
+| Nginx as the only public ingress
+a|
+* Terminates TLS and redirects port `80` to `443`.
+* Centralizes CORS, rate limiting, static frontend delivery and Socket.IO upgrade handling.
+* Exposes monitoring under `/prometheus/` and `/grafana/`.
+* Blocks external access to `/api/auth/verify`, keeping token verification internal.
 
-| **Separate Game Server (Rust)**
-a| • **Performance**: Rust provides memory safety without garbage collection, ensuring fast execution for game logic and move validation
-• **Concurrency**: Rust's ownership model enables safe concurrent processing of multiple game sessions
-• **Domain Separation**: Isolates core game logic from presentation and user management concerns
-• **Requirement**: Mandated by project specification to implement game engine in Rust
+| Separate Rust game engine (`gamey`)
+a|
+* Keeps rules, board evaluation and bot logic isolated from persistence concerns.
+* Provides low-latency move computation and a clean performance boundary for Criterion benchmarks.
+* Supports both classic search bots and neural MCTS bots behind stable difficulty aliases.
 
-| **Auth Service (Node.js + Express + TypeScript)**
-a| • **Single Responsibility**: Exclusively manages user credentials, authentication, and JWT token lifecycle
-• **Fault Isolation**: A failure in the credentials database does not affect user profiles or game data
-• **Security**: Isolates sensitive credential data (password hashes, tokens) in a dedicated database (`authdb` (PostgreSQL))
-• **Independent Scalability**: Can be scaled independently if authentication load increases
+| Auth as the source of truth for token verification
+a|
+* `users` and `gameservice` no longer interpret JWTs independently.
+* Token semantics, claims validation and token type checks stay in one service.
+* Internal callers use `AUTH_SERVICE_URL` plus short timeouts and small caches to avoid cascading latency.
 
-| **Users Service (Node.js + Express + TypeScript)**
-a| • **Single Responsibility**: Manages user profile data exclusively (`users.db`)
-• **Fault Isolation**: A failure in the profile database does not affect authentication or ongoing games
-• **REST API**: Express simplifies RESTful API implementation
-• **Type Safety**: TypeScript prevents runtime errors and improves maintainability
+| Polyglot persistence by domain
+a|
+* `authdb` stores credentials and refresh tokens.
+* `users.db` stores profile data.
+* `gamedb` stores matches, moves, rankings and statistics.
+* Redis stores only ephemeral online queue and session state.
 
-| **Game Service (Node.js + Express + TypeScript)**
-a| • **Single Responsibility**: Manages all game-related persistence: matches, moves, and statistics (`gamedb` (PostgreSQL))
-• **Fault Isolation**: A heavy load of concurrent matches collapses only the game database, leaving authentication and user profiles unaffected
-• **Domain Cohesion**: Groups all game data in one service aligned with the game domain
-• **Independent Scalability**: Can be scaled independently under high game load
+| Realtime online play in `gameservice`
+a|
+* Online queue, session state and Socket.IO live together in one service.
+* Redis removes pressure from `gamedb` for transient session data.
+* Matchmaking and timeout behavior can be tested separately from the Rust engine.
 
-| **Frontend (React + Vite + TypeScript)**
-a| • **Component-based UI**: React's declarative approach simplifies game board rendering and state management
-• **Fast Development**: Vite provides instant hot module replacement (HMR) for rapid iteration
-• **Type Safety**: TypeScript prevents runtime errors and improves code maintainability
-• **SPA Architecture**: Single-page application enables smooth user experience without page reloads
-• **Client-side coordination**: Frontend manages API call orchestration from the browser
-
-| **Databases (PostgreSQL x2 + SQLite x1)**
-a| • **Fault Isolation**: Three independent databases (`authdb` (PostgreSQL), `users.db`, `gamedb` (PostgreSQL)) ensure that a failure or overload in one does not affect the others
-• **Simplicity**: Zero-configuration embedded database, no separate server process required
-• **Portability**: Single file databases simplify deployment and backup per service
-• **Performance**: Excellent read performance for each domain's specific workload
-• **Write-Ahead Logging (WAL)**: Enables concurrent reads during writes, sufficient for academic project scale
+| Testing and observability as first-class concerns
+a|
+* Vitest covers Node.js services and frontend units/integration flows.
+* Cucumber + Playwright cover browser-level system scenarios.
+* k6 and Artillery validate REST and Socket.IO under load.
+* Prometheus, Grafana and Criterion provide runtime and in-process performance evidence.
 |===
 
-=== Architectural Patterns
-
-==== Microservices Architecture
+=== Architectural Shape
 
 [plantuml, solution-architecture, png]
 ----
@@ -74,301 +69,146 @@ skinparam rectangle {
   BackgroundColor<<frontend>> LightGreen
   BackgroundColor<<gateway>> Orange
   BackgroundColor<<service>> LightYellow
-  BackgroundColor<<gameengine>> LightBlue
+  BackgroundColor<<engine>> LightBlue
+  BackgroundColor<<monitoring>> Wheat
 }
 
-actor "User (Browser)" as user
+actor "Player" as user
 
-RECTANGLE "React Frontend\n(Webapp)" as frontend <<frontend>>
-RECTANGLE "Nginx\n(API Gateway)" as nginx <<gateway>>
-RECTANGLE "Auth Service\n(Node.js)" as auth <<service>>
-RECTANGLE "Users Service\n(Node.js)" as users <<service>>
-RECTANGLE "Game Service\n(Node.js)" as gameservice <<service>>
-RECTANGLE "Game Server\n(Rust)" as game <<gameengine>>
-database "authdb\n(PostgreSQL)" as authdb
-database "users.db\n(SQLite)" as usersdb
-database "gamedb\n(PostgreSQL)" as gamedb
+RECTANGLE "React Frontend" as frontend <<frontend>>
+RECTANGLE "Nginx" as nginx <<gateway>>
+RECTANGLE "Auth Service" as auth <<service>>
+RECTANGLE "Users Service" as users <<service>>
+RECTANGLE "Game Service" as gameservice <<service>>
+RECTANGLE "Gamey" as gamey <<engine>>
+RECTANGLE "Prometheus + Grafana" as monitor <<monitoring>>
+database "authdb" as authdb
+database "users.db" as usersdb
+database "gamedb" as gamedb
+database "Redis" as redis
 
-user --> nginx : HTTP (80)
-nginx --> frontend : Static files
-nginx --> auth : /api/auth/*\nHTTP (3001)
-nginx --> users : /api/users/*\nHTTP (3000)
-nginx --> gameservice : /api/game/*\nHTTP (3002)
-nginx --> game : /api/gamey/*\nHTTP (4000)
-frontend ..> nginx : API calls from browser
+user --> nginx : HTTPS
+nginx --> frontend : static SPA
+nginx --> auth : /api/auth/*
+nginx --> users : /api/users/*
+nginx --> gameservice : /api/game/*\n/api/game/socket.io/*
+nginx --> gamey : /api/gamey/*
+nginx --> monitor : /prometheus/\n/grafana/
+
+users --> auth : verify token
+gameservice --> auth : verify token
 auth --> authdb
 users --> usersdb
 gameservice --> gamedb
-
-note right of nginx
-  **API Gateway Responsibilities:**
-  • Single entry point (port 80)
-  • Request routing
-  • CORS handling
-  • Rate limiting
-  • Static file serving
-end note
-
-note right of auth
-  **Auth Service Responsibilities:**
-  • User registration & login
-  • Password hashing (bcrypt/Argon2)
-  • JWT token generation & validation
-  • Credentials persistence (authdb)
-end note
-
-note right of users
-  **Users Service Responsibilities:**
-  • User profile management
-  • Profile queries and updates
-  • User data persistence (users.db)
-end note
-
-note right of gameservice
-  **Game Service Responsibilities:**
-  • Match creation and persistence
-  • Move history storage
-  • Statistics aggregation
-  • Game data persistence (gamedb)
-end note
-
-note right of game
-  **Game Server Responsibilities:**
-  • Game logic (move validation)
-  • Win condition checking
-  • Bot move computation
-  • Strategy implementations
-  • Pure domain logic (stateless)
-end note
+gameservice --> redis
 
 @enduml
 ----
 
-The system follows a **microservices architecture** where:
+The architecture deliberately keeps responsibilities narrow:
 
-* **Nginx** acts as the API Gateway, providing a single entry point and routing requests to appropriate services
-* **React Frontend** runs in the user's browser and coordinates API calls to backend services
-* **Auth Service** is exclusively responsible for authentication, registration, and JWT management, backed by `authdb` (PostgreSQL)
-* **Users Service** manages user profile data, backed by `users.db`
-* **Game Service** manages all game-related persistence (matches, moves, statistics), backed by `gamedb` (PostgreSQL)
-* **Game Server** remains stateless and focuses solely on game domain logic
-* **YEN notation** defines the boundaries between services for game state communication
-* Each service owns its own database, ensuring **fault isolation**: a failure or overload in one database does not propagate to the others
+* the browser coordinates UX and initiates requests,
+* Nginx protects and routes,
+* Auth owns identity and tokens,
+* Users owns profiles,
+* Game Service owns persistence and realtime orchestration,
+* Gamey owns rules and bot computation,
+* Prometheus/Grafana expose operational evidence.
 
-==== Layered Architecture within Services
-
-[plantuml, layered-architecture, png]
-----
-@startuml
-
-package "React Frontend (Browser)" {
-  [Components] --> [State Management]
-  [State Management] --> [API Layer]
-  [API Layer] --> [HTTP Client]
-
-  note right of Components
-    React components
-    UI rendering
-  end note
-
-  note right of [State Management]
-    Game state
-    User session
-    Local storage
-  end note
-}
-
-package "Auth Service (Node.js)" {
-  [AuthController] --> [AuthService]
-  [AuthService] --> [CredentialsRepository]
-  [CredentialsRepository] --> [authdb]
-
-  note right of AuthController
-    REST endpoints
-    /auth/register, /auth/login
-  end note
-
-  note right of [AuthService]
-    Password hashing
-    JWT generation & validation
-  end note
-}
-
-package "Users Service (Node.js)" {
-  [UsersController] --> [UserService]
-  [UserService] --> [UserRepository]
-  [UserRepository] --> [users.db]
-
-  note right of UsersController
-    REST endpoints
-    /users/*
-  end note
-
-  note right of [UserService]
-    Profile management
-    User CRUD
-  end note
-}
-
-package "Game Service (Node.js)" {
-  [GameController] --> [MatchService]
-  [GameController] --> [StatsService]
-  [MatchService] --> [MatchRepository]
-  [StatsService] --> [StatsRepository]
-  [MatchRepository] --> [gamedb]
-  [StatsRepository] --> [gamedb]
-
-  note right of GameController
-    REST endpoints
-    /game/matches, /game/stats
-  end note
-
-  note right of [MatchService]
-    Match lifecycle
-    Move persistence
-  end note
-}
-
-package "Game Server (Rust)" {
-  [Engine Service] --> [Game Domain]
-  [Game Domain] --> [Strategy Pattern]
-
-  note right of [Game Domain]
-    Core game rules
-    Board representation
-    Move validation
-  end note
-
-  note right of [Strategy Pattern]
-    Multiple bot strategies
-    Difficulty levels
-    Extensible AI
-  end note
-}
-
-@enduml
-----
-
-**React Frontend Layers:**
-
-* **Components**: React UI components for board, moves, statistics
-* **State Management**: Local game state and user session (React hooks/context)
-* **API Layer**: Abstraction over backend API calls
-* **HTTP Client**: Fetch/Axios for making HTTP requests to Nginx
-
-**Auth Service Layers:**
-
-* **AuthController**: Handles HTTP requests for registration and login
-* **AuthService**: Business logic for password hashing and JWT management
-* **CredentialsRepository**: Abstracts access to `authdb` (PostgreSQL)
-
-**Users Service Layers:**
-
-* **UsersController**: Handles HTTP requests for user profile operations
-* **UserService**: Business logic for user profile management
-* **UserRepository**: Abstracts access to `users.db`
-
-**Game Service Layers:**
-
-* **GameController**: Handles HTTP requests for match and stats operations
-* **MatchService**: Business logic for match creation, move persistence, and lifecycle
-* **StatsService**: Aggregates and retrieves player statistics
-* **MatchRepository / StatsRepository**: Abstract access to `gamedb` (PostgreSQL)
-
-**Game Server Design:**
-
-* **Domain-Driven Design**: Game, Board, Player, Move as core entities
-* **Strategy Pattern**: Multiple bot strategies with configurable difficulty levels
-* **Encapsulation**: Pure domain logic with no external dependencies
-
-=== Quality Goals Achievement
-
-[cols="2,3,3", options="header"]
-|===
-| Quality Goal | Strategy | Implementation
-
-| **Performance**
-a| • Rust for compute-intensive game logic
-• PostgreSQL for auth/game transactional workloads and SQLite for users profile storage
-• Stateless game server for horizontal scaling
-• Nginx for efficient request routing
-a| • Move validation in O(n) time
-• Indexed database queries per domain
-• Concurrent request handling in Rust
-• Nginx caching for static files
-
-| **Scalability**
-a| • Stateless services enable horizontal scaling
-• Each database optimized for its own workload
-• Nginx can load balance multiple instances per service
-a| • Multiple game server instances possible
-• Independent service and database scaling
-• Caching strategies for frequent queries
-• Each service scales according to its own load
-
-| **Maintainability**
-a| • Clear separation of concerns across services and databases
-• Type safety (TypeScript + Rust)
-• Each service owns its data domain
-a| • Layered architecture in each service
-• Repository pattern for DB abstraction per service
-• API documentation
-• Shared YEN notation contracts
-
-| **Interoperability**
-a| • REST API with JSON
-• Standardized YEN notation
-• External bot API support
-a| • HTTP-based communication
-• Versioned API endpoints
-• Cross-team bot competition support
-• Well-defined API contracts
-
-| **Security**
-a| • Nginx isolates backend services
-• Rate limiting and CORS at gateway level
-• Authentication isolated in Auth Service
-• Credential data separated from profile and game data
-a| • JWT token-based authentication (Auth Service)
-• Password hashing (bcrypt/Argon2)
-• No direct backend access
-• Input validation at API boundaries
-• `authdb` (PostgreSQL) isolated from `users.db` and `gamedb` (PostgreSQL)
-|===
-
-=== Key Constraints
+=== Internal Design Patterns
 
 [cols="1,3", options="header"]
 |===
-| Constraint | Impact on Architecture
+| Pattern | Usage in Yovi
 
-| **Mandated Technologies**
-| TypeScript for frontend/backend and Rust for game engine are project requirements, limiting technology choices
+| API Gateway
+| Nginx routes `/api/auth/*`, `/api/users/*`, `/api/game/*`, `/api/gamey/*`, `/prometheus/` and `/grafana/`, and blocks public `/api/auth/verify`.
 
-| **YEN Notation**
-| All game state communication must use YEN format, requiring parsing/serialization layers
+| Repository pattern
+| `auth`, `users` and `gameservice` keep database access behind repositories so service logic can be tested with mocks or isolated database fixtures.
 
-| **Bot API Requirement**
-| System must expose external API for bot clients, influencing authentication and API design
+| Strategy pattern
+| `gamey` maps user-facing bot levels to concrete implementations such as random, minimax and neural MCTS.
 
-| **Academic Timeline**
-| Limited development time favors familiar technologies (React, Express) and simple deployment (SQLite)
+| Event-driven realtime flow
+| Socket.IO events (`queue:join`, `matchmaking:matched`, `match:join`, `move:play`, `chat:message`, `session:state`) decouple online session updates from REST endpoints.
 
-| **Web Deployment**
-| Application must be publicly accessible, requiring containerization and reverse proxy strategy
-
-| **Multiple Strategies**
-| Game engine must support extensible bot strategies, leading to Strategy pattern adoption
-
-| **Database Fault Isolation**
-| Three independent databases (authdb, users.db, gamedb) ensure that overload or failure in one domain does not affect the others
+| Layered service structure
+| Controllers handle transport concerns, services own business behavior, repositories own persistence, middleware owns cross-cutting concerns such as auth and error mapping.
 |===
 
-=== Organizational Decisions
+=== Quality Goal Mapping
 
-* **Monorepo structure**: All services in one repository (`webapp/`, `users/`, `auth/`, `gamey/`, `gameservice/`, `nginx/`) for easier coordination
-* **Docker Compose**: Simplified local development with single command startup
-* **Shared YEN notation**: Common understanding of game state format across all services
-* **API-first approach**: Define API contracts before implementation
-* **Version control**: Git with feature branch workflow and code reviews
-* **Documentation**: arc42 for architecture, inline code documentation, README files per service
+[cols="2,3,3", options="header"]
+|===
+| Quality Goal | Strategy | Concrete implementation
+
+| Performance
+a|
+* Rust for move computation
+* Redis for transient online state
+* cached token verification
+a|
+* Criterion benchmarks for `evaluate`, `evaluate_batch` and choose-move paths
+* load-tested matchmaking and online flows
+* Prometheus latency histograms for bot moves and matchmaking
+
+| Security
+a|
+* single ingress
+* central token verification
+* strict domain data ownership
+a|
+* `/api/auth/verify` is internal-only
+* `/api/game/*` and `/api/users/profiles/*` require bearer tokens
+* credentials never leave `auth`
+
+| Maintainability
+a|
+* service boundaries
+* typed codebase
+* documented contracts
+a|
+* TypeScript + Rust
+* arc42 and service READMEs
+* automated regression tests per service
+
+| Reliability
+a|
+* online state isolated from durable state
+* timeout and reconnect handling
+a|
+* Redis stores live sessions, `gamedb` stores finished history
+* matchmaking cleanup, reconnect grace and bot fallback logic
+
+| Observability
+a|
+* unified metrics pipeline
+* repeatable load suites
+a|
+* `/metrics` in every backend service
+* Grafana overview dashboard
+* k6 and Artillery profiles committed in the repo
+|===
+
+=== Constraints with Architectural Impact
+
+[cols="1,3", options="header"]
+|===
+| Constraint | Architectural consequence
+
+| Rust is mandatory for the engine
+| The game rules and bot logic live in a standalone service instead of being embedded into Node.js.
+
+| YEN remains the engine contract
+| Browser, Game Service and Gamey need conversion layers between stored match state and engine requests.
+
+| The system must be deployable on the web
+| TLS ingress, Dockerized services and static SPA delivery are required.
+
+| The project must support both AI and online modes
+| The solution combines durable match persistence with a separate realtime session model.
+
+| Load and acceptance evidence are part of the deliverable
+| Tests, coverage, load profiles, Grafana dashboards and Criterion benchmarks are documented as architecture evidence, not as afterthoughts.
+|===

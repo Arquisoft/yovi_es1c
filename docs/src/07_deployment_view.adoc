@@ -3,344 +3,189 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-deployment-view]]
 == Deployment View
 
-The deployment view describes the technical infrastructure we use to run the Yovi system. It also shows how the software parts (building blocks) connect to that infrastructure.
+The deployment view documents how Yovi is packaged and exposed in Docker-based environments. The same logical topology is used in local development and in the deployed stack.
 
-Because our system uses Docker containers, we describe the deployment in two main environments: the Production Environment and the Development Environment.
+=== Infrastructure Level 1: Production-Like Docker Topology
 
-=== Infrastructure Level 1 - Production Environment
-
-This section describes the main production environment where the final users can access the system.
-
-_**Overview Diagram**_
-
-[plantuml, deployment-level1-architecture, png]
+[plantuml, deployment-level1, png]
 ----
 @startuml
 !include <C4/C4_Deployment>
 
 node "Internet" as internet {
-  actor "User (Browser)" as user
+  actor "User Browser" as user
 }
 
-node "Cloud Virtual Machine" as vm {
-
-  node "Docker Network (internal)" as dockernet {
-
+node "Host / VM" as vm {
+  node "Docker Network" as dockernet {
     node "Nginx Container" as nginxcontainer {
-      artifact "Nginx\nAPI Gateway\n(Port 80 - public)" as nginx
+      artifact "Nginx\n443 public\n80 redirect" as nginx
     }
 
-    node "Auth Service Container" as authcontainer {
-      artifact "Node.js\nAuth Service\n(Port 3001 - internal)" as auth
+    node "Frontend Container" as frontendcontainer {
+      artifact "Webapp static bundle" as webapp
     }
 
-    node "Users Service Container" as userscontainer {
-      artifact "Node.js\nUsers Service\n(Port 3000 - internal)" as users
+    node "Auth Container" as authcontainer {
+      artifact "Auth Service\n3001 internal" as auth
+    }
+
+    node "Users Container" as userscontainer {
+      artifact "Users Service\n3000 internal" as users
     }
 
     node "Game Service Container" as gameservicecontainer {
-      artifact "Node.js\nGame Service\n(Port 3002 - internal)" as gameservice
+      artifact "Game Service\n3002 internal" as gameservice
     }
 
-    node "Game Server Container" as gamecontainer {
-      artifact "Rust Binary\nGame Server\n(Port 4000 - internal)" as gameserver
+    node "Gamey Container" as gameycontainer {
+      artifact "Gamey\n4000 internal" as gamey
     }
 
     node "Redis Container" as rediscontainer {
-      artifact "Redis\n(Port 6379 - internal)" as redis
+      artifact "Redis\n6379 internal" as redis
     }
 
     node "Prometheus Container" as prometheuscontainer {
-      artifact "Prometheus\n(Port 9090 - public)" as prometheus
+      artifact "Prometheus\ninternal" as prometheus
     }
 
     node "Grafana Container" as grafanacontainer {
-      artifact "Grafana\n(Port 9091 - public)" as grafana
+      artifact "Grafana\ninternal" as grafana
     }
 
-    database "authdb\n(PostgreSQL Volume)" as authdb
-    database "users.db\n(Host Volume)" as usersdb
-    database "gamedb\n(PostgreSQL Volume)" as gamedb
+    database "authdb volume" as authdb
+    database "users.db volume" as usersdb
+    database "gamedb volume" as gamedb
   }
 }
 
-user -down-> nginx : HTTP (80)\nREST/JSON\nWebSocket
+user --> nginx : HTTPS / Socket.IO
+nginx --> webapp : /
+nginx --> auth : /api/auth/*
+nginx --> users : /api/users/*
+nginx --> gameservice : /api/game/*\n/api/game/socket.io/*
+nginx --> gamey : /api/gamey/*
+nginx --> prometheus : /prometheus/
+nginx --> grafana : /grafana/
 
-nginx -down-> auth : /api/auth/*\nHTTP (3001)
-nginx -down-> users : /api/users/*\nHTTP (3000)
-nginx -down-> gameservice : /api/game/*\nHTTP (3002) + WS
-nginx -down-> gameserver : /api/gamey/*\nHTTP (4000)
-nginx -right-> nginx : Serves React\nstatic files
-
-auth -down-> authdb : PostgreSQL
-users -down-> usersdb : SQLite
-gameservice -down-> gamedb : PostgreSQL
-gameservice -down-> redis : Redis protocol (6379)
-
-prometheus -down-> users : Scrape /metrics
-grafana -down-> prometheus : Query metrics
-
-note right of nginxcontainer
-  Only public-facing port (80)
-  All other services are internal only
-  (except Prometheus :9090 and Grafana :9091)
-end note
-
-note right of rediscontainer
-  Ephemeral store
-  Matchmaking queue
-  Online session state
-  Socket.IO pub/sub adapter
-end note
-
-note right of authdb
-  Each DB is an independent
-  Docker volume. A failure in
-  one does not affect the others.
-end note
+users --> auth : internal verify
+gameservice --> auth : internal verify
+auth --> authdb
+users --> usersdb
+gameservice --> gamedb
+gameservice --> redis
 
 @enduml
 ----
 
-**Motivation**
+**Why this topology**
 
-The main goal of this deployment strategy is to find a good balance between working fast and keeping the system secure. Software needs hardware to run. By using a Virtual Machine (VM) as the main host, the system creates a secure border at the hardware level. Inside this VM, we use Docker containers to run the apps. This makes sure that the deployment is isolated and prevents problems with installed programs on the host machine.
+* Nginx is the only public ingress.
+* Every backend service stays on the internal Docker network.
+* Monitoring is reachable through Nginx path prefixes instead of publishing extra public ports.
+* Redis is isolated to online features; durable state is stored only in PostgreSQL or SQLite volumes.
 
-**Quality and/or Performance Features**
-
-* **Security (Defense in Depth):** The infrastructure has two layers of isolation. If a container is attacked, the VM acts as an external wall that protects the physical server. Also, the Nginx API Gateway is the only part connected to the public internet.
-* **Portability:** By using Docker containers, the environment is always the same. The application works exactly the same way, no matter what physical server is running the Virtual Machine.
-* **Independent Scalability:** The system is divided into specific microservices (React Frontend, Auth Service, Users Service, Game Service, Game Server). Because of this, developers can give more resources to a specific service without affecting the others.
-* **Fault Isolation:** Each service owns its own data store. An overload or failure in `gamedb` (PostgreSQL) does not affect `authdb` (PostgreSQL) or `users.db`. Similarly, a Redis failure only affects online matchmaking and active sessions, while AI matches and authentication remain fully operational.
-
-**Mapping of Building Blocks to Infrastructure**
+**Mapping of building blocks to infrastructure**
 
 [cols="1,2", options="header"]
 |===
-| Software Artifact (Building Block) | Infrastructure Element
+| Software Artifact | Infrastructure Mapping
 
-| **React Frontend (Webapp)**
-| Deployed as static files (HTML, CSS, JS bundle) served by Nginx over HTTPS (`443`, with `80` redirect). The React application runs entirely in the user's browser. Built with Vite and bundled for production.
+| React Frontend
+| Built as static assets and served by Nginx. No standalone public frontend server is exposed.
 
-| **Nginx (API Gateway)**
-| Deployed in a Docker container inside the VM. It works as a Reverse Proxy and API Gateway. It is the only public ingress layer (Port 443 with TLS, Port 80 redirect) to route all incoming traffic. Handles CORS, rate limiting, WebSocket proxying for Socket.IO, and serves the React frontend static files. Routes API requests to backend services.
+| Nginx
+| Public container exposing `443`; redirects `80` to HTTPS, proxies API and Socket.IO traffic, exposes `/prometheus/` and `/grafana/`.
 
-| **Auth Service (Node.js + Express + TypeScript)**
-| Deployed in a Docker container inside the VM (Port 3001, internal only). Exclusively manages user credentials, registration, authentication, and JWT token lifecycle. No other service has access to `authdb` (PostgreSQL).
+| Auth Service
+| Internal Node.js container on port `3001`, backed by `authdb` volume.
 
-| **Users Service (Node.js + Express + TypeScript)**
-| Deployed in a Docker container inside the VM (Port 3000, internal only). Exclusively manages user profile data. No other service has access to `users.db`. Exposes Prometheus metrics at `/metrics`.
+| Users Service
+| Internal Node.js container on port `3000`, backed by `users.db` volume and depending on Auth Service for token verification.
 
-| **Game Service (Node.js + Express + TypeScript)**
-| Deployed in a Docker container inside the VM (Port 3002, internal only). Exclusively manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. No other service has access to `gamedb` (PostgreSQL) or the Redis matchmaking/session data.
+| Game Service
+| Internal Node.js container on port `3002`, backed by `gamedb` volume and Redis.
 
-| **Game Server (Rust)**
-| Deployed in a Docker container inside the VM (Port 4000, internal only). Calculates game logic and bot movements in YEN format. Completely stateless service optimized for performance. No database access whatsoever.
+| Gamey
+| Internal Rust container on port `4000`, stateless except for the ONNX model bundled in the image.
 
-| **Redis**
-| Deployed in a Docker container inside the VM (Port 6379, internal only). Used exclusively by the Game Service to store the matchmaking queue and active online session state. Data is ephemeral: no host volume is required. Acts as the pub/sub adapter for Socket.IO.
+| Redis
+| Internal in-memory container used only by Game Service for online queue, live sessions and Socket.IO adapter state.
 
-| **Prometheus**
-| Deployed in a Docker container inside the VM (Port 9090). Scrapes metrics from the Users Service at regular intervals. Configuration located in `users/monitoring/prometheus/`.
+| Prometheus
+| Internal container scraping `/metrics` from backend services.
 
-| **Grafana**
-| Deployed in a Docker container inside the VM (Port 9091). Connects to Prometheus as a data source and displays system dashboards. Dashboard provisioning located in `users/monitoring/grafana/provisioning/`.
-
-| **authdb (PostgreSQL)**
-| A database file saved on a dedicated Host Volume inside the VM, connected exclusively to the Auth Service container. Stores user credentials and JWT token metadata. Only Auth Service has read/write permissions.
-
-| **users.db (SQLite)**
-| A database file saved on a dedicated Host Volume inside the VM, connected exclusively to the Users Service container. Stores user profile data. Only Users Service has read/write permissions.
-
-| **gamedb (PostgreSQL)**
-| A database file saved on a dedicated Host Volume inside the VM, connected exclusively to the Game Service container. Stores matches, move history, and statistics. Only Game Service has read/write permissions.
+| Grafana
+| Internal container visualizing Prometheus data through the provisioned dashboards.
 |===
 
+=== Infrastructure Level 1: Development Environment
 
-=== Infrastructure Level 1 - Development Environment
+Development uses the same containerized topology, but normally on a developer workstation with Docker Desktop instead of a VM. This keeps service discovery, ports and internal URLs consistent with the deployed stack.
 
-Following the arc42 rules for multiple environments, the development environment uses the same Docker containers to be equal to production, but without the secure Virtual Machine.
+Key properties:
 
-**Motivation**
+* one-command startup through Docker Compose,
+* same reverse-proxy behavior as production,
+* same internal service names (`auth`, `users`, `gameservice`, `gamey`, `redis`, `prometheus`, `grafana`),
+* same load-test target topology for local `k6` and `Artillery`.
 
-Developers need a fast and reliable environment to write and test code on their computers. We use Docker Compose to start the whole system on the developer's local machine.
+=== Infrastructure Level 2: Internal Network and Observability
 
-**Quality and/or Performance Features**
-
-* **Consistency:** It solves the classic "it works on my machine" problem.
-* **Fast Setup:** A new developer can start the complete system (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis, Prometheus, and Grafana) with just one `docker-compose up` command.
-
-**Mapping of Building Blocks to Infrastructure**
-
-In this environment, the mapping is exactly the same as in Production. The only difference is the host hardware:
-* **Infrastructure Element:** The developer's personal computer (Localhost) running Docker Desktop, instead of a Cloud Virtual Machine.
-
-
-=== Infrastructure Level 2
-
-Here we explain the internal structure of the Docker environment from Level 1. We zoom into the isolated network and how data is saved.
-
-[plantuml, deployment-level2-dataflow, png]
+[plantuml, deployment-level2, png]
 ----
 @startuml
 !include <C4/C4_Deployment>
 
-node "Cloud Virtual Machine" as vm {
-
-  node "Docker Network (internal)" as dockernet {
-
-    node "Nginx Container" as nginxcontainer {
-      artifact "Nginx" as nginx
-    }
-
-    node "Auth Service Container" as authcontainer {
-      artifact "Auth Service\n(Node.js)" as auth
-      database "authdb\n(Volume)" as authdb
-    }
-
-    node "Users Service Container" as userscontainer {
-      artifact "Users Service\n(Node.js)" as users
-      database "users.db\n(Volume)" as usersdb
-    }
-
-    node "Game Service Container" as gameservicecontainer {
-      artifact "Game Service\n(Node.js)" as gameservice
-      database "gamedb\n(Volume)" as gamedb
-    }
-
-    node "Game Server Container" as gamecontainer {
-      artifact "Game Server\n(Rust)\nStateless" as gameserver
-    }
-
-    node "Redis Container" as rediscontainer {
-      artifact "Redis\nEphemeral" as redis
-    }
-
-    node "Prometheus Container" as prometheuscontainer {
-      artifact "Prometheus" as prometheus
-    }
-
-    node "Grafana Container" as grafanacontainer {
-      artifact "Grafana" as grafana
-    }
-  }
+node "Docker Network" as dockernet {
+  node "Nginx" as nginx
+  node "Auth Service" as auth
+  node "Users Service" as users
+  node "Game Service" as gameservice
+  node "Gamey" as gamey
+  node "Redis" as redis
+  node "Prometheus" as prometheus
+  node "Grafana" as grafana
+  database "authdb" as authdb
+  database "users.db" as usersdb
+  database "gamedb" as gamedb
 }
 
-actor "User Browser\n(React SPA)" as browser
+actor "Browser" as browser
 
-browser -down-> nginx : HTTPS (443)\nAll API calls + WebSocket\n(HTTP 80 redirects)
+browser --> nginx : HTTPS / Socket.IO
+nginx --> auth : /api/auth/*
+nginx --> users : /api/users/*
+nginx --> gameservice : /api/game/*\n/api/game/socket.io/*
+nginx --> gamey : /api/gamey/*
+nginx --> prometheus : /prometheus/
+nginx --> grafana : /grafana/
 
-nginx --> auth : /api/auth/*\n(3001)
-nginx --> users : /api/users/*\n(3000)
-nginx --> gameservice : /api/game/*\n(3002) + Socket.IO WS
-nginx --> gameserver : /api/gamey/*\n(4000)
-
+users --> auth : POST /api/auth/verify
+gameservice --> auth : POST /api/auth/verify
+gameservice --> redis
 auth --> authdb
 users --> usersdb
 gameservice --> gamedb
-gameservice --> redis : Matchmaking queue\nOnline session state
-
-prometheus --> users : Scrape /metrics
-grafana --> prometheus : Query metrics
-
-note right of authcontainer
-  Credentials & JWT
-  Isolated fault domain
-end note
-
-note right of userscontainer
-  User profiles
-  Isolated fault domain
-end note
-
-note right of gameservicecontainer
-  Matches, moves, stats
-  Online matchmaking & sessions
-  Isolated fault domain
-end note
-
-note right of gamecontainer
-  Pure computation
-  No DB access
-  Stateless
-end note
-
-note right of rediscontainer
-  Ephemeral session store
-  No host volume needed
-  Used only by Game Service
-end note
+prometheus --> auth : scrape /metrics
+prometheus --> users : scrape /metrics
+prometheus --> gameservice : scrape /metrics
+prometheus --> gamey : scrape /metrics
+grafana --> prometheus : query metrics
 
 @enduml
 ----
 
-**Internal Structure Explanation:**
+**Internal structure explanation**
 
-This level shows the internal Docker network rules. The **Nginx API Gateway** completely isolates the microservices from the public internet. External users can never reach the backend services directly. All requests must go through Nginx (HTTPS on `443`; `80` only redirects).
+* `AUTH_SERVICE_URL` points from `users` and `gameservice` to the internal auth container, not to Nginx.
+* `/api/auth/verify` is blocked at the gateway, so only internal service-to-service callers can use it.
+* Socket.IO is proxied through `/api/game/socket.io/`, which means websocket upgrade support is part of the gateway contract.
+* All backend services export `/metrics`; Prometheus scrapes them and Grafana consumes only Prometheus.
 
-The request flow is as follows:
+**Operational consequences**
 
-* **User browser loads the app**: Nginx serves React static files (HTML, CSS, JS)
-* **React app runs in browser**: Makes API calls to `/api/auth/*`, `/api/users/*`, `/api/game/*` and `/api/gamey/*`
-* **React app connects via Socket.IO** for real-time online sessions through `/api/game/socket.io/`
-* **Nginx routes API requests** based on URL path:
-** `/api/auth/*` → Auth Service (port 3001), except `/api/auth/verify` (blocked externally with 403)
-** `/api/users/*` → Users Service (port 3000)
-** `/api/game/*` → Game Service (port 3002), including WebSocket upgrade for Socket.IO
-** `/api/gamey/*` → Game Server (port 4000)
-** `/*` (all other paths) → React frontend static files
-
-**Example User Flow (AI Match):**
-
-1. User opens `https://yourapp.com` in browser
-2. Nginx serves `index.html` and React bundle from static files
-3. React app loads in browser, displays login screen
-4. User clicks "Login" → React sends `POST /api/auth/login` to Nginx
-5. Nginx routes request to Auth Service (port 3001)
-6. Auth Service validates credentials against `authdb` (PostgreSQL) and returns JWT token
-7. React stores token and creates a new match → React sends `POST /api/game/matches` to Nginx
-8. Nginx routes request to Game Service (port 3002)
-9. Game Service persists the new match in `gamedb` (PostgreSQL) and returns the match ID
-10. User makes a move → React sends `POST /api/gamey/play` to Nginx
-11. Nginx routes game logic request to Game Server (port 4000)
-12. Game Server computes the bot move and returns the updated YEN state
-13. React persists the move → sends `POST /api/game/matches/{id}/moves` to Nginx
-14. Nginx routes to Game Service (port 3002), which stores the move in `gamedb` (PostgreSQL)
-15. React updates the UI with the new board state
-
-**Example User Flow (Online Match):**
-
-1. User joins matchmaking → React sends `POST /api/game/online/queue` to Nginx
-2. Game Service stores the queue entry in Redis and waits for an opponent
-3. Match assignment is received via Socket.IO event `matchmaking:matched` (REST polling endpoint kept as fallback)
-4. React joins the session with `match:join` and receives `session:state` updates from Game Service
-5. Both players receive real-time board updates via Socket.IO after each move
-6. If a player exceeds their turn time, `TurnTimerService` triggers `BotFallbackService`, which computes and applies an automatic move
-7. When the game ends, the session is removed from Redis and the result is persisted in `gamedb` (PostgreSQL)
-
-**Internal Auth verification call (service-to-service only):**
-
-* Internal URL env var: `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
-* Recommended timeout in callers: `500ms` to `1s`
-* Recommended retries: `0-1` (avoid retry storms)
-
-**Data Storage and Fault Isolation:**
-
-Data storage is strictly controlled through independent volumes and in-memory stores, all inside the VM:
-
-* `authdb` (PostgreSQL) is mounted exclusively inside the Auth Service container. Only Auth Service has read/write permissions. Stores credentials and JWT metadata.
-* `users.db` is mounted exclusively inside the Users Service container. Only Users Service has read/write permissions. Stores user profile data.
-* `gamedb` (PostgreSQL) is mounted exclusively inside the Game Service container. Only Game Service has read/write permissions. Stores matches, moves, and statistics.
-* **Redis** runs as an ephemeral container (no host volume). Only the Game Service connects to it. Stores the matchmaking queue and active online session snapshots. A Redis failure only affects online matchmaking and active sessions; AI matches and authentication remain fully operational.
-
-The Game Server has no database access and operates in a completely stateless manner. All game state persistence is delegated to the Game Service after each move.
-
-**Network Isolation:**
-
-All backend services (Auth Service, Users Service, Game Service, Game Server, Redis) run on an internal Docker network. They cannot be accessed directly from outside the VM. Nginx exposes ports 80 and 443 (80 redirects to HTTPS), while Prometheus (9090) and Grafana (9091) are also published for observability. This architecture ensures that:
-
-* Backend services are protected from direct attacks
-* All requests go through Nginx security layers (rate limiting, CORS)
-* Each database is isolated behind its own service container
-* Services communicate only through defined internal APIs
-* Redis is only reachable from within the Docker network
+* If Redis restarts, online sessions and queue state are lost, but authentication, profiles and historical matches continue to work.
+* If Auth Service becomes unavailable, protected profile and game endpoints fail closed with `503` rather than accepting unverifiable tokens.
+* Gamey can be scaled independently because it is stateless and uses only HTTP plus a bundled model file.

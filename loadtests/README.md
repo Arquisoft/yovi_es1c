@@ -1,123 +1,130 @@
+
 # Load Tests
 
-Performance and load tests for YOVI using:
+Manual performance and load tests for YOVI.
 
-- **k6** for authenticated REST flows.
-- **Artillery** for Socket.IO realtime flows (matchmaking, sessions and timeouts).
+## Tooling
 
-These tests are independent from unit/integration tests and are executed manually.
+- k6 covers authenticated REST flows.
+- Artillery covers Socket.IO realtime flows.
+- Compose files can run tests against the local Docker network or the deployed DuckDNS environment.
 
-## What is covered
+These suites are separate from unit, integration and e2e tests.
 
-### k6 suites
+## Implemented Suites
 
-- `auth.js`: register/login/refresh.
-- `game.js`: creates AI/local matches with current match modes and rules:
-  - `mode: BOT` (classic rules)
-  - `mode: BOT` with `pieRule` + `honey`
-  - `mode: LOCAL_2P` with `pieRule`
-- `matchmaking.js`: queue join/cancel + polling fallback endpoint using current queue payload (`boardSize` + `rules`).
+### k6
 
-### Artillery suites
+| File | Coverage |
+|---|---|
+| `k6/auth.js` | Register, login and refresh. |
+| `k6/game.js` | Match creation for current BOT and LOCAL_2P flows, including Pie and Honey variants. |
+| `k6/matchmaking.js` | Queue join/cancel and polling fallback with `{ boardSize, rules }`. |
 
-- `online-session.yml`: socket flow (`queue:join` → `matchmaking:matched` → `match:join` → `session:state` + chat).
-- `turn-timeout.yml`: timeout trigger flow (`turn:timeout`) over Socket.IO.
+### Artillery
+
+| File | Coverage |
+|---|---|
+| `artillery/online-session.yml` | Remote/valid-TLS online session flow. |
+| `artillery/turn-timeout.yml` | Remote/valid-TLS timeout flow. |
+| `artillery/online-session.local.yml` | Local self-signed-TLS online session flow. |
+| `artillery/turn-timeout.local.yml` | Local self-signed-TLS timeout flow. |
+| `artillery/online-session.smoke.local.yml` | Short local matchmaking, session join and chat smoke. |
+| `artillery/turn-timeout.smoke.local.yml` | Short local timeout smoke. |
+
+`artillery/helpers.js` contains shared HTTPS/auth helpers and has its own Node test file.
+
+## Environment
+
+Create a local `.env` from `.env.example`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `TARGET_ENV` | `local` | `local` or `remote`. |
+| `TARGET_URL` | `https://localhost` | Manual host URL outside Docker. |
+| `TARGET_URL_DOCKER` | `https://nginx` | Local Docker-network URL. |
+| `TARGET_URL_REMOTE` | `https://yovi-es1c.duckdns.org` | Remote deployment URL. |
+| `K6_INSECURE_TLS` | `true` | Skip TLS verification in k6. Set `false` for remote valid certs. |
+| `K6_PROMETHEUS_RW_SERVER_URL` | `http://prometheus:9090/prometheus/api/v1/write` | Local Prometheus remote-write endpoint. |
+| `K6_PROMETHEUS_RW_SERVER_URL_REMOTE` | `https://yovi-es1c.duckdns.org/prometheus/api/v1/write` | Remote Prometheus remote-write endpoint. |
+| `LOADTEST_USERNAME` | `loadtest_user` | Base username for generated users. |
+| `LOADTEST_PASSWORD` | `loadtest_pass_123` | Password for generated users. |
+| `GAME_SETUP_VUS` | `50` | Number of users pre-created by `game.js` setup. |
 
 ## Prerequisites
 
-- Docker + Docker Compose.
-- For local mode, main stack running from project root (`docker-compose up -d`).
-
-## Modes
-
-Load tests support two modes via `TARGET_ENV` in `.env`:
-
-- `TARGET_ENV=local` (default): target local stack.
-- `TARGET_ENV=remote`: target deployed environment `https://yovi-es1c.duckdns.org`.
-
-### TLS behavior
-
-- `local`: typically uses self-signed certs → keep `K6_INSECURE_TLS=true`.
-- `remote`: DuckDNS cert is valid → use `K6_INSECURE_TLS=false`.
-
-## Manual runs (without Docker Compose)
-
-Create `.env` from `.env.example` and set:
-
-- `TARGET_ENV=local` **or** `TARGET_ENV=remote`.
-- For `remote`, set `K6_INSECURE_TLS=false`.
-
-Then run:
-
-### k6 (manual)
+- Docker and Docker Compose for Compose-based runs.
+- Local stack running for local tests:
 
 ```bash
-# Local mode
+docker compose up -d
+```
+
+- k6 installed for manual k6 runs.
+- Artillery installed for manual Artillery runs.
+
+## Manual k6 Runs
+
+Local:
+
+```bash
 TARGET_ENV=local TARGET_URL=https://localhost k6 run k6/auth.js
 TARGET_ENV=local TARGET_URL=https://localhost k6 run k6/game.js
 TARGET_ENV=local TARGET_URL=https://localhost k6 run k6/matchmaking.js
+```
 
-# Remote mode
+Remote:
+
+```bash
 TARGET_ENV=remote TARGET_URL_REMOTE=https://yovi-es1c.duckdns.org K6_INSECURE_TLS=false k6 run k6/auth.js
 TARGET_ENV=remote TARGET_URL_REMOTE=https://yovi-es1c.duckdns.org K6_INSECURE_TLS=false k6 run k6/game.js
 TARGET_ENV=remote TARGET_URL_REMOTE=https://yovi-es1c.duckdns.org K6_INSECURE_TLS=false k6 run k6/matchmaking.js
 ```
 
-### Artillery (manual)
+## Manual Artillery Runs
+
+Local:
 
 ```bash
-# Local mode
-TARGET_URL=https://localhost NODE_TLS_REJECT_UNAUTHORIZED=0 artillery run artillery/online-session.yml
-TARGET_URL=https://localhost NODE_TLS_REJECT_UNAUTHORIZED=0 artillery run artillery/turn-timeout.yml
-
-# Remote mode
-TARGET_URL=https://yovi-es1c.duckdns.org NODE_TLS_REJECT_UNAUTHORIZED=1 artillery run artillery/online-session.yml
-TARGET_URL=https://yovi-es1c.duckdns.org NODE_TLS_REJECT_UNAUTHORIZED=1 artillery run artillery/turn-timeout.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/online-session.local.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/turn-timeout.local.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/online-session.smoke.local.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/turn-timeout.smoke.local.yml
 ```
 
-## Docker Compose runs
+Remote:
 
-### Local mode (internal Docker network)
+```bash
+TARGET_URL=https://yovi-es1c.duckdns.org artillery run artillery/online-session.yml
+TARGET_URL=https://yovi-es1c.duckdns.org artillery run artillery/turn-timeout.yml
+```
 
-Uses `docker-compose.loadtest.yml` and network `yovi_es1c_monitor-net`:
+## Docker Compose Runs
+
+Run from `loadtests/`.
+
+Local Docker network:
 
 ```bash
 docker compose -f docker-compose.loadtest.yml --profile auth up
 docker compose -f docker-compose.loadtest.yml --profile game up
 docker compose -f docker-compose.loadtest.yml --profile matchmaking up
-
 docker compose -f docker-compose.loadtest.yml --profile online up
 docker compose -f docker-compose.loadtest.yml --profile timeout up
 ```
 
-### Remote mode (public URL, no internal network)
-
-Uses `docker-compose.loadtest.remote.yml` and does **not** connect loadtest containers to `yovi_es1c_monitor-net`:
+Remote public URL:
 
 ```bash
 docker compose -f docker-compose.loadtest.remote.yml --profile auth up
 docker compose -f docker-compose.loadtest.remote.yml --profile game up
 docker compose -f docker-compose.loadtest.remote.yml --profile matchmaking up
-
 docker compose -f docker-compose.loadtest.remote.yml --profile online up
 docker compose -f docker-compose.loadtest.remote.yml --profile timeout up
 ```
 
-## Metrics dashboard
+## Metrics
 
-k6 writes metrics to Prometheus remote-write. Open Grafana at `http://localhost:9091` and import dashboard **2587** (official k6 dashboard).
+k6 writes metrics to Prometheus remote-write. In the local Compose stack, open Grafana at `http://localhost:9091` or `https://localhost/grafana/` and import dashboard `2587` for the official k6 dashboard.
 
-> Note: for Docker local mode, do **not** use `localhost` inside containers; use `TARGET_URL_DOCKER=https://nginx`.
-
-## Environment variables
-
-| Variable | Description | Default |
-|---|---|---|
-| `TARGET_ENV` | Target environment (`local` or `remote`) | `local` |
-| `TARGET_URL` | Base URL for host/manual runs (outside Docker net) | `https://localhost` |
-| `TARGET_URL_DOCKER` | Base URL used by local-mode loadtest containers (inside Docker net) | `https://nginx` |
-| `TARGET_URL_REMOTE` | Base URL for remote mode (deployed environment) | `https://yovi-es1c.duckdns.org` |
-| `K6_INSECURE_TLS` | Skip TLS verification in k6 | `true` (local), set to `false` for remote |
-| `LOADTEST_PASSWORD` | Password used for generated test users | `loadtest_pass_123` |
-| `K6_PROMETHEUS_RW_SERVER_URL` | Prometheus remote write endpoint | `http://prometheus:9090/prometheus/api/v1/write` |
-| `GAME_SETUP_VUS` | Number of pre-created users in `game.js` setup | `50` |
+Inside local load-test containers, use `TARGET_URL_DOCKER=https://nginx`; do not use `localhost` from inside a container.
