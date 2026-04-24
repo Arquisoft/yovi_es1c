@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Avatar,
@@ -101,6 +101,15 @@ export default function GameUI() {
     const [rematchRequesterName, setRematchRequesterName] = useState<string | undefined>(undefined);
     const rematchHandled = useRef(false);
 
+    // React Router does NOT remount the component when navigating to the same
+    // route (replace:true). Reset all rematch state whenever the matchId changes
+    // so a new game starts completely clean.
+    useEffect(() => {
+        setRematchState('idle');
+        setRematchRequesterName(undefined);
+        rematchHandled.current = false;
+    }, [config?.matchId]);
+
     const rematchCallbacks: RematchCallbacks = {
         onRequested: useCallback((payload: RematchRequestedPayload) => {
             if (payload.matchId !== config?.matchId) return;
@@ -111,7 +120,7 @@ export default function GameUI() {
         onReady: useCallback((payload: RematchReadyPayload) => {
             if (rematchHandled.current) return;
             rematchHandled.current = true;
-            navigate('/game', {
+            navigate('/gamey', {
                 replace: true,
                 state: {
                     matchId: payload.newMatchId,
