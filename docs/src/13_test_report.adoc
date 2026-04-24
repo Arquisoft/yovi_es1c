@@ -1,0 +1,182 @@
+ifndef::imagesdir[:imagesdir: ../images]
+
+[[section-test-report]]
+== Test Report
+
+This chapter consolidates the automated test evidence currently available in the repository and the latest validated execution results collected on 23 April 2026.
+
+=== Scope
+
+The project uses several complementary test families:
+
+* unit and integration tests in every service,
+* browser-level acceptance/system tests,
+* REST and Socket.IO load tests,
+* in-process performance benchmarks for the Rust engine,
+* targeted regression tests for auth verification, matchmaking and online timeout behavior.
+
+=== Unit and Integration Tests
+
+[cols="2,2,2,3", options="header"]
+|===
+| Component | Command | Latest verified result | Notes
+
+| Auth Service
+| `npm.cmd --prefix auth run test:coverage`
+| `110 tests passed`
+| Covers auth flows, token verification and error handling.
+
+| Users Service
+| `npm.cmd --prefix users run test:coverage`
+| `35 tests passed`
+| Includes the new centralized auth verification middleware regression tests.
+
+| Game Service
+| `npm.cmd --prefix gameservice run test:coverage`
+| `292 tests passed`
+| Covers match lifecycle, rankings, matchmaking, sessions and timeout logic.
+
+| Webapp
+| `npm.cmd --prefix webapp run test:coverage`
+| `239 tests passed`
+| Covers hooks, components and browser-side orchestration.
+
+| Gamey
+| `cargo test --manifest-path gamey/Cargo.toml`
+| all test suites passed (`330` tests total)
+| Includes core engine tests, API tests and property-based checks.
+|===
+
+=== Acceptance and System Tests
+
+[cols="2,2,2,3", options="header"]
+|===
+| Suite | Command | Latest verified result | Scope
+
+| Webapp E2E
+| `npm.cmd --prefix webapp run test:e2e:docker`
+| `7 scenarios passed`, `29 steps passed`
+| Validates end-to-end browser flows through the Dockerized stack.
+|===
+
+=== Code Coverage
+
+[cols="2,2,2,2,2", options="header"]
+|===
+| Component | Statements | Branches | Functions | Lines
+
+| Auth Service
+| `96.55%`
+| `86.75%`
+| `98.94%`
+| `96.95%`
+
+| Users Service
+| `79.42%`
+| `67.53%`
+| `74.28%`
+| `80.11%`
+
+| Game Service
+| `79.90%`
+| `73.33%`
+| `86.05%`
+| `84.19%`
+
+| Webapp
+| `91.16%`
+| `83.60%`
+| `90.53%`
+| `93.53%`
+|===
+
+Interpretation:
+
+* `auth` and `webapp` already have very strong coverage,
+* `users` and `gameservice` have good practical coverage, but still benefit from continued branch-focused testing on failure paths and uncommon flows.
+
+=== Load Tests
+
+==== Load Suites in the Repository
+
+[cols="2,3", options="header"]
+|===
+| Tool | Covered scope
+
+| k6
+| Auth flows, game REST flows, matchmaking REST fallback, response-time thresholds and failure-rate thresholds.
+
+| Artillery
+| Socket.IO matchmaking, online session join, chat and timeout scenarios, including local self-signed TLS variants.
+|===
+
+==== Latest Validated Load Evidence
+
+[cols="2,2,3", options="header"]
+|===
+| Suite | Latest validated result | Interpretation
+
+| Artillery online profile
+| `640 created`, `640 completed`, `0 failed`, `0 response timeout`
+| Confirms that the fixed matchmaking flow now sustains the full online scenario without websocket/session failure.
+
+| Artillery online profile timing
+| session length mean `5986.1 ms`, p95 `7117 ms`
+| Gives an end-to-end wall-clock baseline for the realtime online scenario.
+
+| Artillery timeout smoke
+| `2 completed`, `0 failed`
+| Confirms the timeout path and fallback wiring are functional after the websocket/TLS fixes.
+|===
+
+==== Threshold Baseline for k6
+
+The REST load suites define acceptance thresholds in `loadtests/k6/config.js`. The most relevant local thresholds are:
+
+* auth: register p95 `< 1500 ms`, login/refresh p95 `< 1200 ms`,
+* game: create/finish p95 `< 800 ms`, get p95 `< 500 ms`, move p95 `< 2000 ms`,
+* matchmaking: queue join/poll/cancel/abandon p95 `< 800 ms`,
+* common thresholds: HTTP failure rate `< 5%`, checks success rate `> 95%`.
+
+=== Criterion Benchmarks
+
+[cols="2,2,2", options="header"]
+|===
+| Benchmark | Latest verified result | Meaning
+
+| `neural_evaluate/cache_hit`
+| about `503.69 ns`
+| Cached single-board evaluation is effectively negligible compared with network or search overhead.
+
+| `neural_evaluate/cache_miss`
+| about `53.920 ms`
+| Cold single-board neural inference is the meaningful lower bound for uncached evaluation cost.
+
+| `neural_evaluate_batch/cache_hit`
+| about `2.8113 us`
+| Cached batch path stays very cheap and is suitable for repeated search reuse.
+
+| `neural_evaluate_batch/cache_miss`
+| about `167.95 ms`
+| Cold batch inference is substantially more expensive and must stay out of latency-sensitive paths unless amortized.
+|===
+
+These benchmarks are now explicit in `gamey_benchmarks.rs`, which makes performance regressions in `evaluate` and `evaluate_batch` directly visible in Criterion reports.
+
+=== Other Tests and Diagnostics
+
+* `users` now includes dedicated regression tests for the Auth-service-backed JWT verification middleware and protected profile routes.
+* `gameservice` includes a regression test for creating multiple human matches in a single matchmaking tick.
+* `gamey` includes property-based tests (`proptest`) as part of `cargo test`.
+* Grafana dashboards and Prometheus metrics provide runtime validation for active games, socket peaks, bot latency and matchmaking latency.
+
+=== Assessment
+
+The current test evidence supports the main architectural claims:
+
+* the service boundaries are exercised by unit/integration tests,
+* the browser flow is exercised by E2E tests,
+* the realtime online flow has fresh post-fix load evidence,
+* the Rust engine has repeatable micro-benchmarks for the critical neural evaluation paths.
+
+The main remaining gap is keeping full REST load evidence as fresh as the realtime evidence after substantial backend changes.

@@ -3,17 +3,23 @@ import { MatchService } from '../src/services/MatchService';
 import { MatchRepository } from '../src/repositories/MatchRepository';
 import { RankingService } from '../src/services/RankingService';
 import { MatchRules } from '../src/types/rules';
+import { afterEach } from 'vitest';
 
 const classicRules: MatchRules = {
   pieRule: { enabled: false },
   honey: { enabled: false, blockedCells: [] },
 };
 
+const afterUserOpening = 'B/../...';
+const afterBotReply = 'B/R./...';
+
 describe('MatchService', () => {
   let matchService: MatchService;
   let mockMatchRepository: MatchRepository;
 
   beforeEach(() => {
+    process.env.GAMEY_SERVICE_URL = 'http://gamey';
+    delete process.env.GAMESERVICE_GAMEY_TIMEOUT_MS;
     mockMatchRepository = {
       createMatch: vi.fn(),
       getMatchById: vi.fn(),
@@ -23,6 +29,11 @@ describe('MatchService', () => {
     } as unknown as MatchRepository;
 
     matchService = new MatchService(mockMatchRepository);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.GAMESERVICE_GAMEY_TIMEOUT_MS;
   });
 
   describe('createMatch', () => {
@@ -143,6 +154,37 @@ describe('MatchService', () => {
     });
   });
 
+  describe('getMatchState', () => {
+    it('returns null when match does not exist', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue(undefined);
+
+      await expect(matchService.getMatchState(404)).resolves.toBeNull();
+    });
+
+    it('rebuilds layout from legacy positions when no serialized layout exists', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: 'a1', player: 'USER', move_number: 1 },
+        { position_yen: 'b2', player: 'BOT', move_number: 2 },
+      ] as any);
+
+      const state = await matchService.getMatchState(1);
+
+      expect(state?.layout).toBe('B/.R/...');
+      expect(state?.board).toEqual([
+        ['B', '.', '.'],
+        ['.', 'R', '.'],
+        ['.', '.', '.'],
+      ]);
+    });
+  });
+
   describe('addMove', () => {
     it('should add a move to a match', async () => {
       const matchId = 1;
@@ -179,12 +221,97 @@ describe('MatchService', () => {
       vi.restoreAllMocks();
     });
 
-    it('uses fallback move when bot call times out', async () => {
+    it('uses a 3500 ms default timeout budget when calling gamey', async () => {
+      vi.useFakeTimers();
+
       vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
-        id: 1, user_id: 1, board_size: 3, status: 'ONGOING',
+        id: 1, user_id: 1, board_size: 3, difficulty: 'easy', status: 'ONGOING',
       } as any);
       vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
-        { position_yen: 'a1', player: 'USER', move_number: 1 },
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      let capturedSignal: AbortSignal | undefined;
+      vi.spyOn(globalThis, 'fetch' as any).mockImplementation(async (...args: any[]) =>
+          new Promise((_, reject) => {
+            const options = args[1] as RequestInit | undefined;
+            capturedSignal = options?.signal as AbortSignal | undefined;
+            capturedSignal?.addEventListener('abort', () => {
+              const abortError = new Error('aborted');
+              abortError.name = 'AbortError';
+              reject(abortError);
+            }, { once: true });
+          }),
+      );
+
+      matchService.queueBotMove(1);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(capturedSignal).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(3499);
+      expect(capturedSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, afterBotReply, 'BOT', 2);
+    });
+
+    it('uses the configured timeout budget override when calling gamey', async () => {
+      vi.useFakeTimers();
+      process.env.GAMESERVICE_GAMEY_TIMEOUT_MS = '200';
+
+      const configuredService = new MatchService(mockMatchRepository);
+
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1, user_id: 1, board_size: 3, difficulty: 'easy', status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      let capturedSignal: AbortSignal | undefined;
+      vi.spyOn(globalThis, 'fetch' as any).mockImplementation(async (...args: any[]) =>
+          new Promise((_, reject) => {
+            const options = args[1] as RequestInit | undefined;
+            capturedSignal = options?.signal as AbortSignal | undefined;
+            capturedSignal?.addEventListener('abort', () => {
+              const abortError = new Error('aborted');
+              abortError.name = 'AbortError';
+              reject(abortError);
+            }, { once: true });
+          }),
+      );
+
+      configuredService.queueBotMove(1);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await vi.advanceTimersByTimeAsync(199);
+      expect(capturedSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, afterBotReply, 'BOT', 2);
+    });
+
+    it('uses fallback move when bot call times out', async () => {
+      vi.useFakeTimers();
+
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1, user_id: 1, board_size: 3, difficulty: 'easy', status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
       ] as any);
       vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
 
@@ -197,31 +324,42 @@ describe('MatchService', () => {
       );
 
       matchService.queueBotMove(1);
-      await new Promise((resolve) => setTimeout(resolve, 650));
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(3500);
+      await Promise.resolve();
+      await Promise.resolve();
 
-      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, 'b1', 'BOT', 2);
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, afterBotReply, 'BOT', 2);
       const state = await matchService.getMatchState(1);
       expect(state?.botStatus).toBe('done');
     });
 
     it('applies bot move when bot responds within timeout', async () => {
       vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
-        id: 1, user_id: 1, board_size: 3, status: 'ONGOING',
+        id: 1, user_id: 1, board_size: 3, difficulty: 'easy', status: 'ONGOING',
       } as any);
       vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
-        { position_yen: 'a1', player: 'USER', move_number: 1 },
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
       ] as any);
       vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
 
       vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
         ok: true,
-        json: async () => ({ position_yen: 'c1' }),
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
       } as Response);
 
       matchService.queueBotMove(1);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, 'c1', 'BOT', 2);
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, afterBotReply, 'BOT', 2);
       const state = await matchService.getMatchState(1);
       expect(state?.botStatus).toBe('done');
     });
@@ -273,26 +411,71 @@ describe('MatchService', () => {
         id: 1,
         user_id: 1,
         board_size: 3,
+        difficulty: 'easy',
         status: 'ONGOING',
         rules: storedRules,
       } as any);
       vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
-        { position_yen: 'a1', player: 'USER', move_number: 1 },
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
       ] as any);
       vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
 
       const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
         ok: true,
-        json: async () => ({ position_yen: 'c1' }),
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
       } as Response);
 
       matchService.queueBotMove(1);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(String(fetchSpy.mock.calls[0][0])).toBe('http://gamey/v1/ybot/play');
       const requestInit = fetchSpy.mock.calls[0][1] as RequestInit;
-      const payload = JSON.parse(String(requestInit.body)) as { rules: MatchRules };
-      expect(payload.rules).toEqual(expectedRules);
+      const payload = JSON.parse(String(requestInit.body)) as { position: any; bot_id: string };
+      expect(payload.bot_id).toBe('easy');
+      expect(payload.position.layout).toBe(afterUserOpening);
+      expect(payload.position.turn).toBe(1);
+      expect(payload.position.players).toEqual(['B', 'R']);
+      expect(payload.position.rules).toEqual(expectedRules);
+    });
+
+    it('trims trailing slashes from GAMEY_SERVICE_URL before calling gamey', async () => {
+      process.env.GAMEY_SERVICE_URL = 'http://gamey///';
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(String(fetchSpy.mock.calls[0][0])).toBe('http://gamey/v1/ybot/play');
     });
 
     it('parses persisted JSON-string rules before calling gamey', async () => {
@@ -304,27 +487,129 @@ describe('MatchService', () => {
         id: 1,
         user_id: 1,
         board_size: 3,
+        difficulty: 'easy',
         status: 'ONGOING',
         rules: storedRules,
       } as any);
       vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
-        { position_yen: 'a1', player: 'USER', move_number: 1 },
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
       ] as any);
       vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
       const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
         ok: true,
-        json: async () => ({ position_yen: 'c1' }),
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
       } as Response);
 
       matchService.queueBotMove(1);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const requestInit = fetchSpy.mock.calls[0][1] as RequestInit;
-      const payload = JSON.parse(String(requestInit.body)) as { rules: MatchRules };
-      expect(payload.rules).toEqual({
+      const payload = JSON.parse(String(requestInit.body)) as { position: { rules: MatchRules } };
+      expect(payload.position.rules).toEqual({
         pieRule: { enabled: true },
         honey: { enabled: true, blockedCells: [{ row: 0, col: 0 }] },
       });
+    });
+
+    it('falls back to default rules when persisted JSON rules are malformed', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+        rules: '{ definitely-not-json',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const payload = JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body)) as { position: { rules: MatchRules } };
+      expect(payload.position.rules).toEqual(classicRules);
+    });
+
+    it('uses legacy move payloads returned by gamey when layout is not nested under position', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          move: 'b2',
+        }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, 'B/.R/...', 'BOT', 2);
+    });
+
+    it('does not queue the same bot move twice while one is already processing', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1, user_id: 1, board_size: 3, difficulty: 'easy', status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      vi.spyOn(globalThis, 'fetch' as any).mockImplementation(
+          async () => new Promise((resolve) => {
+            setTimeout(() => resolve({
+              ok: true,
+              json: async () => ({
+                position: {
+                  size: 3,
+                  turn: 0,
+                  players: ['B', 'R'],
+                  layout: afterBotReply,
+                },
+              }),
+            } satisfies Partial<Response>), 50);
+          }),
+      );
+
+      matchService.queueBotMove(1);
+      matchService.queueBotMove(1);
+
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(mockMatchRepository.getMatchById).toHaveBeenCalledTimes(1);
+      expect(mockMatchRepository.addMove).toHaveBeenCalledTimes(1);
     });
   });
 

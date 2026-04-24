@@ -5,6 +5,10 @@ describe('ChatFilter', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllEnvs();
+        vi.useRealTimers();
+        delete process.env.PERSPECTIVE_API_KEY;
+        delete process.env.PERSPECTIVE_TIMEOUT_MS;
+        delete process.env.PERSPECTIVE_FAIL_MODE;
     });
 
     function setup(options = {}) {
@@ -41,7 +45,7 @@ describe('ChatFilter', () => {
     it('filters accented and repeated characters', () => {
         const filter = setup();
 
-        const result = filter.filterSync('puuuuta y pütä');
+        const result = filter.filterSync('puuuuta y p\u00fct\u00e4');
 
         expect(result.wasFiltered).toBe(true);
         expect(result.sanitized).toContain('*');
@@ -51,6 +55,33 @@ describe('ChatFilter', () => {
         const filter = setup();
 
         const result = filter.filterSync('eres un idiota');
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+    });
+
+    it('filters contextual English insults without relying on complex regex matching', () => {
+        const filter = setup();
+
+        const result = filter.filterSync("you're a loser");
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+    });
+
+    it('filters "word de mierda" contextual phrases', () => {
+        const filter = setup();
+
+        const result = filter.filterSync('juego de mierda');
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+    });
+
+    it('filters "vete a la mierda" phrases', () => {
+        const filter = setup();
+
+        const result = filter.filterSync('vete a la mierda');
 
         expect(result.wasFiltered).toBe(true);
         expect(result.sanitized).toContain('*');
@@ -75,11 +106,9 @@ describe('ChatFilter', () => {
 
     it('async filter returns toxicityScore when API key exists', async () => {
         process.env.PERSPECTIVE_API_KEY = 'test-key';
-
         const fetchMock = mockFetchToxicity(0.42);
 
         const filter = setup({ toxicityThreshold: 0.8 });
-
         const result = await filter.filter('hola mundo');
 
         expect(fetchMock).toHaveBeenCalled();
@@ -88,13 +117,10 @@ describe('ChatFilter', () => {
     });
 
     it('does not call Perspective API if no API key is set', async () => {
-        delete process.env.PERSPECTIVE_API_KEY;
-
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
 
         const filter = setup();
-
         const result = await filter.filter('texto normal');
 
         expect(fetchMock).not.toHaveBeenCalled();
@@ -103,47 +129,83 @@ describe('ChatFilter', () => {
 
     it('throws ChatFilterError when toxicity exceeds threshold', async () => {
         process.env.PERSPECTIVE_API_KEY = 'test-key';
-
         mockFetchToxicity(0.95);
 
         const filter = setup({ toxicityThreshold: 0.8 });
 
-        await expect(filter.filter('algo')).rejects.toBeInstanceOf(ChatFilterError);
+        await expect(filter.filter('algo')).rejects.toMatchObject({
+            kind: 'toxicity',
+            score: 0.95,
+        });
     });
 
     it('uses custom toxicity threshold correctly', async () => {
         process.env.PERSPECTIVE_API_KEY = 'test-key';
-
         mockFetchToxicity(0.75);
 
         const filter = setup({ toxicityThreshold: 0.7 });
 
-        await expect(filter.filter('texto')).rejects.toBeInstanceOf(ChatFilterError);
+        await expect(filter.filter('texto')).rejects.toMatchObject({
+            kind: 'toxicity',
+            score: 0.75,
+        });
     });
 
-    it('handles Perspective API failure gracefully', async () => {
+    it('falls back to static moderation when Perspective fails in allow mode', async () => {
         process.env.PERSPECTIVE_API_KEY = 'test-key';
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
 
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: false,
-            status: 500,
-            text: async () => 'error',
+        const filter = setup({ perspectiveFailureMode: 'allow' });
+        const result = await filter.filter('eres un idiota');
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+        expect(result.toxicityScore).toBeUndefined();
+    });
+
+    it('rejects the message when Perspective fails in reject mode', async () => {
+        process.env.PERSPECTIVE_API_KEY = 'test-key';
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+
+        const filter = setup({ perspectiveFailureMode: 'reject' });
+
+        await expect(filter.filter('texto')).rejects.toMatchObject({
+            kind: 'service_unavailable',
+            score: undefined,
+        });
+    });
+
+    it('aborts Perspective requests after the configured timeout', async () => {
+        process.env.PERSPECTIVE_API_KEY = 'test-key';
+        vi.useFakeTimers();
+
+        const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+            const signal = init?.signal;
+            signal?.addEventListener('abort', () => {
+                const abortError = new Error('Aborted');
+                abortError.name = 'AbortError';
+                reject(abortError);
+            }, { once: true });
         }));
+        vi.stubGlobal('fetch', fetchMock);
 
-        const filter = setup();
+        const filter = setup({ perspectiveFailureMode: 'reject', perspectiveTimeoutMs: 5 });
+        const assertion = expect(filter.filter('texto')).rejects.toMatchObject({
+            kind: 'service_unavailable',
+            score: undefined,
+        });
 
-        const result = await filter.filter('texto');
+        await vi.advanceTimersByTimeAsync(5);
 
-        expect(result.toxicityScore).toBe(0);
+        await assertion;
+        expect(fetchMock).toHaveBeenCalled();
     });
 
-    it('sanitization and toxicity work together', async () => {
+    it('keeps sanitization and toxicity evaluation together', async () => {
         process.env.PERSPECTIVE_API_KEY = 'test-key';
-
         mockFetchToxicity(0.2);
 
         const filter = setup();
-
         const result = await filter.filter('eres un idiota');
 
         expect(result.wasFiltered).toBe(true);

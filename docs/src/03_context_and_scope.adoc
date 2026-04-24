@@ -3,7 +3,7 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-context-and-scope]]
 == Context and Scope
 
-Yovi is a distributed web application that allows users and bots to play the Y board game. The system provides a platform where human players can compete against each other or against AI bots, with match history and statistics tracking for registered users.
+Yovi is a distributed web application for playing the Y board game against bots or against other human players. The system combines a React frontend, a Node.js service layer, and a Rust game engine. Registered users can authenticate, maintain a profile, create matches, review their statistics, enter the online matchmaking queue, and play real-time matches through Socket.IO.
 
 === Business Context
 
@@ -19,31 +19,20 @@ skinparam rectangle {
   BorderColor<<system>> Blue
 }
 
-actor "Human Player\n(Web User)" as user
-actor "Bot Client\n(External/Internal)" as bot
+actor "Human Player\n(Web Browser)" as user
+actor "Bot Client" as bot
 actor "Administrator" as admin
 
 RECTANGLE "Yovi System" as system <<system>>
 
-user --> system : Registration/Login\nGame moves (YEN)\nMatch creation\nStatistics queries
+user --> system : Register, login, manage profile,\ncreate matches, play turns,\njoin matchmaking, review stats
+system --> user : Tokens, profile data, match state,\nrankings, realtime session events
 
-system --> user : Auth tokens/sessions\nGame state (YEN)\nMove validation\nMatch results\nStatistics
+bot --> system : Bot move requests through\nGamey HTTP API
+system --> bot : Computed moves and game status
 
-bot --> system : Bot authentication\nGame moves (YEN)\nMatch participation
-
-system --> bot : Auth tokens\nGame state (YEN)\nMove validation\nMatch outcomes
-
-admin --> system : System monitoring\nUser management\nBot configuration
-
-system --> admin : System status\nUser data\nBot metrics
-
-note right of system
-  **Key Domain Concepts:**
-  - YEN (Y-encoded Notation)
-  - Match sessions
-  - Strategy/difficulty levels
-  - Anonymous play support
-end note
+admin --> system : Access monitoring endpoints\nand dashboards
+system --> admin : Metrics, dashboards,\nservice health information
 
 @enduml
 ----
@@ -52,128 +41,109 @@ end note
 |===
 | Partner | Input | Output
 
-| **Human Player (Web User)**
-a| • User registration/login credentials
-• Game moves (position=YEN, strategy, difficulty)
-• Match creation requests (size, strategy, difficulty)
-• Statistics/history queries
-a| • Authentication tokens/sessions
-• Current game state (YEN format)
-• Valid/invalid move responses
-• Match results and statistics
-• Game history data
+| Human Player
+a|
+* Registration and login credentials
+* Profile reads and updates
+* Match creation requests (`BOT`, `LOCAL_2P`, `ONLINE`)
+* Gameplay actions and online session events
+* Ranking and statistics queries
+a|
+* Access and refresh tokens
+* Profile data
+* Match IDs, board state and results
+* Ranking, statistics and history
+* Matchmaking and session events
 
-| **Bot Client (External/Internal)**
-a| • Bot authentication
-• Game moves via Bot API (position=YEN, strategy, difficulty)
-• Match participation requests
-a| • Authentication tokens
-• Current game state (YEN format)
-• Move validation responses
-• Match outcomes
+| Bot Client
+a|
+* YEN board positions
+* Bot identifier and difficulty alias
+* Move computation requests
+a|
+* Computed move
+* Updated game status
 
-| **Administrator**
-a| • System monitoring requests
-• User management operations
-• Bot registration/configuration
-a| • System status
-• User data
-• Bot performance metrics
+| Administrator
+a|
+* Dashboard access
+* Prometheus queries
+* Operational checks and incident diagnosis
+a|
+* Metrics time series
+* Service health indicators
+* Bot latency and matchmaking latency graphs
 |===
 
 ==== Domain Concepts
 
-* **YEN (Y-encoded Notation)**: Domain-specific format for representing board positions and moves in the Y game
-* **Match**: A game session between two players (human or bot)
-* **Strategy**: Game difficulty level and bot behavior configuration
-* **Anonymous Play**: Unregistered users can play but their scores are not persisted
-* **Online Session**: A real-time multiplayer match between two human players managed via Socket.IO
-* **Matchmaking Queue**: Redis-backed queue that pairs available players before creating an online session
+* **YEN (Y-encoded Notation)** is the canonical serialization for board state exchanged with the Rust engine.
+* **Match** is a persistent game record stored in `gamedb`, with mode (`BOT`, `LOCAL_2P`, `ONLINE`), rules and outcome.
+* **Online Session** is the live Redis-backed state used during human-vs-human play.
+* **Matchmaking Queue** is the Redis-backed waiting area that pairs compatible online players.
+* **Ranking** is the ELO-based leaderboard derived from finished ranked matches.
+* **Bot Difficulty Alias** maps user-facing levels (`easy`, `medium`, `hard`, `expert`, `expert_fast`) to concrete engine bots.
 
 === Technical Context
 
-==== System Architecture
+==== System Landscape
 
-[plantuml, technical-context-deployment, png]
+[plantuml, technical-context, png]
 ----
 @startuml
 !include <C4/C4_Deployment>
 
-node "Client Browser" as browser {
-  artifact "React App\n(Webapp)\nbundled JS" as react
+node "Client Device" as client {
+  artifact "Browser\nReact SPA" as browser
 }
 
-node "API Gateway" as nginxnode {
-  artifact "Nginx\nReverse Proxy" as nginx
+node "Gateway" as gateway {
+  artifact "Nginx\nTLS ingress + reverse proxy" as nginx
 }
 
-node "Auth Service Server" as authserver {
-  artifact "Node.js\nAuth Service\n(Express + TS)" as auth
-  database "PostgreSQL DB\n(authdb)" as authdb
+node "Application Services" as services {
+  artifact "Auth Service\nNode.js + Express + TS" as auth
+  artifact "Users Service\nNode.js + Express + TS" as users
+  artifact "Game Service\nNode.js + Express + TS" as gameservice
+  artifact "Gamey\nRust + Axum" as gamey
+  artifact "Prometheus" as prometheus
+  artifact "Grafana" as grafana
 }
 
-node "Users Service Server" as usersserver {
-  artifact "Node.js\nUsers Service\n(Express + TS)" as users
-  database "SQLite DB\n(users.db)" as usersdb
-}
+database "authdb\nPostgreSQL" as authdb
+database "users.db\nSQLite" as usersdb
+database "gamedb\nPostgreSQL" as gamedb
+database "Redis" as redis
 
-node "Game Service Server" as gameserviceserver {
-  artifact "Node.js\nGame Service\n(Express + TS)" as gameservice
-  database "PostgreSQL DB\n(gamedb)" as gamedb
-}
+browser --> nginx : HTTPS 443\nHTTP 80 redirect
+nginx --> auth : /api/auth/*
+nginx --> users : /api/users/*
+nginx --> gameservice : /api/game/*\n/api/game/socket.io/*
+nginx --> gamey : /api/gamey/*
+nginx --> prometheus : /prometheus/
+nginx --> grafana : /grafana/
 
-node "Game Engine Server" as gameserver {
-  artifact "Rust Binary\n(Game Server)" as rust
-}
+users --> auth : POST /api/auth/verify\n(internal)
+gameservice --> auth : POST /api/auth/verify\n(internal)
+auth --> authdb
+users --> usersdb
+gameservice --> gamedb
+gameservice --> redis
 
-browser -down-> nginx : HTTP (80)\nREST API\nJSON
-nginx -down-> react : Static files
-nginx -down-> auth : HTTP (3001)\n/api/auth/*
-nginx -down-> users : HTTP (3000)\n/api/users/*
-nginx -down-> gameservice : HTTP (3002)\n/api/game/*
-nginx -down-> rust : HTTP (4000)\n/api/gamey/*
-auth -down-> authdb : PostgreSQL protocol\nSQL over TCP
-users -down-> usersdb : SQLite protocol\nSQL queries\n(embedded)
-gameservice -down-> gamedb : PostgreSQL protocol\nSQL over TCP
-
-note right of browser
-  **Client Environment**
-  Modern web browser
-  JavaScript runtime
-  React SPA
+note right of nginx
+  Public ingress:
+  * TLS termination
+  * CORS
+  * rate limiting
+  * WebSocket upgrade
+  * blocks external /api/auth/verify
 end note
 
-note right of nginxnode
-  **Entry Point**
-  Reverse proxy
-  Rate limiting, CORS
-  Routes: /api/auth, /api/users,
-  /api/game, /api/gamey, /
-end note
-
-note right of authserver
-  **Auth Layer**
-  Credentials & JWT
-  authdb
-end note
-
-note right of usersserver
-  **Profile Layer**
-  User profile data
-  users.db
-end note
-
-note right of gameserviceserver
-  **Game Data Layer**
-  Matches, moves, stats
-  Online matchmaking & sessions
-  gamedb
-end note
-
-note right of gameserver
-  **Game Logic Service**
-  Stateless computation
-  Fast move validation
+note right of gamey
+  Stateless bot engine
+  Classic bots + neural MCTS
+  Exposes /status, /metrics and
+  versioned bot move endpoints
 end note
 
 @enduml
@@ -183,164 +153,168 @@ end note
 
 [cols="2,2,1,3", options="header"]
 |===
-| Component Connection | Protocol/Technology | Port/Channel | Purpose
+| Connection | Technology | Channel | Purpose
 
-| **Web Browser → Nginx (API Gateway)**
-| HTTP, REST API
-| 80 (HTTP)
-a| • Single public entry point
-• Request routing to backend services
-• CORS handling
-• Rate limiting
-• Static file serving (React frontend)
+| Browser -> Nginx
+| HTTPS, REST, Socket.IO
+| `443` (`80` redirects)
+a|
+* Public entry point
+* Static SPA delivery
+* API access
+* WebSocket upgrade for online play
 
-| **Nginx → Auth Service**
-| HTTP, REST API
-| 3001 (HTTP)
-a| • User authentication and registration
-• JWT token generation and validation
-• Credential management
-• Password hashing
+| Nginx -> Auth Service
+| HTTP
+| `3001`
+a|
+* Registration, login, refresh, logout
+* Internal token verification endpoint routing
 
-| **Nginx → Users Service**
-| HTTP, REST API
-| 3000 (HTTP)
-a| • User profile retrieval and updates
-• User search operations
+| Nginx -> Users Service
+| HTTP
+| `3000`
+a|
+* Profile CRUD under `/api/users/profiles/*`
+* Service metrics under `/metrics`
 
-| **Nginx → Game Service**
-| HTTP, REST API + WebSocket (Socket.IO)
-| 3002 (HTTP / WS)
-a| • Match creation and persistence
-• Move history storage
-• Statistics retrieval
-• Online matchmaking queue management
-• Real-time online session updates via Socket.IO
+| Nginx -> Game Service
+| HTTP + Socket.IO
+| `3002`
+a|
+* Match creation and persistence
+* Rankings and statistics
+* Online queue and session REST endpoints
+* Socket.IO path `/api/game/socket.io/`
 
-| **Nginx → Game Server**
-| HTTP, REST API
-| 4000 (HTTP)
-a| • Bot move computation
-• Move validation
-• Win condition checking
-• YEN format game logic
+| Nginx -> Gamey
+| HTTP
+| `4000`
+a|
+* Health and metrics
+* Bot move computation under `/api/gamey/v1/ybot/*`
 
-| **Game Service → Redis**
+| Users Service -> Auth Service
+| Internal HTTP
+| Docker network
+a|
+* Centralized JWT verification using `AUTH_SERVICE_URL`
+* Short timeout plus cached verification results
+
+| Game Service -> Auth Service
+| Internal HTTP
+| Docker network
+a|
+* Centralized JWT verification for all `/api/game/*` endpoints
+* Keeps token semantics in one service
+
+| Game Service -> Redis
 | Redis protocol
-| 6379 (internal)
-a| • Matchmaking queue persistence
-• Online session state storage
-• Socket.IO adapter for multi-instance pub/sub
+| `6379`
+a|
+* Matchmaking queue
+* Live online sessions
+* Socket.IO Redis adapter
 
-| **Auth Service → authdb**
-| PostgreSQL protocol
-| 5432/TCP
-a| • Credential CRUD operations
-• JWT token metadata persistence
-• Transaction management
+| Auth Service -> authdb
+| PostgreSQL
+| `5432`
+a|
+* Credentials, refresh tokens and token metadata
 
-| **Users Service → users.db**
-| SQLite native (embedded)
-| Local file access
-a| • User profile CRUD operations
-• Transaction management
+| Users Service -> users.db
+| SQLite
+| local file
+a|
+* User profiles and preferences
 
-| **Game Service → gamedb**
-| PostgreSQL protocol
-| 5432/TCP
-a| • Match state persistence
-• Move history storage
-• Statistics aggregation
-
-| **React Frontend (in Browser) → Nginx**
-| HTTP, REST API, AJAX, WebSocket
-| 80 (HTTP / WS)
-a| • API calls to all backend services
-• Game state updates
-• User authentication
-• Statistics queries
-• Real-time Socket.IO connection for online matches
+| Game Service -> gamedb
+| PostgreSQL
+| `5432`
+a|
+* Match records
+* Move history
+* Rankings and statistics
 |===
 
 ==== Key API Endpoints
 
-**Authentication (via Nginx → Auth Service):**
+Authentication:
 
-* `POST /api/auth/register` - User registration
-* `POST /api/auth/login` - User authentication, returns JWT token
-* `POST /api/auth/refresh` - JWT token refresh
-* `POST /api/auth/verify` - JWT verification endpoint for internal service-to-service authorization checks (must not be exposed publicly)
+* `POST /api/auth/register`
+* `POST /api/auth/login`
+* `POST /api/auth/refresh`
+* `POST /api/auth/logout`
+* `POST /api/auth/logout-all`
+* `POST /api/auth/verify` (internal only, blocked externally by Nginx)
 
-**User Profile Management (via Nginx → Users Service):**
+Users:
 
-* `GET /api/users/{id}` - Retrieve user profile
-* `PUT /api/users/{id}` - Update user profile
-* `GET /api/users` - Search users
+* `POST /api/users/profiles`
+* `GET /api/users/profiles/by-username/:username`
+* `GET /api/users/profiles/:id`
+* `PUT /api/users/profiles/:id`
 
-**Game Data Management (via Nginx → Game Service):**
+Game Service:
 
-* `POST /api/game/matches` - Create new match (`BOT`, `LOCAL_2P`, `ONLINE`) with board size, difficulty and rules (`pieRule`, `honey`)
-* `GET /api/game/matches/{id}` - Retrieve match state
-* `POST /api/game/matches/{id}/moves` - Persist a move in YEN notation and trigger async bot move processing
-* `GET /api/game/stats/{userId}` - Retrieve player statistics and match history
+* `POST /api/game/matches`
+* `GET /api/game/matches/:id`
+* `POST /api/game/matches/:id/moves`
+* `PUT /api/game/matches/:id/finish`
+* `GET /api/game/stats/:userId`
+* `GET /api/game/rankings`
+* `GET /api/game/rankings/:userId`
 
-**Online Matchmaking and Sessions (via Nginx → Game Service):**
+Online play:
 
-* `POST /api/game/online/queue` - Join the matchmaking queue
-* `GET /api/game/online/queue/match` - REST polling fallback for match assignment (primary realtime flow uses Socket.IO events)
-* `DELETE /api/game/online/queue` - Cancel matchmaking
-* `GET /api/game/online/sessions/active` - Get the current active online session for the authenticated user
-* `GET /api/game/online/sessions/:matchId` - Get the state of a specific online session
-* `POST /api/game/online/sessions/:matchId/moves` - Submit a move in an online session
-* `POST /api/game/online/sessions/:matchId/reconnect` - Reconnect to an active online session
-* `POST /api/game/online/sessions/:matchId/abandon` - Abandon an active online session
+* `POST /api/game/online/queue`
+* `GET /api/game/online/queue/match`
+* `DELETE /api/game/online/queue`
+* `GET /api/game/online/sessions/active`
+* `GET /api/game/online/sessions/:matchId`
+* `POST /api/game/online/sessions/:matchId/moves`
+* `POST /api/game/online/sessions/:matchId/reconnect`
+* `POST /api/game/online/sessions/:matchId/abandon`
+* Socket.IO events: `queue:join`, `queue:cancel`, `match:join`, `move:play`, `chat:message`, `queue:status`, `matchmaking:matched`, `session:state`
 
-**Game Logic (via Nginx → Game Server):**
+Gamey:
 
-* `POST /api/gamey/play` - Submit player move (position=YEN, strategy, difficulty)
-** Returns: Updated YEN board state, move validation status
-* `POST /api/gamey/ybot/choose/{botId}` - Bot move computation
-** Returns: YenMoveDto + game status
-* `GET /api/gamey/validate` - Validate move without executing
-
-**Bot API (External bots via Nginx):**
-
-* `POST /api/gamey/bot/play` - Bot move submission (position=YEN, strategy, difficulty)
+* `GET /api/gamey/status`
+* `POST /api/gamey/v1/ybot/choose/:botId`
+* `POST /api/gamey/v1/ybot/play`
+* `GET /api/gamey/metrics`
 
 ==== Data Formats
 
-**YEN Notation Example:**
+Example YEN payload:
+
 [source,json]
 ----
 {
-  "size": 4,
-  "turn": "R",
+  "size": 5,
+  "turn": 0,
   "players": ["B", "R"],
-  "layout": "B/.B/RB./B..R"
+  "layout": "...../...../...../...../....."
 }
 ----
 
-**Move Request/Response:**
+Example matchmaking request:
+
 [source,json]
 ----
 {
-  "position": "B/.B/RB./B..R",
-  "strategy": "heuristic",
-  "difficulty": 3,
-  "nextMove": {
-    "player": "R",
-    "coordinate": {"x": 0, "y": 1, "z": 2}
+  "boardSize": 9,
+  "rules": {
+    "pieRule": true,
+    "honey": false
   }
 }
 ----
 
 ==== Deployment Considerations
 
-* **Containerization**: All services (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis) are containerized using Docker for consistent deployment
-* **Databases**: Three independent stores: `authdb` (PostgreSQL), `users.db` (SQLite), and `gamedb` (PostgreSQL), each isolated behind its owning service
-* **Real-time State**: Online session state and the matchmaking queue are stored in Redis, which runs as an independent container and is accessible only to the Game Service
-* **Fault Isolation**: A failure or overload in one database does not affect the others; authentication, profile, and game data are independently available
-* **Scalability**: Game Server is stateless and can be horizontally scaled behind Nginx load balancer; each Node.js service can also be scaled independently
-* **Security**: Nginx handles CORS, rate limiting, and request validation; no backend service is directly accessible from outside
-* **API Gateway**: Nginx isolates all backend services from direct external access
-* **Frontend Deployment**: React app is built and served as static files through Nginx
+* The public surface is intentionally narrow: browser traffic enters through Nginx only.
+* Auth, users, game persistence and game computation are split into separate deployable services.
+* `users` and `gameservice` depend on `auth` for token validation, so auth availability is part of the runtime security boundary.
+* Redis contains only ephemeral online state; durable match history is always stored in `gamedb`.
+* Prometheus and Grafana are exposed through Nginx path prefixes (`/prometheus/` and `/grafana/`) instead of direct public container ports.

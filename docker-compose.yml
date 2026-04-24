@@ -69,6 +69,14 @@ services:
     build: ./gamey
     container_name: gamey
     image: ghcr.io/arquisoft/yovi_es1c-gamey:${IMAGE_TAG:-latest}
+    environment:
+      - GAMEY_RAYON_THREADS=4
+      - GAMEY_EXPERT_FAST_SIMULATIONS=200
+      - GAMEY_EXPERT_FAST_EARLY_STOP_RATIO=0.68
+      - GAMEY_EXPERT_FAST_EARLY_STOP_MIN_VISITS=48
+      - GAMEY_EXPERT_SIMULATIONS=256
+      - GAMEY_EXPERT_EARLY_STOP_RATIO=0.62
+      - GAMEY_EXPERT_EARLY_STOP_MIN_VISITS=96
     expose:
       - "4000"
     networks:
@@ -123,6 +131,10 @@ services:
       - AUTH_SERVICE_URL=http://auth:3001
       - GAMEY_SERVICE_URL=http://gamey:4000
       - REDIS_URL=redis://redis:6379
+      - GAMESERVICE_GAMEY_TIMEOUT_MS=3500
+      - PERSPECTIVE_API_KEY=${PERSPECTIVE_API_KEY:-}
+      - PERSPECTIVE_TIMEOUT_MS=${PERSPECTIVE_TIMEOUT_MS:-1500}
+      - PERSPECTIVE_FAIL_MODE=${PERSPECTIVE_FAIL_MODE:-allow}
       - MM_TIMEOUT_SEC=30
       - TURN_TIMEOUT_SEC=25
       - RECONNECT_GRACE_SEC=45
@@ -220,6 +232,7 @@ services:
 
 networks:
   monitor-net:
+    name: yovi_es1c_monitor-net
     driver: bridge
 
 volumes:

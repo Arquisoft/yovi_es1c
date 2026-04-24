@@ -1,0 +1,63 @@
+[
+  {
+    "name": "empty-3-p0",
+    "board_state": [0, 0, 0, 0, 0, 0],
+    "board_size": 3,
+    "current_player": 0,
+    "board_norm": 0.09375,
+    "non_zero": [
+      { "channel": 2, "row": 0, "col": 0, "value": 1.0 },
+      { "channel": 2, "row": 1, "col": 0, "value": 1.0 },
+      { "channel": 2, "row": 1, "col": 1, "value": 1.0 },
+      { "channel": 2, "row": 2, "col": 0, "value": 1.0 },
+      { "channel": 2, "row": 2, "col": 1, "value": 1.0 },
+      { "channel": 2, "row": 2, "col": 2, "value": 1.0 },
+      { "channel": 3, "row": 0, "col": 0, "value": 1.0 },
+      { "channel": 3, "row": 1, "col": 0, "value": 0.5 },
+      { "channel": 3, "row": 1, "col": 1, "value": 0.5 },
+      { "channel": 4, "row": 1, "col": 1, "value": 0.5 },
+      { "channel": 4, "row": 2, "col": 1, "value": 0.5 },
+      { "channel": 4, "row": 2, "col": 2, "value": 1.0 },
+      { "channel": 5, "row": 1, "col": 0, "value": 0.5 },
+      { "channel": 5, "row": 2, "col": 0, "value": 1.0 },
+      { "channel": 5, "row": 2, "col": 1, "value": 0.5 }
+    ]
+  },
+  {
+    "name": "mixed-4-p1",
+    "board_state": [1, 2, 0, 2, 1, 0, 0, 1, 0, 0],
+    "board_size": 4,
+    "current_player": 1,
+    "board_norm": 0.125,
+    "non_zero": [
+      { "channel": 0, "row": 1, "col": 0, "value": 1.0 },
+      { "channel": 0, "row": 2, "col": 0, "value": 1.0 },
+      { "channel": 1, "row": 0, "col": 0, "value": 1.0 },
+      { "channel": 1, "row": 2, "col": 1, "value": 1.0 },
+      { "channel": 1, "row": 3, "col": 1, "value": 1.0 },
+      { "channel": 2, "row": 1, "col": 1, "value": 1.0 },
+      { "channel": 2, "row": 2, "col": 2, "value": 1.0 },
+      { "channel": 2, "row": 3, "col": 0, "value": 1.0 },
+      { "channel": 2, "row": 3, "col": 2, "value": 1.0 },
+      { "channel": 2, "row": 3, "col": 3, "value": 1.0 },
+      { "channel": 3, "row": 0, "col": 0, "value": 1.0 },
+      { "channel": 3, "row": 1, "col": 0, "value": 0.6666666865348816 },
+      { "channel": 3, "row": 1, "col": 1, "value": 0.6666666865348816 },
+      { "channel": 3, "row": 2, "col": 0, "value": 0.3333333432674408 },
+      { "channel": 3, "row": 2, "col": 1, "value": 0.3333333432674408 },
+      { "channel": 3, "row": 2, "col": 2, "value": 0.3333333432674408 },
+      { "channel": 4, "row": 1, "col": 1, "value": 0.3333333432674408 },
+      { "channel": 4, "row": 2, "col": 1, "value": 0.3333333432674408 },
+      { "channel": 4, "row": 2, "col": 2, "value": 0.6666666865348816 },
+      { "channel": 4, "row": 3, "col": 1, "value": 0.3333333432674408 },
+      { "channel": 4, "row": 3, "col": 2, "value": 0.6666666865348816 },
+      { "channel": 4, "row": 3, "col": 3, "value": 1.0 },
+      { "channel": 5, "row": 1, "col": 0, "value": 0.3333333432674408 },
+      { "channel": 5, "row": 2, "col": 0, "value": 0.6666666865348816 },
+      { "channel": 5, "row": 2, "col": 1, "value": 0.3333333432674408 },
+      { "channel": 5, "row": 3, "col": 0, "value": 1.0 },
+      { "channel": 5, "row": 3, "col": 1, "value": 0.6666666865348816 },
+      { "channel": 5, "row": 3, "col": 2, "value": 0.3333333432674408 }
+    ]
+  }
+]

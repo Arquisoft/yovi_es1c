@@ -1,8 +1,12 @@
 # training/train.py
 import argparse
 import copy
+import json
 import os
+import pickle
 import random
+import tempfile
+from typing import Callable
 
 import torch
 import torch.nn.functional as F
@@ -66,6 +70,130 @@ def loss_fn(
     return value_loss + policy_loss
 
 
+def ensure_parent_dir(path: str):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+class InvalidTrainingCheckpointError(RuntimeError):
+    """Raised when a checkpoint file exists but cannot be safely resumed."""
+
+
+def _atomic_torch_save(payload: dict, path: str):
+    checkpoint_dir = os.path.dirname(path) or "."
+    file_prefix = f".{os.path.basename(path)}."
+    fd, temp_path = tempfile.mkstemp(
+        prefix=file_prefix,
+        suffix=".tmp",
+        dir=checkpoint_dir,
+    )
+    os.close(fd)
+    try:
+        with open(temp_path, "wb") as handle:
+            torch.save(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _is_corrupt_checkpoint_runtime_error(error: RuntimeError) -> bool:
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "pytorchstreamreader failed",
+            "failed finding central directory",
+            "unexpected eof",
+            "invalid header",
+        )
+    )
+
+
+def _load_checkpoint_payload(path: str) -> dict:
+    if os.path.getsize(path) == 0:
+        raise InvalidTrainingCheckpointError(f"Checkpoint {path} is empty")
+
+    try:
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    except (EOFError, pickle.UnpicklingError) as error:
+        raise InvalidTrainingCheckpointError(
+            f"Checkpoint {path} is truncated or unreadable"
+        ) from error
+    except RuntimeError as error:
+        if _is_corrupt_checkpoint_runtime_error(error):
+            raise InvalidTrainingCheckpointError(
+                f"Checkpoint {path} is corrupted"
+            ) from error
+        raise
+
+    if not isinstance(checkpoint, dict):
+        raise InvalidTrainingCheckpointError(
+            f"Checkpoint {path} has an unexpected payload type"
+        )
+
+    required_keys = {"model_state_dict", "optimizer_state_dict", "replay_buffer", "metadata"}
+    missing_keys = sorted(required_keys - checkpoint.keys())
+    if missing_keys:
+        raise InvalidTrainingCheckpointError(
+            f"Checkpoint {path} is missing required keys: {', '.join(missing_keys)}"
+        )
+
+    return checkpoint
+
+
+def quarantine_checkpoint(path: str) -> str:
+    candidate = f"{path}.corrupt"
+    suffix = 1
+    while os.path.exists(candidate):
+        suffix += 1
+        candidate = f"{path}.corrupt.{suffix}"
+    os.replace(path, candidate)
+    return candidate
+
+
+def save_training_checkpoint(
+        path: str,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        replay_buffer: list[GameExample],
+        metadata: dict | None = None,
+        accepted_model_state_dict: dict | None = None,
+):
+    ensure_parent_dir(path)
+    payload = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "replay_buffer": replay_buffer,
+        "metadata": metadata or {},
+    }
+    if accepted_model_state_dict is not None:
+        payload["accepted_model_state_dict"] = accepted_model_state_dict
+    _atomic_torch_save(payload, path)
+
+
+def load_training_checkpoint(
+        path: str,
+        model_factory: Callable[[], torch.nn.Module],
+        optimizer_factory: Callable[[list[torch.nn.Parameter]], torch.optim.Optimizer],
+) -> tuple[torch.nn.Module, torch.optim.Optimizer, dict]:
+    checkpoint = _load_checkpoint_payload(path)
+    model = model_factory()
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer = optimizer_factory(list(model.parameters()))
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    return model, optimizer, checkpoint
+
+
+def append_training_metrics(path: str, record: dict):
+    ensure_parent_dir(path)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record) + "\n")
+
+
 # ─────────────────────────────────────────────
 #  Evaluación: nuevo modelo vs anterior
 # ─────────────────────────────────────────────
@@ -120,30 +248,74 @@ def train(
         board_sizes:        list  = None,
         model_path:         str   = "../gamey/models/yovi_model.pt",
         onnx_path:          str   = "../gamey/models/yovi_model.onnx",
+        checkpoint_path:    str | None = None,
+        metrics_path:       str | None = None,
+        evaluation_games:   int   = 40,
+        evaluation_simulations: int = 50,
         win_rate_threshold: float = 0.45,
         buffer_size:        int   = 50_000,
 ):
     if board_sizes is None:
         board_sizes = [5, 7, 9, 11]
+    if iterations < 1:
+        raise ValueError("iterations must be >= 1")
 
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    ensure_parent_dir(model_path)
+    ensure_parent_dir(onnx_path)
+    checkpoint_path = checkpoint_path or os.path.splitext(model_path)[0] + "_checkpoint.pt"
+    metrics_path = metrics_path or os.path.splitext(model_path)[0] + "_metrics.jsonl"
+
+    def make_model() -> PolicyValueNet:
+        return PolicyValueNet()
+
+    def make_optimizer(params: list[torch.nn.Parameter]) -> torch.optim.Optimizer:
+        return torch.optim.Adam(params, lr=lr, weight_decay=1e-4)
+
+    replay_buffer: list[GameExample] = []
+    start_iteration = 1
 
     # ── Cargar o inicializar modelo ───────────────────────────────────
     if os.path.exists(model_path):
         print(f"Cargando modelo existente desde {model_path} (warm-start)")
         model = PolicyValueNet.load(model_path)
+        optimizer = make_optimizer(list(model.parameters()))
+        old_model = copy.deepcopy(model)
     else:
         print("Inicializando modelo nuevo (pesos aleatorios)")
-        model = PolicyValueNet()
+        model = make_model()
+        optimizer = make_optimizer(list(model.parameters()))
+        old_model = copy.deepcopy(model)
 
-    # old_model se inicializa siempre ANTES del bucle
-    old_model = copy.deepcopy(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
-    replay_buffer: list[GameExample] = []
+    if os.path.exists(checkpoint_path):
+        print(f"Cargando checkpoint de entrenamiento desde {checkpoint_path}")
+        try:
+            model, optimizer, checkpoint = load_training_checkpoint(
+                checkpoint_path,
+                model_factory=make_model,
+                optimizer_factory=make_optimizer,
+            )
+        except InvalidTrainingCheckpointError as error:
+            quarantined_path = quarantine_checkpoint(checkpoint_path)
+            print(
+                "Checkpoint inv\u00e1lido o incompleto; se ignorar\u00e1 para reanudar "
+                f"desde el warm-start. Copia movida a {quarantined_path}. Error: {error}"
+            )
+        else:
+            replay_buffer = checkpoint.get("replay_buffer", [])
+            start_iteration = checkpoint.get("metadata", {}).get("next_iteration", 1)
+            old_model = make_model()
+            old_model.load_state_dict(checkpoint.get("accepted_model_state_dict", model.state_dict()))
 
-    for iteration in range(1, iterations + 1):
+    end_iteration = start_iteration + iterations - 1
+    if start_iteration > 1:
+        print(
+            f"Reanudando en iteración global {start_iteration}; "
+            f"ejecutando {iterations} iteraciones nuevas hasta {end_iteration}"
+        )
+
+    for step, iteration in enumerate(range(start_iteration, end_iteration + 1), start=1):
         print(f"\n{'='*50}")
-        print(f"Iteración {iteration}/{iterations}")
+        print(f"Iteración {step}/{iterations} (global {iteration})")
         print(f"{'='*50}")
 
         # ── 1. Self-play ──────────────────────────────────────────────
@@ -160,15 +332,18 @@ def train(
         if len(replay_buffer) > buffer_size:
             replay_buffer = replay_buffer[-buffer_size:]
         print(f"  Buffer: {len(replay_buffer)} ejemplos")
+        if not replay_buffer:
+            raise RuntimeError("Self-play did not generate any training examples.")
 
         # ── 2. Entrenamiento ──────────────────────────────────────────
         print(f"[2/3] Entrenando ({epochs_per_iter} épocas)...")
         model.train()
         dataset    = YGameDataset(replay_buffer)
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=False)
 
         for epoch in range(1, epochs_per_iter + 1):
             total_loss = 0.0
+            batch_count = 0
             for spatials, board_norms, policies, values in dataloader:
                 optimizer.zero_grad()
                 pred_policy, pred_value = model(spatials, board_norms)
@@ -177,28 +352,58 @@ def train(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
                 total_loss += loss.item()
-            avg_loss = total_loss / len(dataloader)
-            print(f"  Época {epoch}/{epochs_per_iter} — loss: {avg_loss:.4f}")
+                batch_count += 1
+            avg_loss = total_loss / batch_count
+            print(f"  Epoch {epoch}/{epochs_per_iter} - loss: {avg_loss:.4f}")
 
         # ── 3. Evaluación ─────────────────────────────────────────────
         print(f"[3/3] Evaluando nuevo modelo vs anterior...")
         win_rate = evaluate_models(
             model, old_model, board_sizes,
-            num_games=40, simulations=50,
+            num_games=evaluation_games, simulations=evaluation_simulations,
         )
+        accepted = win_rate >= win_rate_threshold
         if win_rate >= win_rate_threshold:
-            print(f"  ✓ Nuevo modelo aceptado ({win_rate:.1%} >= {win_rate_threshold:.1%})")
+            print(f"  New model accepted ({win_rate:.1%} >= {win_rate_threshold:.1%})")
             old_model = copy.deepcopy(model)
             model.save(model_path)
         else:
-            print(f"  ✗ Nuevo modelo rechazado ({win_rate:.1%} < {win_rate_threshold:.1%}), restaurando anterior")
+            print(f"  New model rejected ({win_rate:.1%} < {win_rate_threshold:.1%}), restoring previous weights")
             model = copy.deepcopy(old_model)
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+            optimizer = make_optimizer(list(model.parameters()))
+
+        save_training_checkpoint(
+            checkpoint_path,
+            model,
+            optimizer,
+            replay_buffer,
+            metadata={
+                "next_iteration": iteration + 1,
+                "board_sizes": list(board_sizes),
+                "win_rate": win_rate,
+                "accepted": accepted,
+                "evaluation_games": evaluation_games,
+                "evaluation_simulations": evaluation_simulations,
+            },
+            accepted_model_state_dict=old_model.state_dict(),
+        )
+        append_training_metrics(
+            metrics_path,
+            {
+                "iteration": iteration,
+                "avg_loss": avg_loss,
+                "win_rate": win_rate,
+                "accepted": accepted,
+                "buffer_size": len(replay_buffer),
+                "evaluation_games": evaluation_games,
+                "evaluation_simulations": evaluation_simulations,
+            },
+        )
 
     # ── Exportar a ONNX ───────────────────────────────────────────────
-    print(f"\nExportando modelo a ONNX → {onnx_path}")
+    print(f"\nExporting ONNX model to {onnx_path}")
     model.export_onnx(onnx_path)
-    print("\n✓ Entrenamiento completado.")
+    print("\nTraining completed.")
     print(f"  Modelo PyTorch : {model_path}")
     print(f"  Modelo ONNX    : {onnx_path}")
 
@@ -209,7 +414,12 @@ def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Entrenamiento AlphaZero para el juego Y")
-    parser.add_argument("--iterations",      type=int,   default=20)
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=20,
+        help="Número de iteraciones nuevas a ejecutar; si hay checkpoint continúa desde next_iteration",
+    )
     parser.add_argument("--games-per-iter",  type=int,   default=30)
     parser.add_argument("--simulations",     type=int,   default=150)
     parser.add_argument("--epochs",          type=int,   default=5)
@@ -218,6 +428,10 @@ if __name__ == "__main__":
     parser.add_argument("--board-sizes",     type=int,   nargs="+", default=[5, 7, 9, 11])
     parser.add_argument("--model-path",      type=str,   default="../gamey/models/yovi_model.pt")
     parser.add_argument("--onnx-path",       type=str,   default="../gamey/models/yovi_model.onnx")
+    parser.add_argument("--checkpoint-path", type=str,   default=None)
+    parser.add_argument("--metrics-path",    type=str,   default=None)
+    parser.add_argument("--eval-games",      type=int,   default=40)
+    parser.add_argument("--eval-simulations", type=int,  default=50)
     parser.add_argument("--win-threshold",   type=float, default=0.45)
     parser.add_argument("--buffer-size",     type=int,   default=50_000)
     args = parser.parse_args()
@@ -232,6 +446,10 @@ if __name__ == "__main__":
         board_sizes       = args.board_sizes,
         model_path        = args.model_path,
         onnx_path         = args.onnx_path,
+        checkpoint_path   = args.checkpoint_path,
+        metrics_path      = args.metrics_path,
+        evaluation_games  = args.eval_games,
+        evaluation_simulations = args.eval_simulations,
         win_rate_threshold= args.win_threshold,
         buffer_size       = args.buffer_size,
     )

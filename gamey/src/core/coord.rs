@@ -201,6 +201,19 @@ mod tests {
     }
 
     #[test]
+    fn test_bottom_corners_touch_expected_sides() {
+        let bottom_left = Coordinates::new(0, 0, 4);
+        assert!(bottom_left.touches_side_a());
+        assert!(bottom_left.touches_side_b());
+        assert!(!bottom_left.touches_side_c());
+
+        let bottom_right = Coordinates::new(0, 4, 0);
+        assert!(bottom_right.touches_side_a());
+        assert!(!bottom_right.touches_side_b());
+        assert!(bottom_right.touches_side_c());
+    }
+
+    #[test]
     fn test_interior_cell_touches_no_sides() {
         let interior = Coordinates::new(1, 1, 1);
         assert!(!interior.touches_side_a());

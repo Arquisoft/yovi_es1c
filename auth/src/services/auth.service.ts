@@ -260,11 +260,19 @@ export class AuthService {
 
     async logout(sessionId?: string): Promise<void> {
         if (!sessionId) return;
-        await this.repo.revokeSessionById(sessionId);
+        const revoked = await this.repo.revokeSessionById(sessionId);
+        if (revoked > 0) {
+            recordRefreshTokenRevocation('logout', revoked);
+            decrementActiveRefreshTokens(revoked);
+        }
     }
 
     async logoutAll(userId: number): Promise<void> {
-        await this.repo.revokeAllUserSessions(userId);
+        const revoked = await this.repo.revokeAllUserSessions(userId);
+        if (revoked > 0) {
+            recordRefreshTokenRevocation('logout_all', revoked);
+            decrementActiveRefreshTokens(revoked);
+        }
     }
 
     private async issueSession(userId: number, username: string, deviceId: string, deviceName?: string) {
