@@ -749,4 +749,67 @@ describe('OnlineSessionService', () => {
       expect(snapshot?.layout).toBe('./B./...');
     });
   });
+  it('requestRematch stores request and notifies opponent', async () => {
+    const { service, io } = await setup();
+
+    await service.abandon('m1', 1);
+
+    await service.requestRematch('m1', 1);
+
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(emit).toHaveBeenCalledWith('rematch:requested', {
+      matchId: 'm1',
+      requesterName: 'a',
+    });
+  });
+  it('requestRematch rejects if session is not finished', async () => {
+    const { service } = await setup();
+
+    await expect(
+        service.requestRematch('m1', 1),
+    ).rejects.toMatchObject({ code: 'SESSION_TERMINAL' });
+  });
+  it('requestRematch rejects non-participant', async () => {
+    const { service } = await setup();
+    await service.abandon('m1', 1);
+
+    await expect(
+        service.requestRematch('m1', 999),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+  it('acceptRematch creates new session and swaps players', async () => {
+    const { service, io } = await setup();
+    await service.abandon('m1', 1);
+
+    await service.requestRematch('m1', 1);
+
+    const newMatchId = await service.acceptRematch('m1', 2);
+
+    expect(newMatchId).toContain('online-');
+
+    const snapshot = await service.getSnapshot(newMatchId);
+    expect(snapshot?.players[0].userId).toBe(2); // acceptor ahora es B
+    expect(snapshot?.players[1].userId).toBe(1);
+
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(io.to).toHaveBeenCalledWith('user:2');
+
+    expect(emit).toHaveBeenCalledWith(
+        'rematch:ready',
+        expect.objectContaining({
+          newMatchId,
+          size: snapshot?.size,
+        }),
+    );
+  });
+  it('acceptRematch rejects when requester tries to accept', async () => {
+    const { service } = await setup();
+    await service.abandon('m1', 1);
+
+    await service.requestRematch('m1', 1);
+
+    await expect(
+        service.acceptRematch('m1', 1),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
 });
