@@ -146,7 +146,13 @@ export class OnlineSessionService {
       finalText = result.sanitized;
     } catch (error) {
       if (error instanceof ChatFilterError) {
-        console.warn(`[ChatFilter] Rejected message score=${error.score.toFixed(2)} for user ${userId} in match ${matchId}`);
+        if (error.kind === 'service_unavailable') {
+          console.warn(`[ChatFilter] Moderation unavailable for user ${userId} in match ${matchId}`);
+          throw new OnlineSessionError('INVALID_MOVE', 'Chat moderation is temporarily unavailable, please try again');
+        }
+
+        const scoreLabel = typeof error.score === 'number' ? error.score.toFixed(2) : 'n/a';
+        console.warn(`[ChatFilter] Rejected message score=${scoreLabel} for user ${userId} in match ${matchId}`);
         throw new OnlineSessionError('INVALID_MOVE', 'Message contains inappropriate content');
       }
       throw error;

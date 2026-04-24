@@ -235,7 +235,7 @@ describe('OnlineSessionService', () => {
 
   it('addChatMessage rejects messages blocked by the chat filter', async () => {
     const chatFilter = {
-      filter: vi.fn().mockRejectedValue(new ChatFilterError('blocked', 0.95)),
+      filter: vi.fn().mockRejectedValue(new ChatFilterError('blocked', { kind: 'toxicity', score: 0.95 })),
     } as unknown as ChatFilter;
     const service = new OnlineSessionService(
         new OnlineSessionRepository(),
@@ -255,6 +255,30 @@ describe('OnlineSessionService', () => {
 
     const snapshot = await service.getSnapshot('m-reject');
     expect(snapshot?.messages).toEqual([]);
+  });
+
+  it('addChatMessage reports moderation unavailability separately from toxic content rejection', async () => {
+    const chatFilter = {
+      filter: vi.fn().mockRejectedValue(new ChatFilterError(
+          'Message rejected because moderation is temporarily unavailable',
+          { kind: 'service_unavailable' },
+      )),
+    } as unknown as ChatFilter;
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        {},
+        undefined,
+        chatFilter,
+    );
+    await service.createSession('m-retry', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    await expect(service.addChatMessage('m-retry', 1, 'a', 'hostile')).rejects.toMatchObject({
+      code: 'INVALID_MOVE',
+      message: 'Chat moderation is temporarily unavailable, please try again',
+    });
   });
 
   it('addChatMessage uses static filtering when Perspective API is not configured', async () => {
