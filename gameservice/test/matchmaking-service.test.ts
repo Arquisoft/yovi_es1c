@@ -69,6 +69,49 @@ describe('MatchmakingService rules compatibility', () => {
     }
   });
 
+  it('creates multiple human matches in a single tick when the queue has enough compatible players', async () => {
+    const players = await Promise.all([
+      service.joinQueue({
+        userId: 1,
+        username: 'alice',
+        boardSize: 8,
+        rules: classic,
+        socketId: 'sock-1',
+      }),
+      service.joinQueue({
+        userId: 2,
+        username: 'bob',
+        boardSize: 8,
+        rules: classic,
+        socketId: 'sock-2',
+      }),
+      service.joinQueue({
+        userId: 3,
+        username: 'carol',
+        boardSize: 8,
+        rules: classic,
+        socketId: 'sock-3',
+      }),
+      service.joinQueue({
+        userId: 4,
+        username: 'dave',
+        boardSize: 8,
+        rules: classic,
+        socketId: 'sock-4',
+      }),
+    ]);
+
+    await service.runMatchmakingTick(Math.max(...players.map((player) => player.joinedAt)) + 1_000);
+
+    const assignments = await Promise.all([1, 2, 3, 4].map((userId) => service.tryMatch(userId)));
+    const matchIds = assignments
+        .map((assignment) => assignment?.matchId ?? null)
+        .filter((matchId): matchId is string => matchId !== null);
+
+    expect(matchIds).toHaveLength(4);
+    expect(new Set(matchIds).size).toBe(2);
+  });
+
   it('stores rules in redis-backed initial online session state', async () => {
     const memory = new Map<string, string>();
     const boards = new Set<string>();

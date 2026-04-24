@@ -1,414 +1,262 @@
 [[section-runtime-view]]
 == Runtime View
 
-This section describes how the main components of the YOVI system collaborate at runtime to support user authentication, match management, gameplay, bot interaction, statistics retrieval, and real-time online multiplayer sessions.
-The scenarios below are derived directly from the system's architecture and message flows, using JSON/YEN as the canonical representation of game states.
+This section describes the main runtime collaborations across authentication, profile access, AI matches, realtime online play, rankings and timeout handling.
 
-All communication between the React Frontend (running in the user's browser) and backend services goes through the Nginx API Gateway, which routes requests to the appropriate service based on URL paths.
+=== Runtime Scenario 1: Registration and Login
 
-=== Runtime Scenario 1: User Registration and Login
-
-This scenario shows how a human user registers or logs into the system through the React Frontend.
-The frontend makes API calls through Nginx, which routes authentication requests to the Auth Service, which persists credential data in `authdb` (PostgreSQL).
-
-[plantuml, "runtime-login", png]
+[plantuml, runtime-login, png]
 ----
-actor "User (Browser)" as Human
+actor "User" as Human
 participant "React Frontend" as Frontend
-participant "Nginx\n(API Gateway)" as Nginx
-participant "Auth Service\n(Node.js)" as Auth
+participant "Nginx" as Nginx
+participant "Auth Service" as Auth
 database "authdb" as AuthDB
 
-Human -> Frontend: Click Login/Register
-Frontend -> Nginx: POST /api/auth/register | /api/auth/login
-Nginx -> Auth: Forward to port 3001
-Auth -> AuthDB: create/read user credentials
-AuthDB --> Auth: credentials record
-Auth --> Nginx: token/session (JWT)
-Nginx --> Frontend: token/session
-Frontend --> Human: Display success, store token
+Human -> Frontend: Fill registration or login form
+Frontend -> Nginx: POST /api/auth/register or /api/auth/login
+Nginx -> Auth: Forward request
+Auth -> AuthDB: create/read credential data
+AuthDB --> Auth: stored user / credential row
+Auth --> Nginx: access token + refresh token
+Nginx --> Frontend: tokens
+Frontend --> Human: authenticated session
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- Authentication is fully isolated in the Auth Service and its dedicated `authdb` (PostgreSQL)
-- Nginx routes all `/api/auth/*` requests to Auth Service (port 3001)
-- React Frontend stores the JWT token (localStorage or sessionStorage)
-- `authdb` (PostgreSQL) acts as the single source of truth for credentials
-- A failure in other databases (`users.db`, `gamedb` (PostgreSQL)) does not affect the login flow
+* only Auth Service touches credentials,
+* token issuance is fully isolated from profile and match persistence,
+* Prometheus can observe latency and success rates through auth metrics.
 
-=== Runtime Scenario 2: Authorization Check
+=== Runtime Scenario 2: Authorized Profile Request
 
-When a user requests protected resources, the React Frontend includes the JWT token in the request headers.
-Nginx forwards the request to the appropriate service, which delegates JWT verification to Auth Service through an internal call to `/api/auth/verify`.
-
-[plantuml, "runtime-auth-check", png]
+[plantuml, runtime-profile-auth, png]
 ----
-actor "User (Browser)" as Human
+actor "User" as Human
 participant "React Frontend" as Frontend
 participant "Nginx" as Nginx
+participant "Users Service" as Users
 participant "Auth Service" as Auth
+database "users.db" as UsersDB
+
+Human -> Frontend: Open profile page
+Frontend -> Nginx: GET /api/users/profiles/:id\nAuthorization: Bearer <token>
+Nginx -> Users: Forward request
+Users -> Auth: POST /api/auth/verify\nAuthorization: Bearer <token>
+
+alt invalid or unavailable
+  Auth --> Users: 401 or upstream failure
+  Users --> Nginx: 401 or 503
+  Nginx --> Frontend: error response
+  Frontend --> Human: redirect or error message
+else valid
+  Auth --> Users: 200 { valid, claims }
+  Users -> UsersDB: SELECT profile
+  UsersDB --> Users: profile row
+  Users --> Nginx: 200 profile JSON
+  Nginx --> Frontend: profile JSON
+  Frontend --> Human: render profile
+end
+----
+
+Notable aspects:
+
+* The auth decision is centralized in Auth Service.
+* Short auth timeouts prevent profile requests from hanging indefinitely.
+
+=== Runtime Scenario 3: AI Match Creation and Persistence
+
+[plantuml, runtime-ai-match, png]
+----
+actor "User" as Human
+participant "React Frontend" as Frontend
+participant "Nginx" as Nginx
 participant "Game Service" as GameService
+participant "Auth Service" as Auth
+database "gamedb" as GameDB
 
-Human -> Frontend: Request matches page
-Frontend -> Nginx: GET /api/game/matches\nAuthorization: Bearer <token>
-Nginx -> GameService: Forward with auth header
-GameService -> Auth: Verify JWT token\n(internal call)
+Human -> Frontend: Create BOT or LOCAL_2P match
+Frontend -> Nginx: POST /api/game/matches
+Nginx -> GameService: Forward request
+GameService -> Auth: POST /api/auth/verify
 
-alt invalid token
-  Auth --> GameService: 401 Unauthorized
-  GameService --> Nginx: 401 Unauthorized
-  Nginx --> Frontend: 401 Unauthorized
-  Frontend --> Human: Redirect to login
-else valid token
-  Auth --> GameService: 200 OK (token valid)
-  GameService --> Nginx: 200 + matches data
-  Nginx --> Frontend: 200 + matches data
-  Frontend --> Human: Display matches
+alt unauthorized
+  Auth --> GameService: 401
+  GameService --> Frontend: 401
+else authorized
+  Auth --> GameService: 200 claims
+  GameService -> GameDB: INSERT match
+  GameDB --> GameService: new match id
+  GameService --> Frontend: 201 { matchId }
 end
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- JWT validation is responsibility of the Auth Service
-- Other services (Game Service, Users Service) delegate token verification to Auth Service via internal call
-- React Frontend handles unauthorized responses by redirecting to login
-- Nginx simply routes requests without authentication logic
+* Game Service owns durable match creation,
+* the browser never talks directly to `gamedb`,
+* authorization is checked before any match write happens.
 
-Verify endpoint contract used by internal services:
+=== Runtime Scenario 4: Human Move Against a Bot
 
-- Method and path: `POST /api/auth/verify`
-- Internal URL (Docker network): `AUTH_INTERNAL_VERIFY_URL=http://auth:3001/api/auth/verify`
-- Token input: preferred `Authorization: Bearer <accessToken>` (compatible fallback: JSON body `{ "token": "<accessToken>" }`)
-- Success response (`200`): `{ "valid": true, "claims": { "sub": "<userId>", "username": "<username>", "tokenType": "access", "iat": <epoch>, "exp": <epoch> } }`
-- Error response (`401`): `{ "valid": false }` for missing, malformed, invalid, expired, or non-access tokens
-- Security boundary: `/api/auth/verify` must not be exposed publicly through Nginx and should be consumed only over internal service-to-service network calls
-- Client resilience policy for internal callers: use short timeouts (`500ms` to `1s`) and `0-1` retries to avoid cascading failures
-
-=== Runtime Scenario 3: Match Creation and Initial State Retrieval
-
-A user creates a new match by specifying board size, strategy, and difficulty through the React UI.
-The Game Service persists the match in `gamedb` (PostgreSQL) and returns the initial YEN state.
-
-[plantuml, "runtime-create-match", png]
+[plantuml, runtime-bot-move, png]
 ----
-actor "User (Browser)" as Human
+actor "User" as Human
 participant "React Frontend" as Frontend
 participant "Nginx" as Nginx
-participant "Auth Service" as Auth
-participant "Game Service\n(Node.js)" as GameService
-database "gamedb" as GameDB
-
-Human -> Frontend: Fill match form\n(size, strategy, difficulty)
-Frontend -> Nginx: POST /api/game/matches\n{size, strategy, difficulty, userId}\nAuthorization: Bearer <token>
-Nginx -> GameService: Forward to port 3002
-GameService -> Auth: Verify JWT token
-Auth --> GameService: 200 OK (token valid)
-GameService -> GameDB: INSERT INTO matches (size, strategy, difficulty, userId, status='ongoing')
-GameDB --> GameService: matchId + persisted state
-GameService --> Nginx: 201 Created\nmatch + initial YEN
-Nginx --> Frontend: 201 Created\nmatch + initial YEN
-Frontend -> Frontend: Update UI with game board
-Frontend --> Human: Display empty board ready to play
-----
-
-*Notable Aspects:*
-
-- The Game Service owns match lifecycle and persistence in `gamedb` (PostgreSQL)
-- Initial game state is always stored and returned in YEN format
-- React Frontend renders the game board based on received YEN notation
-- Match creation requires authentication (JWT token verified against Auth Service)
-- `authdb` (PostgreSQL) and `users.db` are not involved in this flow
-
-=== Runtime Scenario 4: Player Move (Human Turn)
-
-The human player submits a move by clicking on the game board in React.
-The frontend sends the current game state to the Game Server for bot move computation, then persists the updated state in the Game Service.
-
-[plantuml, "runtime-human-move", png]
-----
-actor "User (Browser)" as Human
-participant "React Frontend" as Frontend
-participant "Nginx" as Nginx
-participant "Game Service\n(Node.js)" as GameService
-participant "Game Server\n(Rust)" as Engine
-database "gamedb" as GameDB
-
-Human -> Frontend: Click on board position
-Frontend -> Frontend: Update local game state with player move
-
-' 1) Request bot move from Game Server
-Frontend -> Nginx: POST /api/gamey/ybot/choose/{botId}\n{position=YEN, strategy, difficulty}
-Nginx -> Engine: Forward to port 4000
-Engine -> Engine: Parse YEN\nValidate move\nCompute bot move
-Engine --> Nginx: 200 OK\nYenMoveDto {move, status}
-Nginx --> Frontend: YenMoveDto
-
-alt invalid YEN or game finished
-  Frontend --> Human: Display error message
-else valid move
-  Frontend -> Frontend: Apply bot move to local state\nUpdate YEN notation
-
-  ' 2) Persist updated match state
-  Frontend -> Nginx: POST /api/game/matches/{matchId}/moves\n{updatedYEN, status, moves}\nAuthorization: Bearer <token>
-  Nginx -> GameService: Forward to port 3002
-  GameService -> Auth: Verify JWT token
-  Auth --> GameService: 200 OK (token valid)
-  GameService -> GameService: Verify matchId ownership
-  GameService -> GameDB: UPDATE matches SET state=updatedYEN, status=...\nINSERT INTO moves (...)
-  GameDB --> GameService: OK
-  GameService --> Nginx: 200 OK {updated match}
-  Nginx --> Frontend: 200 OK {updated match}
-
-  Frontend -> Frontend: Render updated board
-  Frontend --> Human: Display updated game board
-end
-----
-
-*Notable Aspects:*
-
-- React Frontend coordinates the multi-step flow from the browser
-- For BOT/local flows, the frontend currently orchestrates part of the authoritative turn progression by applying local state before persistence (intentional current design tradeoff)
-- Game Server (Rust) is stateless and only computes moves based on YEN input, with no DB access
-- Game Service is the authoritative source of match state persistence in `gamedb` (PostgreSQL)
-- All updates are persisted atomically in `gamedb` (PostgreSQL)
-- `authdb` (PostgreSQL) and `users.db` are not involved in this flow
-
-=== Runtime Scenario 5: Bot API Interaction
-
-External bots can play matches programmatically using the API.
-The flow mirrors the human move scenario but uses bot credentials for authentication against the Auth Service.
-
-[plantuml, "runtime-bot-api", png]
-----
-actor "Bot Client" as Bot
-participant "Nginx" as Nginx
-participant "Auth Service" as Auth
+participant "Gamey" as Gamey
 participant "Game Service" as GameService
-participant "Game Server" as Engine
-database "authdb" as AuthDB
+participant "Auth Service" as Auth
 database "gamedb" as GameDB
 
-Bot -> Nginx: POST /api/gamey/bot/play\n{matchId, position=YEN, strategy, difficulty}\nAuthorization: Bearer <botToken>
+Human -> Frontend: Play a move
+Frontend -> Nginx: POST /api/gamey/v1/ybot/choose/:botId
+Nginx -> Gamey: Forward YEN position
+Gamey --> Frontend: computed move
 
-' 1) Verify bot credentials
-Nginx -> Auth: Verify botToken
-Auth -> AuthDB: read token metadata
-AuthDB --> Auth: token record
-Auth --> Nginx: 200 OK (token valid)
-
-' 2) Get match state
-Nginx -> GameService: GET /api/game/matches/{matchId}
-GameService -> GameDB: read match + status
-GameDB --> GameService: match state/status
-GameService --> Nginx: match state/status
-Nginx -> Nginx: Check if match is ongoing
-
-alt match finished or invalid
-  Nginx --> Bot: 409 Conflict (game finished)\nor 401 Unauthorized
-else match ongoing
-  ' 3) Compute bot move
-  Nginx -> Engine: POST /api/gamey/ybot/choose/{botId}\n{position=YEN}
-  Engine -> Engine: Compute move
-  Engine --> Nginx: YenMoveDto + status
-
-  ' 4) Persist result
-  Nginx -> GameService: POST /api/game/matches/{matchId}/moves\n{move, updatedYEN}
-  GameService -> GameDB: persist move/result/stats
-  GameDB --> GameService: OK
-  GameService --> Nginx: OK + updated match
-
-  Nginx --> Bot: 200 OK\nmove + updated YEN
-end
+Frontend -> Nginx: POST /api/game/matches/:id/moves
+Nginx -> GameService: persist move request
+GameService -> Auth: POST /api/auth/verify
+Auth --> GameService: valid claims
+GameService -> GameDB: INSERT move / UPDATE match
+GameDB --> GameService: persisted
+GameService --> Frontend: 202 processing
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- Bot authentication is handled exclusively by Auth Service against `authdb` (PostgreSQL)
-- Game data (match state, moves) is managed exclusively by Game Service against `gamedb` (PostgreSQL)
-- External bots must follow the same YEN notation format as human players
-- A failure in `users.db` does not affect bot gameplay
+* Gamey remains stateless and performs no persistence,
+* browser orchestrates the engine call and then persistence,
+* match state is durable only after Game Service accepts the move.
 
-=== Runtime Scenario 6: Statistics and History Retrieval
+=== Runtime Scenario 5: Rankings and Statistics
 
-Users can request aggregated statistics such as number of matches, wins/losses, and performance metrics through the React UI.
-Statistics are served by the Game Service from `gamedb` (PostgreSQL).
-
-[plantuml, "runtime-stats", png]
+[plantuml, runtime-ranking, png]
 ----
-actor "User (Browser)" as Human
+actor "User" as Human
 participant "React Frontend" as Frontend
 participant "Nginx" as Nginx
+participant "Game Service" as GameService
 participant "Auth Service" as Auth
-participant "Game Service\n(Node.js)" as GameService
 database "gamedb" as GameDB
 
-Human -> Frontend: Navigate to Statistics page
-Frontend -> Nginx: GET /api/game/stats/{userId}\nAuthorization: Bearer <token>
-Nginx -> GameService: Forward to port 3002
-GameService -> Auth: Verify JWT token
-Auth --> GameService: 200 OK (token valid)
-GameService -> GameDB: SELECT wins, losses, draws, total_matches\nFROM user_stats WHERE userId=...
-GameDB --> GameService: stats/history records
-GameService -> GameService: Aggregate and format stats
-GameService --> Nginx: 200 OK\nStatsDto {wins, losses, draws, ...}
-Nginx --> Frontend: StatsDto
-Frontend -> Frontend: Render charts/tables
-Frontend --> Human: Display statistics dashboard
+Human -> Frontend: Open rankings or statistics
+Frontend -> Nginx: GET /api/game/rankings or /api/game/stats/:userId
+Nginx -> GameService: Forward request
+GameService -> Auth: POST /api/auth/verify
+Auth --> GameService: valid claims
+GameService -> GameDB: SELECT ranking/stat rows
+GameDB --> GameService: result set
+GameService --> Frontend: JSON response
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- Statistics are computed from persisted match data in `gamedb` (PostgreSQL)
-- The Game Service exposes a unified Stats API
-- React Frontend handles visualization (charts, tables)
-- All stats queries require authentication (JWT verified against Auth Service)
-- `authdb` (PostgreSQL) and `users.db` are not involved in this flow
+* rankings and statistics are read from the same durable game store,
+* Game Service is the single API for leaderboard and history queries.
 
-=== Runtime Scenario 7: Online Matchmaking
+=== Runtime Scenario 6: Online Matchmaking and Session Join
 
-A registered player joins the matchmaking queue looking for a human opponent. The Game Service stores the entry in Redis and waits for a second player. When two compatible players are found, an online session is created and both clients are notified.
-
-[plantuml, "runtime-matchmaking", png]
+[plantuml, runtime-matchmaking, png]
 ----
-actor "Player A (Browser)" as PlayerA
-actor "Player B (Browser)" as PlayerB
-participant "React Frontend A" as FrontendA
-participant "React Frontend B" as FrontendB
+actor "Player A" as PlayerA
+actor "Player B" as PlayerB
+participant "Frontend A" as FrontendA
+participant "Frontend B" as FrontendB
 participant "Nginx" as Nginx
-participant "Game Service\n(Node.js)" as GameService
+participant "Game Service / Socket.IO" as GameService
 database "Redis" as Redis
 
-PlayerA -> FrontendA: Click "Play Online"
-FrontendA -> Nginx: Socket connect + emit queue:join {boardSize, rules}\nAuthorization: tokenA
-Nginx -> GameService: Proxy Socket.IO to port 3002
-GameService -> Redis: Queue player A
-GameService --> FrontendA: queue:status {state:"queued"}
+PlayerA -> FrontendA: Click Play Online
+FrontendA -> Nginx: connect Socket.IO + emit queue:join
+Nginx -> GameService: proxy websocket
+GameService -> Redis: store queue entry A
+GameService --> FrontendA: queue:status
 
-PlayerB -> FrontendB: Click "Play Online"
-FrontendB -> Nginx: Socket connect + emit queue:join {boardSize, rules}\nAuthorization: tokenB
-Nginx -> GameService: Proxy Socket.IO to port 3002
-GameService -> Redis: Queue player B + pair A/B
-GameService -> Redis: SET session:{matchId} {players, rules, board, turn}
-GameService --> FrontendA: matchmaking:matched {matchId, opponentPublic}
-GameService --> FrontendB: matchmaking:matched {matchId, opponentPublic}
+PlayerB -> FrontendB: Click Play Online
+FrontendB -> Nginx: connect Socket.IO + emit queue:join
+GameService -> Redis: store queue entry B
+GameService -> Redis: claim pair and create match assignment
+GameService --> FrontendA: matchmaking:matched
+GameService --> FrontendB: matchmaking:matched
 
-FrontendA --> PlayerA: Match found — connecting...
-FrontendB --> PlayerB: Match found — connecting...
+FrontendA -> GameService: match:join
+FrontendB -> GameService: match:join
+GameService -> Redis: create/load live session
+GameService --> FrontendA: session:state
+GameService --> FrontendB: session:state
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- The matchmaking queue is stored entirely in Redis, keeping `gamedb` (PostgreSQL) free from ephemeral queue state
-- Match assignments are pushed to both clients through Socket.IO (`matchmaking:matched`)
-- REST `GET /online/queue/match` remains available as polling fallback for non-socket clients
-- Once a session is created in Redis, both clients proceed to connect via Socket.IO (see Scenario 8)
+* queue state is ephemeral and Redis-backed,
+* pairing and live-session creation happen inside Game Service,
+* REST polling remains available as a fallback through `/api/game/online/queue/match`.
 
-=== Runtime Scenario 8: Real-time Online Session (Human vs Human)
+=== Runtime Scenario 7: Online Move, Chat and Reconnect
 
-After being matched, both players connect via Socket.IO. The Game Service manages the session in Redis, enforces turn order, and broadcasts board state updates to both clients in real time after each move.
-
-[plantuml, "runtime-online-session", png]
+[plantuml, runtime-online-session, png]
 ----
-actor "Player A (Browser)" as PlayerA
-actor "Player B (Browser)" as PlayerB
-participant "React Frontend A" as FrontendA
-participant "React Frontend B" as FrontendB
-participant "Nginx\n(WebSocket proxy)" as Nginx
-participant "Game Service\n(Socket.IO)" as GameService
+actor "Player A" as PlayerA
+actor "Player B" as PlayerB
+participant "Frontend A" as FrontendA
+participant "Frontend B" as FrontendB
+participant "Game Service / Socket.IO" as GameService
 database "Redis" as Redis
 database "gamedb" as GameDB
 
-FrontendA -> Nginx: WebSocket upgrade\n/api/game/socket.io/
-FrontendB -> Nginx: WebSocket upgrade\n/api/game/socket.io/
-Nginx -> GameService: Proxy WebSocket to port 3002
-GameService --> FrontendA: connected (joinSession: matchId)
-GameService --> FrontendB: connected (joinSession: matchId)
+PlayerA -> FrontendA: Play move
+FrontendA -> GameService: move:play
+GameService -> Redis: load session
+GameService -> GameService: validate turn and expectedVersion
+GameService -> Redis: store updated session
+GameService -> GameDB: persist move history
+GameService --> FrontendA: session:state
+GameService --> FrontendB: session:state
 
-PlayerA -> FrontendA: Place piece on board
-FrontendA -> GameService: Socket emit: move {matchId, position}
+PlayerB -> FrontendB: Send chat message
+FrontendB -> GameService: chat:message
+GameService -> Redis: append session message
+GameService --> FrontendA: chat:message
+GameService --> FrontendB: chat:message
 
-GameService -> Redis: GET session:{matchId}
-Redis --> GameService: current board + turn
-GameService -> GameService: Validate move\nApply to board
-GameService -> Redis: SET session:{matchId} {updated board, next turn}
-GameService -> GameDB: INSERT INTO moves (matchId, player, position, ...)
-
-GameService --> FrontendA: Socket emit: boardUpdate {board, turn: B}
-GameService --> FrontendB: Socket emit: boardUpdate {board, turn: B}
-
-FrontendA --> PlayerA: Updated board displayed
-FrontendB --> PlayerB: Updated board displayed
-
-PlayerB -> FrontendB: Place piece on board
-FrontendB -> GameService: Socket emit: move {matchId, position}
-GameService -> GameService: Validate, apply, check win condition
-
-alt game over
-  GameService -> GameDB: UPDATE matches SET status='finished', winner=...
-  GameService -> Redis: DEL session:{matchId}
-  GameService --> FrontendA: Socket emit: gameOver {winner}
-  GameService --> FrontendB: Socket emit: gameOver {winner}
-else game continues
-  GameService -> Redis: SET session:{matchId} {updated board, next turn}
-  GameService --> FrontendA: Socket emit: boardUpdate {board, turn: A}
-  GameService --> FrontendB: Socket emit: boardUpdate {board, turn: A}
-end
+PlayerB -> FrontendB: reconnect after disconnect
+FrontendB -> GameService: POST /api/game/online/sessions/:matchId/reconnect
+GameService -> Redis: clear reconnect deadline
+GameService --> FrontendB: updated session snapshot
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- All real-time communication uses Socket.IO over WebSocket, proxied through Nginx
-- The authoritative session state is kept in Redis for low-latency reads and updates
-- `gamedb` (PostgreSQL) is written for every move (durable history) while Redis holds the live session snapshot
-- The `@socket.io/redis-adapter` ensures events are delivered correctly even if multiple Game Service instances are running
-- When the game ends, the session is removed from Redis and the final result is persisted in `gamedb` (PostgreSQL)
+* Redis stores the authoritative live session snapshot,
+* `gamedb` keeps the durable move history,
+* reconnect uses explicit session APIs and grace windows.
 
-=== Runtime Scenario 9: Turn Timeout and Bot Fallback
+=== Runtime Scenario 8: Turn Timeout and Bot Fallback
 
-During an online session, each player has a limited time (`TURN_TIMEOUT_SEC`) to place their piece. If the timer expires, the `TurnTimerService` fires and `BotFallbackService` automatically computes and applies a move on behalf of the inactive player.
-
-[plantuml, "runtime-turn-timeout", png]
+[plantuml, runtime-timeout, png]
 ----
-actor "Player A (Browser)" as PlayerA
-actor "Player B (Browser)" as PlayerB
-participant "React Frontend A" as FrontendA
-participant "React Frontend B" as FrontendB
-participant "Game Service\n(Node.js)" as GameService
+participant "OnlineSessionService" as Session
 participant "TurnTimerService" as Timer
-participant "BotFallbackService" as BotFallback
-participant "Game Server\n(Rust)" as Engine
+participant "BotFallbackService" as Fallback
+participant "Gamey" as Gamey
 database "Redis" as Redis
 database "gamedb" as GameDB
 
-GameService -> Timer: startTimer(matchId, playerB, TURN_TIMEOUT_SEC)
-
-note over PlayerB: Player B does not move\nwithin TURN_TIMEOUT_SEC
-
-Timer -> GameService: onTimeout(matchId, playerB)
-GameService -> BotFallback: computeFallbackMove(matchId)
-
-BotFallback -> Redis: GET session:{matchId}
-Redis --> BotFallback: current board + turn
-BotFallback -> Engine: POST /api/gamey/ybot/choose/{botId}\n{position=YEN, difficulty}
-Engine --> BotFallback: YenMoveDto {move, status}
-
-BotFallback -> Redis: SET session:{matchId} {updated board, next turn}
-BotFallback -> GameDB: INSERT INTO moves (matchId, player=B, position=..., auto=true)
-
-GameService --> FrontendA: Socket emit: boardUpdate {board, turn: A, botFallback: true}
-GameService --> FrontendB: Socket emit: boardUpdate {board, turn: A, botFallback: true}
-
-FrontendA --> PlayerA: Updated board (bot moved for B)
-FrontendB --> PlayerB: Updated board (missed turn — bot played)
-
-GameService -> Timer: startTimer(matchId, playerA, TURN_TIMEOUT_SEC)
+Session -> Timer: start timer for active player
+Timer --> Session: timeout fired
+Session -> Fallback: compute fallback move
+Fallback -> Redis: load session
+Fallback -> Gamey: POST /api/gamey/v1/ybot/play
+Gamey --> Fallback: computed move
+Fallback -> Redis: store updated session
+Fallback -> GameDB: persist auto move
+Session --> Session: emit session:state with bot fallback applied
 ----
 
-*Notable Aspects:*
+Notable aspects:
 
-- `TurnTimerService` starts a new countdown after each move (human or bot)
-- `BotFallbackService` calls the stateless Game Server (Rust) to compute the fallback move, ensuring consistency with the standard bot logic
-- Both clients receive a `botFallback: true` flag in the board update event so the UI can inform players that the move was automatic
-- The fallback move is persisted in `gamedb` (PostgreSQL) with an `auto` marker for auditability
-- If a player disconnects, the `RECONNECT_GRACE_SEC` window is given before the timeout countdown begins
+* the timeout path reuses the same engine used for normal bot play,
+* automatic moves remain auditable because they are persisted,
+* reconnect grace is handled before timeout escalation.

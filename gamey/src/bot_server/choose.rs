@@ -1,5 +1,5 @@
 use crate::{Coordinates, GameY, YEN, check_api_version, error::ErrorResponse, state::AppState};
-use crate::bot_server::metrics::{observe_inference_latency, start_inference_timer};
+use crate::bot_server::metrics::{observe_bot_move_duration, observe_inference_latency, start_inference_timer};
 use axum::{
     Json,
     extract::{Path, State},
@@ -79,6 +79,7 @@ pub async fn choose(
     let inference_start = start_inference_timer();
     let selected_move = bot.choose_move(&game_y);
     observe_inference_latency(&params.bot_id, inference_start);
+    observe_bot_move_duration("choose", &params.bot_id, inference_start);
 
     let coords = match selected_move {
         Some(coords) => coords,
@@ -102,6 +103,10 @@ pub async fn choose(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bot_server::metrics::metrics_handler;
+    use crate::bot_server::state::AppState;
+    use crate::YEN;
+    use http_body_util::BodyExt;
 
     #[test]
     fn test_move_response_creation() {
@@ -165,5 +170,44 @@ mod tests {
         };
         assert_eq!(r1, r2);
         assert_ne!(r1, r3);
+    }
+
+    #[tokio::test]
+    async fn choose_records_bot_move_duration_metric_for_choose_endpoint() {
+        let state = AppState::new_test();
+        let request: YEN = (&GameY::new(3)).into();
+
+        let result = choose(
+            axum::extract::State(state),
+            axum::extract::Path(ChooseParams {
+                api_version: "v1".to_string(),
+                bot_id: "easy".to_string(),
+            }),
+            Json(request),
+        )
+        .await;
+
+        assert!(result.is_ok(), "choose should succeed for random bot");
+
+        let response = metrics_handler().await;
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8(body_bytes.to_vec()).unwrap();
+
+        assert!(
+            body.contains("gamey_bot_move_duration_seconds"),
+            "metrics body must contain gamey_bot_move_duration_seconds:\n{body}"
+        );
+        assert!(
+            body.contains("gamey_inference_latency_seconds"),
+            "metrics body must contain the compatibility latency metric:\n{body}"
+        );
+        assert!(
+            body.contains("endpoint=\"choose\""),
+            "metrics body must include choose endpoint label:\n{body}"
+        );
+        assert!(
+            body.contains("bot_id=\"easy\""),
+            "metrics body must include the easy bot label:\n{body}"
+        );
     }
 }

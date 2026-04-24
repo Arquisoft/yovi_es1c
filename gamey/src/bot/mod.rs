@@ -7,17 +7,19 @@
 //! - [`YBotRegistry`] - A registry for managing multiple bot implementations
 //! - [`RandomBot`] - A simple bot that makes random valid moves
 
-pub mod random;
+pub mod balanced_heuristic;
+pub mod both_players_set_distances_heuristic;
+mod heurisitic;
 pub mod minimax;
+pub mod neural_mcts;
+pub mod neural_net;
+pub mod random;
+pub(crate) mod set_based_heuristic;
+pub mod set_connectivity_heuristic;
 pub mod ybot;
 pub mod ybot_registry;
-mod heurisitic;
-pub(crate) mod set_based_heuristic;
-pub mod both_players_set_distances_heuristic;
-pub mod set_connectivity_heuristic;
-pub mod neural_net;
-pub mod neural_mcts;
 
+pub use balanced_heuristic::*;
 pub use neural_mcts::*;
 pub use random::*;
 pub use ybot::*;

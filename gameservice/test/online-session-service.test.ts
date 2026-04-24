@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnlineSessionRepository } from '../src/repositories/OnlineSessionRepository';
 import { OnlineSessionService } from '../src/services/OnlineSessionService';
 import { TurnTimerService } from '../src/services/TurnTimerService';
+import { ChatFilter, ChatFilterError } from '../src/services/ChatFilter';
 import { MatchRules } from '../src/types/rules';
 
 describe('OnlineSessionService', () => {
@@ -121,6 +122,12 @@ describe('OnlineSessionService', () => {
     await expect(service.reconnect('m1', 1, base + 61_000)).rejects.toMatchObject({ code: 'RECONNECT_EXPIRED' });
   });
 
+  it('rejects reconnect for users outside the session', async () => {
+    const { service } = await setup();
+
+    await expect(service.reconnect('m1', 999)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+
   it('forfeits when grace period expires', async () => {
     const { service } = await setup();
     const base = Date.now();
@@ -192,6 +199,129 @@ describe('OnlineSessionService', () => {
     nowSpy.mockRestore();
   });
 
+  it('addChatMessage sanitizes filtered content before storing and emitting', async () => {
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+    const chatFilter = {
+      filter: vi.fn().mockResolvedValue({
+        sanitized: '****',
+        wasFiltered: true,
+        toxicityScore: undefined,
+      }),
+    } as unknown as ChatFilter;
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+        undefined,
+        chatFilter,
+    );
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(22222);
+    await service.createSession('m-filter', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    const message = await service.addChatMessage('m-filter', 1, 'a', 'puta');
+
+    expect(chatFilter.filter).toHaveBeenCalledWith('puta');
+    expect(message.text).toBe('****');
+    const snapshot = await service.getSnapshot('m-filter');
+    expect(snapshot?.messages).toEqual([message]);
+    expect(emit).toHaveBeenCalledWith('chat:message', {
+      matchId: 'm-filter',
+      userId: 1,
+      username: 'a',
+      text: '****',
+      timestamp: 22222,
+    });
+
+    nowSpy.mockRestore();
+  });
+
+  it('addChatMessage rejects messages blocked by the chat filter', async () => {
+    const chatFilter = {
+      filter: vi.fn().mockRejectedValue(new ChatFilterError('blocked', { kind: 'toxicity', score: 0.95 })),
+    } as unknown as ChatFilter;
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        {},
+        undefined,
+        chatFilter,
+    );
+    await service.createSession('m-reject', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    await expect(service.addChatMessage('m-reject', 1, 'a', 'hostile')).rejects.toMatchObject({
+      code: 'INVALID_MOVE',
+      message: 'Message contains inappropriate content',
+    });
+
+    const snapshot = await service.getSnapshot('m-reject');
+    expect(snapshot?.messages).toEqual([]);
+  });
+
+  it('addChatMessage reports moderation unavailability separately from toxic content rejection', async () => {
+    const chatFilter = {
+      filter: vi.fn().mockRejectedValue(new ChatFilterError(
+          'Message rejected because moderation is temporarily unavailable',
+          { kind: 'service_unavailable' },
+      )),
+    } as unknown as ChatFilter;
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        {},
+        undefined,
+        chatFilter,
+    );
+    await service.createSession('m-retry', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    await expect(service.addChatMessage('m-retry', 1, 'a', 'hostile')).rejects.toMatchObject({
+      code: 'INVALID_MOVE',
+      message: 'Chat moderation is temporarily unavailable, please try again',
+    });
+  });
+
+  it('addChatMessage uses static filtering when Perspective API is not configured', async () => {
+    delete process.env.PERSPECTIVE_API_KEY;
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+    );
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(33333);
+    await service.createSession('m-static', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    const message = await service.addChatMessage('m-static', 1, 'a', 'p.u.t.a');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(message.text).toBe('*******');
+    const snapshot = await service.getSnapshot('m-static');
+    expect(snapshot?.messages).toEqual([message]);
+    expect(emit).toHaveBeenCalledWith('chat:message', {
+      matchId: 'm-static',
+      userId: 1,
+      username: 'a',
+      text: '*******',
+      timestamp: 33333,
+    });
+
+    nowSpy.mockRestore();
+  });
+
   it('getActiveSessionForUser uses user active index and returns active session', async () => {
     const redis = {
       get: vi
@@ -236,6 +366,31 @@ describe('OnlineSessionService', () => {
 
     expect(active).toBeNull();
     expect(redis.del).toHaveBeenCalledWith('session:user-active:10');
+  });
+
+  it('getActiveSessionForUser falls back to repository data when redis is not configured', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+    await service.createSession(
+        'repo-active',
+        5,
+        [{ userId: 10, username: 'a' }, { userId: 20, username: 'b' }],
+        'HUMAN',
+    );
+
+    await expect(service.getActiveSessionForUser(10)).resolves.toEqual({
+      matchId: 'repo-active',
+      boardSize: 5,
+    });
+  });
+
+  it('markDisconnected leaves state unchanged for non-participants', async () => {
+    const { service } = await setup();
+
+    const state = await service.markDisconnected('m1', 999);
+
+    expect(state?.status).toBe('active');
+    expect(state?.version).toBe(0);
+    expect(state?.connection[1]).toBe('CONNECTED');
   });
 
   it('handleTurnTimeout performs a random valid move when it is current player turn', async () => {
@@ -303,6 +458,84 @@ describe('OnlineSessionService', () => {
     await service.markDisconnected('m1', 1, base);
     await service.expireGrace('m1', 1, base + 61_000);
     await expect(service.reconnect('m1', 1, base + 61_500)).rejects.toMatchObject({ code: 'SESSION_TERMINAL' });
+  });
+
+  it('sweeps reconnect grace deadlines without requiring a client event', async () => {
+    const { service } = await setup();
+    const base = Date.now();
+
+    await service.markDisconnected('m1', 1, base);
+    const swept = await service.sweepExpiredSessions(base + 61_000);
+    const snapshot = await service.getSnapshot('m1');
+
+    expect(swept).toBe(1);
+    expect(snapshot?.status).toBe('expired');
+    expect(snapshot?.winner).toBe('R');
+  });
+
+  it('sweeps expired turn timers without requiring a client event', async () => {
+    const { service, session } = await setup();
+    (service as any).secureRandomInt = vi.fn(() => 0);
+
+    const swept = await service.sweepExpiredSessions(session.timerEndsAt + 1);
+    const snapshot = await service.getSnapshot('m1');
+
+    expect(swept).toBe(1);
+    expect(snapshot?.version).toBe(1);
+    expect(snapshot?.layout).toBe('B/../...');
+  });
+
+  it('sweeps terminal redis sessions out of the maintenance index', async () => {
+    const terminalSession = {
+      matchId: 'm-terminal',
+      size: 3,
+      layout: 'B/BR/BRB',
+      rules: {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+      },
+      turn: 0,
+      version: 4,
+      timerEndsAt: 123,
+      players: [{ userId: 1, username: 'a', symbol: 'B' }, { userId: 2, username: 'b', symbol: 'R' }],
+      opponentType: 'HUMAN',
+      status: 'finished',
+      closeReason: 'winner',
+      connection: { 1: 'CONNECTED', 2: 'CONNECTED' },
+      reconnectDeadline: { 1: null, 2: null },
+      winner: 'B',
+      messages: [],
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(JSON.stringify(terminalSession)),
+      set: vi.fn(),
+      del: vi.fn().mockResolvedValue(1),
+      zAdd: vi.fn(),
+      zRem: vi.fn().mockResolvedValue(1),
+      zRange: vi.fn().mockResolvedValue(['m-terminal']),
+    };
+
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { redis });
+    const swept = await service.sweepExpiredSessions();
+
+    expect(swept).toBe(0);
+    expect(redis.zRem).toHaveBeenCalledWith('session:online:index', ['m-terminal']);
+  });
+
+  it('startMaintenanceWorker is idempotent and stopMaintenanceWorker clears the timer', () => {
+    const intervalHandle = { unref: vi.fn() };
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockReturnValue(intervalHandle as any);
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => undefined);
+
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+    service.startMaintenanceWorker(1234);
+    service.startMaintenanceWorker(1234);
+    service.stopMaintenanceWorker();
+    service.stopMaintenanceWorker();
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(intervalHandle.unref).toHaveBeenCalledTimes(1);
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
   });
 
   it('dedupe by clientEventId rejects duplicate events', async () => {

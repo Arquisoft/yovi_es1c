@@ -42,6 +42,8 @@ type VerifyResult =
     | 'wrong_token_type';
 type RefreshRevocationReason =
     | 'login_revoke_all'
+    | 'logout'
+    | 'logout_all'
     | 'refresh_rotation'
     | 'refresh_expired'
     | 'refresh_token_reuse';

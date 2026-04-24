@@ -1,6 +1,7 @@
 import math
 import random
 import numpy as np
+from functools import lru_cache
 from dataclasses import dataclass
 from model import PolicyValueNet, encode_board, total_cells, GRID_SIZE, MAX_CELLS, NUM_CHANNELS
 
@@ -46,6 +47,7 @@ class BoardState:
 #  Lógica de victoria
 # ─────────────────────────────────────────────
 
+@lru_cache(maxsize=None)
 def get_neighbors(idx: int, size: int) -> list[int]:
     n = total_cells(size)
     row, col = index_to_row_col(idx, size)
@@ -66,20 +68,20 @@ def get_neighbors(idx: int, size: int) -> list[int]:
 
 
 def index_to_row_col(idx: int, size: int) -> tuple[int, int]:
-    row, col = 0, 0
-    count = 0
-    for r in range(size):
-        for c in range(r + 1):
-            if count == idx:
-                return r, c
-            count += 1
-    raise ValueError(f"Index {idx} out of range for size {size}")
+    n = total_cells(size)
+    if idx < 0 or idx >= n:
+        raise ValueError(f"Index {idx} out of range for size {size}")
+
+    row = (math.isqrt(8 * idx + 1) - 1) // 2
+    col = idx - row * (row + 1) // 2
+    return row, col
 
 
 def row_col_to_index(row: int, col: int, size: int) -> int:
     return row * (row + 1) // 2 + col
 
 
+@lru_cache(maxsize=None)
 def touches_sides(idx: int, size: int) -> tuple[bool, bool, bool]:
     row, col = index_to_row_col(idx, size)
     x = size - 1 - row

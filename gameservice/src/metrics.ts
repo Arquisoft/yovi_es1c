@@ -26,13 +26,19 @@ export const gamesFinished = new Counter({
 export const botMoveDuration = new Histogram({
     name: 'gameservice_bot_move_duration_seconds',
     help: 'Tiempo de cálculo del bot',
-    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+    buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12],
     registers: [register],
 });
 
 export const activeSocketConnections = new Gauge({
     name: 'gameservice_socket_connections_active',
     help: 'Conexiones Socket.IO activas',
+    registers: [register],
+});
+
+export const socketConnectionsTotal = new Counter({
+    name: 'gameservice_socket_connections_total',
+    help: 'Total de conexiones Socket.IO aceptadas',
     registers: [register],
 });
 

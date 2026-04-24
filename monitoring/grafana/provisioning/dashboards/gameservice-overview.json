@@ -196,7 +196,7 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "Socket connections",
+      "title": "Socket connections peak",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -210,7 +210,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "gameservice_socket_connections_active",
+          "expr": "max_over_time(gameservice_socket_connections_active[$__range])",
           "instant": true
         }
       ],
