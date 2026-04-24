@@ -1,5 +1,7 @@
 import { fetchWithAuth } from '../../../shared/api/fetchWithAuth'
 import { API_CONFIG } from '../../../config/api.config'
+import { DEFAULT_AVATAR } from '../ui/avatarOptions'
+
 
 export type Profile = {
   id: number
@@ -42,7 +44,7 @@ export async function getMyProfile(): Promise<Profile> {
       username: data.username ?? '',
       displayName: data.displayName ?? data.username ?? '',
       email: data.email ?? '',
-      avatar: data.avatar ?? null,
+      avatar: data.avatar ?? DEFAULT_AVATAR,
     }
   } catch {
     const authUserRaw = localStorage.getItem('auth_user')
@@ -55,7 +57,7 @@ export async function getMyProfile(): Promise<Profile> {
         username: authUser?.username ?? 'player',
         displayName: authUser?.username ?? 'player',
         email: '',
-        avatar: null,
+        avatar: DEFAULT_AVATAR,
       }
 
     saveStoredMockProfile(fallback)
@@ -88,7 +90,7 @@ export async function updateMyProfile(profile: Profile): Promise<Profile> {
       username: data.username ?? profile.username,
       displayName: data.displayName ?? profile.displayName,
       email: data.email ?? profile.email,
-      avatar: data.avatar ?? profile.avatar,
+      avatar: data.avatar ?? profile.avatar ?? DEFAULT_AVATAR,
     }
   } catch {
     saveStoredMockProfile(profile)

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth'
 import { getMyProfile, updateMyProfile, type Profile } from '../api/profileApi'
+import { AVATAR_OPTIONS, DEFAULT_AVATAR } from './avatarOptions'
 import styles from './ProfilePage.module.css'
+
 
 export default function ProfilePage() {
     const { user } = useAuth()
@@ -11,8 +13,10 @@ export default function ProfilePage() {
     const [profile, setProfile] = useState<Profile | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
+    const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [successMessage, setSuccessMessage] = useState<string | null>(null)
+    const navigate = useNavigate()
 
     useEffect(() => {
         let ignore = false
@@ -20,9 +24,15 @@ export default function ProfilePage() {
         async function loadProfile() {
             try {
                 setIsLoading(true)
+                setError(null)
+
                 const data = await getMyProfile()
+
                 if (!ignore) {
-                    setProfile(data)
+                    setProfile({
+                        ...data,
+                        avatar: data.avatar ?? DEFAULT_AVATAR,
+                    })
                 }
             } catch {
                 if (!ignore) {
@@ -47,27 +57,33 @@ export default function ProfilePage() {
     }
 
     if (isLoading) {
-        return <section className={styles.page}><p>Cargando perfil...</p></section>
+        return (
+            <section className={styles.page}>
+                <p>Cargando perfil...</p>
+            </section>
+        )
     }
 
     if (!profile) {
-        return <section className={styles.page}><p>No se pudo cargar el perfil.</p></section>
+        return (
+            <section className={styles.page}>
+                <p>No se pudo cargar el perfil.</p>
+            </section>
+        )
     }
 
     function handleChange(event: ChangeEvent<HTMLInputElement>) {
         const { name, value } = event.target
         setProfile(prev => (prev ? { ...prev, [name]: value } : prev))
         setSuccessMessage(null)
+        setError(null)
     }
 
-    function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
-        const file = event.target.files?.[0]
-        if (!file) return
-
-        const previewUrl = URL.createObjectURL(file)
-
-        setProfile(prev => (prev ? { ...prev, avatar: previewUrl } : prev))
+    function handleAvatarSelect(avatar: string) {
+        setProfile(prev => (prev ? { ...prev, avatar } : prev))
+        setIsAvatarPickerOpen(false)
         setSuccessMessage(null)
+        setError(null)
     }
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -76,14 +92,20 @@ export default function ProfilePage() {
         if (!profile) return
 
         setIsSaving(true)
+        setError(null)
+        setSuccessMessage(null)
 
         try {
             const updated = await updateMyProfile(profile)
             setProfile(updated)
+            navigate(-1)
+        } catch {
+            setError('No se pudo guardar el perfil')
         } finally {
             setIsSaving(false)
         }
     }
+
     return (
         <section className={styles.page}>
             <div className={styles.card}>
@@ -93,7 +115,11 @@ export default function ProfilePage() {
                     <div className={styles.avatarSection}>
                         <div className={styles.avatarFrame}>
                             {profile.avatar ? (
-                                <img src={profile.avatar} alt="Avatar del jugador" className={styles.avatarImage} />
+                                <img
+                                    src={profile.avatar}
+                                    alt="Avatar del jugador"
+                                    className={styles.avatarImage}
+                                />
                             ) : (
                                 <div className={styles.avatarPlaceholder}>
                                     {profile.displayName.slice(0, 1).toUpperCase()}
@@ -101,15 +127,30 @@ export default function ProfilePage() {
                             )}
                         </div>
 
-                        <label className={styles.uploadButton}>
-                            Cambiar avatar
-                            <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleAvatarChange}
-                                className={styles.hiddenInput}
-                            />
-                        </label>
+                        <button
+                            type="button"
+                            className={styles.uploadButton}
+                            onClick={() => setIsAvatarPickerOpen(prev => !prev)}
+                        >
+                            {isAvatarPickerOpen ? 'Ocultar avatares' : 'Cambiar avatar'}
+                        </button>
+
+                        {isAvatarPickerOpen ? (
+                            <div className={styles.avatarPicker}>
+                                {AVATAR_OPTIONS.map(avatar => (
+                                    <button
+                                        key={avatar}
+                                        type="button"
+                                        className={`${styles.avatarOption} ${profile.avatar === avatar ? styles.avatarOptionSelected : ''
+                                            }`}
+                                        onClick={() => handleAvatarSelect(avatar)}
+                                        aria-label={`Seleccionar ${avatar}`}
+                                    >
+                                        <img src={avatar} alt="" className={styles.avatarOptionImage} />
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
 
                     <label className={styles.label}>

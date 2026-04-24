@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { UsersService } from '../services/users.service.js';
 import { UserRepository } from '../repositories/users.repository.js';
+import { ALLOWED_AVATARS, DEFAULT_AVATAR } from '../config/avatar-options.js';
 
 export class UsersController {
     constructor(
@@ -14,8 +15,12 @@ export class UsersController {
             res.status(400).json({ error: 'userId and username are required' });
             return;
         }
+        if (avatar !== undefined && avatar !== null && !ALLOWED_AVATARS.has(avatar)) {
+            res.status(400).json({ error: 'Invalid avatar' });
+            return;
+        }
         try {
-            const profile = await this.userRepository.createProfile(userId, username, avatar);
+            const profile = await this.userRepository.createProfile(userId, username, avatar ?? DEFAULT_AVATAR);
             this.usersService.onUserCreated();
             res.status(201).json(profile);
         } catch (err: any) {

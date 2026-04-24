@@ -337,7 +337,7 @@ export class AuthService {
             body: JSON.stringify({
                 userId,
                 username,
-                avatar: null
+                avatar: '/avatars/avatar01.png'
             })
         });
 
