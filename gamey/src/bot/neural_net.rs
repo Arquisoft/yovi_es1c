@@ -58,21 +58,33 @@ impl NeuralNet {
 
     /// Evalúa un batch de posiciones, aprovechando la caché por cada una.
     pub fn evaluate_batch(&self, boards: &[&GameY]) -> Vec<(Vec<f32>, f32)> {
-        boards
-            .iter()
-            .map(|b| {
-                // Usamos la nueva función de fallback
-                self.evaluate(b).unwrap_or_else(|_| Self::fallback_evaluation(b))
-            })
-            .collect()
+        self.evaluate_batch_result(boards).unwrap_or_else(|_| {
+            boards
+                .iter()
+                .map(|board| self.evaluate(board).unwrap_or_else(|_| Self::fallback_evaluation(board)))
+                .collect()
+        })
+    }
+
+    pub fn clear_cache(&self) -> anyhow::Result<()> {
+        self.cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex error: {}", e))?
+            .clear();
+        Ok(())
     }
 
     /// Hash del estado del tablero para usar como clave de caché.
     pub fn board_hash(board: &GameY) -> u64 {
         let mut h = DefaultHasher::new();
-        // Hashear tamaño + disponibles + ocupación aproximada
         board.board_size().hash(&mut h);
+        board.next_player().hash(&mut h);
+        board.rules().hash(&mut h);
         board.available_cells().hash(&mut h);
+        for idx in 0..board.total_cells() {
+            let coords = Coordinates::from_index(idx, board.board_size());
+            board.cell_at(&coords).hash(&mut h);
+        }
         h.finish()
     }
 
@@ -86,10 +98,11 @@ impl NeuralNet {
             spatial_data,
         )?;
 
-        // board_norm: (1, 1)
-        let board_norm = tract_ndarray::Array2::<f32>::from_shape_vec(
-            (1, 1),
-            vec![board_norm_val],
+        // board_norm: (1, 1, 32, 32). Exportamos ONNX con el canal ya expandido
+        // porque tract no infiere de forma estable el Expand dinamico de PyTorch.
+        let board_norm = tract_ndarray::Array4::<f32>::from_shape_vec(
+            (1, 1, GRID_SIZE, GRID_SIZE),
+            vec![board_norm_val; GRID_SIZE * GRID_SIZE],
         )?;
 
         let result = self.model.run(tvec![
@@ -97,36 +110,107 @@ impl NeuralNet {
             board_norm.into_tensor().into(),
         ])?;
 
-        // policy: (1, MAX_CELLS) — log_softmax → exponenciar
         let policy_raw = result[0].to_array_view::<f32>()?;
-        let n          = board.total_cells() as usize;
-        let available  = board.available_cells();
+        let value_raw = result[1].to_array_view::<f32>()?;
+        Ok(Self::decode_policy_value(
+            board,
+            |cell_idx| policy_raw[[0, cell_idx]],
+            value_raw.iter().next().copied().unwrap_or(0.0),
+        ))
+    }
 
-        let mut policy = vec![0.0f32; n];
+    fn evaluate_batch_result(&self, boards: &[&GameY]) -> anyhow::Result<Vec<(Vec<f32>, f32)>> {
+        if boards.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut results = vec![None; boards.len()];
+        let mut misses = Vec::new();
+
+        {
+            let mut cache = self.cache.lock().map_err(|e| anyhow::anyhow!("Mutex error: {}", e))?;
+            for (idx, board) in boards.iter().enumerate() {
+                let key = Self::board_hash(board);
+                if let Some(cached) = cache.get(&key) {
+                    results[idx] = Some(cached.clone());
+                } else {
+                    misses.push((idx, *board, key));
+                }
+            }
+        }
+
+        if !misses.is_empty() {
+            let mut spatial_data = Vec::with_capacity(misses.len() * NUM_CHANNELS * GRID_SIZE * GRID_SIZE);
+            let mut board_norms = Vec::with_capacity(misses.len() * GRID_SIZE * GRID_SIZE);
+
+            for (_, board, _) in &misses {
+                let (spatial, board_norm) = self.encode_board(board);
+                spatial_data.extend(spatial);
+                board_norms.extend(std::iter::repeat_n(board_norm, GRID_SIZE * GRID_SIZE));
+            }
+
+            let spatial = tract_ndarray::Array4::<f32>::from_shape_vec(
+                (misses.len(), NUM_CHANNELS, GRID_SIZE, GRID_SIZE),
+                spatial_data,
+            )?;
+            let board_norm = tract_ndarray::Array4::<f32>::from_shape_vec(
+                (misses.len(), 1, GRID_SIZE, GRID_SIZE),
+                board_norms,
+            )?;
+
+            let model_outputs = self.model.run(tvec![
+                spatial.into_tensor().into(),
+                board_norm.into_tensor().into(),
+            ])?;
+            let policy_raw = model_outputs[0].to_array_view::<f32>()?;
+            let value_raw = model_outputs[1].to_array_view::<f32>()?;
+
+            let mut cache = self.cache.lock().map_err(|e| anyhow::anyhow!("Mutex error: {}", e))?;
+            for (batch_idx, (result_idx, board, key)) in misses.into_iter().enumerate() {
+                let decoded = Self::decode_policy_value(
+                    board,
+                    |cell_idx| policy_raw[[batch_idx, cell_idx]],
+                    value_raw[[batch_idx, 0]],
+                );
+                cache.put(key, decoded.clone());
+                results[result_idx] = Some(decoded);
+            }
+        }
+
+        Ok(results
+            .into_iter()
+            .map(|entry| entry.expect("batch evaluation must fill all result slots"))
+            .collect())
+    }
+
+    fn decode_policy_value<F>(board: &GameY, logit_at: F, value: f32) -> (Vec<f32>, f32)
+    where
+        F: Fn(usize) -> f32,
+    {
+        let total_cells = board.total_cells() as usize;
+        let available = board.available_cells();
+        let mut policy = vec![0.0f32; total_cells];
+
         for &idx in available {
-            let i = idx as usize;
-            if i < MAX_CELLS {
-                policy[i] = policy_raw[[0, i]].exp();
+            let cell_idx = idx as usize;
+            if cell_idx < MAX_CELLS {
+                policy[cell_idx] = logit_at(cell_idx).exp();
             }
         }
 
         let sum: f32 = policy.iter().sum();
         if sum > 0.0 {
-            for p in &mut policy { *p /= sum; }
+            for probability in &mut policy {
+                *probability /= sum;
+            }
         } else if !available.is_empty() {
-            let prob = 1.0 / available.len() as f32;
-            for &idx in available { policy[idx as usize] = prob; }
+            let uniform = 1.0 / available.len() as f32;
+            for &idx in available {
+                policy[idx as usize] = uniform;
+            }
         }
 
-        let value = result[1]
-            .to_array_view::<f32>()?
-            .iter()
-            .next()
-            .copied()
-            .unwrap_or(0.0)
-            .clamp(-1.0, 1.0);
-
-        Ok((policy, value))
+        (policy, value.clamp(-1.0, 1.0))
     }
 
     /// Construye (spatial, board_norm) igual que encode_board() en Python.
@@ -177,6 +261,27 @@ impl NeuralNet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{GameRules, HoneyRule, Movement, PieRule};
+    use serde::Deserialize;
+    use std::collections::HashMap;
+
+    #[derive(Debug, Deserialize)]
+    struct EncoderFixtureCase {
+        name: String,
+        board_state: Vec<u32>,
+        board_size: u32,
+        current_player: u32,
+        board_norm: f32,
+        non_zero: Vec<NonZeroEntry>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct NonZeroEntry {
+        channel: usize,
+        row: usize,
+        col: usize,
+        value: f32,
+    }
 
     // ── Tests de encoding (sin necesitar el modelo .onnx) ────────────
 
@@ -228,6 +333,96 @@ mod tests {
     // ── Tests con modelo ONNX real ────────────────────────────────────
 
     #[test]
+    fn test_encode_board_matches_shared_python_contract_fixture() {
+        let fixture = include_str!("../../../training/fixtures/encoder_contract_cases.json");
+        let cases: Vec<EncoderFixtureCase> = serde_json::from_str(fixture).expect("valid encoder fixture");
+        let dummy_net = make_dummy_net();
+        let per_channel = GRID_SIZE * GRID_SIZE;
+
+        for case in cases {
+            let board = board_from_fixture(&case);
+            assert_eq!(
+                board.next_player().map(|player| player.id()),
+                Some(case.current_player),
+                "fixture current player drifted for {}",
+                case.name
+            );
+
+            let (spatial, board_norm) = dummy_net.encode_board(&board);
+            assert!(
+                (board_norm - case.board_norm).abs() < 1e-6,
+                "board_norm mismatch for {}",
+                case.name
+            );
+
+            let expected: HashMap<(usize, usize, usize), f32> = case
+                .non_zero
+                .iter()
+                .map(|entry| ((entry.channel, entry.row, entry.col), entry.value))
+                .collect();
+
+            let mut observed = HashMap::new();
+            for channel in 0..NUM_CHANNELS {
+                for row in 0..case.board_size as usize {
+                    for col in 0..=row {
+                        let pos = row * GRID_SIZE + col;
+                        let value = spatial[channel * per_channel + pos];
+                        if value.abs() > 1e-9 {
+                            observed.insert((channel, row, col), value);
+                        }
+                    }
+                }
+            }
+
+            assert_eq!(observed.len(), expected.len(), "non-zero entry count mismatch for {}", case.name);
+            for (key, expected_value) in expected {
+                let actual = observed.get(&key).copied().unwrap_or_default();
+                assert!(
+                    (actual - expected_value).abs() < 1e-6,
+                    "fixture mismatch for {} at {:?}: expected {}, got {}",
+                    case.name,
+                    key,
+                    expected_value,
+                    actual
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_board_hash_distinguishes_different_piece_ownership() {
+        let board_a = board_from_cells(
+            3,
+            &[(0, PlayerId::new(0)), (1, PlayerId::new(1))],
+            GameRules::classic(),
+        );
+        let board_b = board_from_cells(
+            3,
+            &[(0, PlayerId::new(1)), (1, PlayerId::new(0))],
+            GameRules::classic(),
+        );
+
+        assert_eq!(board_a.available_cells(), board_b.available_cells());
+        assert_ne!(NeuralNet::board_hash(&board_a), NeuralNet::board_hash(&board_b));
+    }
+
+    #[test]
+    fn test_board_hash_distinguishes_rules_when_layout_is_same() {
+        let classic = GameY::with_rules(5, GameRules::classic()).unwrap();
+        let pie = GameY::with_rules(
+            5,
+            GameRules {
+                pie_rule: PieRule { enabled: true },
+                honey: HoneyRule::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(classic.available_cells(), pie.available_cells());
+        assert_ne!(NeuralNet::board_hash(&classic), NeuralNet::board_hash(&pie));
+    }
+
+    #[test]
     fn test_evaluate_policy_length_matches_board() {
         let net = NeuralNet::load("models/yovi_model.onnx").expect("Modelo no encontrado");
         let board = GameY::new(5);
@@ -264,6 +459,92 @@ mod tests {
     }
 
     // ── Helper ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_clear_cache_removes_cached_entries() {
+        let net = NeuralNet::load("models/yovi_model.onnx").expect("Modelo no encontrado");
+        let board = GameY::new(5);
+        let _ = net.evaluate(&board).expect("La evaluacion inicial debe poblar la cache");
+        assert!(net.cache.lock().unwrap().len() > 0, "La cache debe contener entradas tras evaluar");
+
+        net.clear_cache().expect("clear_cache debe vaciar la cache");
+
+        assert_eq!(net.cache.lock().unwrap().len(), 0, "La cache debe quedar vacia");
+    }
+
+    #[test]
+    fn test_evaluate_batch_matches_individual_evaluations() {
+        let net = NeuralNet::load("models/yovi_model.onnx").expect("Modelo no encontrado");
+        let mut board_a = GameY::new(5);
+        board_a
+            .add_move(Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::from_index(0, 5),
+            })
+            .unwrap();
+
+        let mut board_b = GameY::new(7);
+        for idx in [0_u32, 1, 3, 4] {
+            let coords = Coordinates::from_index(idx, 7);
+            let player = board_b.next_player().unwrap();
+            board_b
+                .add_move(Movement::Placement { player, coords })
+                .unwrap();
+        }
+
+        let individual = vec![
+            net.evaluate(&board_a).expect("evaluate board_a"),
+            net.evaluate(&board_b).expect("evaluate board_b"),
+        ];
+        let batched = net.evaluate_batch(&[&board_a, &board_b]);
+
+        assert_eq!(batched.len(), individual.len());
+        for (batch_result, single_result) in batched.iter().zip(individual.iter()) {
+            assert_eq!(batch_result.0.len(), single_result.0.len());
+            for (batch_probability, single_probability) in batch_result.0.iter().zip(single_result.0.iter()) {
+                assert!(
+                    (batch_probability - single_probability).abs() < 1e-6,
+                    "batch policy drifted: {} vs {}",
+                    batch_probability,
+                    single_probability
+                );
+            }
+            assert!(
+                (batch_result.1 - single_result.1).abs() < 1e-6,
+                "batch value drifted: {} vs {}",
+                batch_result.1,
+                single_result.1
+            );
+        }
+    }
+
+    fn board_from_fixture(case: &EncoderFixtureCase) -> GameY {
+        let occupied: Vec<(u32, PlayerId)> = case
+            .board_state
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, cell)| match cell {
+                1 => Some((idx as u32, PlayerId::new(0))),
+                2 => Some((idx as u32, PlayerId::new(1))),
+                _ => None,
+            })
+            .collect();
+        board_from_cells(case.board_size, &occupied, GameRules::classic())
+    }
+
+    fn board_from_cells(board_size: u32, cells: &[(u32, PlayerId)], rules: GameRules) -> GameY {
+        let mut board = GameY::with_rules(board_size, rules).unwrap();
+        for (idx, player) in cells {
+            let coords = Coordinates::from_index(*idx, board_size);
+            board
+                .add_move(Movement::Placement {
+                    player: *player,
+                    coords,
+                })
+                .unwrap();
+        }
+        board
+    }
 
     fn make_dummy_net() -> Arc<NeuralNet> {
         NeuralNet::load("models/yovi_model.onnx")

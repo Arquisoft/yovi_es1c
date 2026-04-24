@@ -839,7 +839,7 @@ mod tests {
             "-p",
             "5000",
         ])
-            .unwrap();
+        .unwrap();
         assert_eq!(args.size, 9);
         assert_eq!(args.mode, Mode::Computer);
         assert_eq!(args.bot, "advanced_bot");

@@ -104,8 +104,8 @@ async fn play_adds_one_piece_to_board() {
         axum::extract::Path("v1".to_string()),
         Json(req),
     )
-        .await
-        .expect("play should succeed");
+    .await
+    .expect("play should succeed");
 
     let output = response.0;
 
@@ -133,7 +133,7 @@ async fn play_fails_with_invalid_yen() {
         axum::extract::Path("v1".to_string()),
         Json(req),
     )
-        .await;
+    .await;
 
     assert!(result.is_err());
 }
@@ -154,7 +154,7 @@ async fn play_fails_with_unknown_bot() {
         axum::extract::Path("v1".to_string()),
         Json(req),
     )
-        .await;
+    .await;
 
     assert!(result.is_err());
 }
@@ -175,7 +175,7 @@ async fn play_records_bot_move_duration_metric_for_play_endpoint() {
         axum::extract::Path("v1".to_string()),
         Json(req),
     )
-        .await;
+    .await;
 
     assert!(result.is_ok(), "play should succeed for random bot");
 
@@ -213,7 +213,7 @@ async fn play_records_compatibility_latency_metric_for_non_expert_bots() {
         axum::extract::Path("v1".to_string()),
         Json(req),
     )
-        .await;
+    .await;
 
     assert!(result.is_ok(), "play should succeed for easy bot");
 

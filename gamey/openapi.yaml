@@ -31,6 +31,7 @@ paths:
         - `easy` → `random`
         - `medium` → `minimax_set_d2`
         - `hard` → `minimax_set_d4`
+        - `expert_fast` → `neural_mcts_s200`
         If an error occurs (invalid YEN, bot not found, or no valid moves), the server still returns HTTP 200 OK with an ErrorResponse object in JSON.
       parameters:
         - name: api_version
@@ -46,7 +47,7 @@ paths:
           description: Bot alias (difficulty)
           schema:
             type: string
-            enum: [easy, medium, hard, expert]
+            enum: [easy, medium, hard, expert, expert_fast]
             example: easy
       requestBody:
         required: true
@@ -261,7 +262,7 @@ components:
 
         bot_id:
           type: string
-          enum: [ easy, medium, hard, expert ]
+          enum: [ easy, medium, hard, expert, expert_fast ]
           example: "easy"
 
         coords:
@@ -277,7 +278,7 @@ components:
         bot_id:
           type: string
           description: Bot alias (defaults to "random" if omitted)
-          enum: [easy, medium, hard, expert]
+          enum: [easy, medium, hard, expert, expert_fast]
           example: easy
 
     PlayResponse:
@@ -292,7 +293,7 @@ components:
           example: "v1"
         bot_id:
           type: string
-          enum: [easy, medium, hard, expert]
+          enum: [easy, medium, hard, expert, expert_fast]
           example: "easy"
         position:
           $ref: '#/components/schemas/YEN'

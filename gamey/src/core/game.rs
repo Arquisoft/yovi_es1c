@@ -999,7 +999,7 @@ mod tests {
             player: PlayerId::new(0),
             coords,
         })
-            .unwrap();
+        .unwrap();
 
         // Después de colocar, debe devolver el jugador correcto
         assert_eq!(game.cell_at(&coords), Some(PlayerId::new(0)));
@@ -1015,12 +1015,12 @@ mod tests {
             player: PlayerId::new(0),
             coords: c0,
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: c1,
         })
-            .unwrap();
+        .unwrap();
 
         assert_eq!(game.cell_at(&c0), Some(PlayerId::new(0)));
         assert_eq!(game.cell_at(&c1), Some(PlayerId::new(1)));
@@ -1040,17 +1040,17 @@ mod tests {
             player: PlayerId::new(0),
             coords: first,
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: filler,
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: second,
         })
-            .unwrap();
+        .unwrap();
 
         let sets = game.sets_of_player(PlayerId::new(0));
         assert_eq!(
@@ -1107,7 +1107,7 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(4, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         assert_eq!(game.next_player(), Some(PlayerId::new(1)));
     }
 
@@ -1118,12 +1118,12 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(4, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(3, 1, 0),
         })
-            .unwrap();
+        .unwrap();
         assert_eq!(game.next_player(), Some(PlayerId::new(0)));
     }
 
@@ -1135,7 +1135,7 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(2, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         assert_eq!(game.available_cells().len(), initial_count - 1);
     }
 
@@ -1146,17 +1146,17 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(2, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(1, 1, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 2, 0),
         })
-            .unwrap();
+        .unwrap();
         assert_eq!(game.available_cells().len(), 3);
     }
 
@@ -1208,7 +1208,7 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 0, 0),
         })
-            .unwrap();
+        .unwrap();
 
         assert!(game.check_game_over());
         match game.status() {
@@ -1224,17 +1224,17 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 0, 1),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(1, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 1, 0),
         })
-            .unwrap();
+        .unwrap();
 
         assert!(game.check_game_over());
         match game.status() {
@@ -1250,12 +1250,12 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 0, 4),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(4, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         assert!(!game.check_game_over());
     }
 
@@ -1267,7 +1267,7 @@ mod tests {
             player: PlayerId::new(0),
             coords,
         })
-            .unwrap();
+        .unwrap();
 
         let result = game.add_move(Movement::Placement {
             player: PlayerId::new(1),
@@ -1314,7 +1314,7 @@ mod tests {
             player: PlayerId::new(0),
             action: GameAction::Resign,
         })
-            .unwrap();
+        .unwrap();
 
         match game.status() {
             GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(1)),
@@ -1329,12 +1329,12 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(4, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Action {
             player: PlayerId::new(1),
             action: GameAction::Resign,
         })
-            .unwrap();
+        .unwrap();
 
         match game.status() {
             GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(0)),
@@ -1351,18 +1351,18 @@ mod tests {
                 honey: HoneyRule::default(),
             },
         )
-            .unwrap();
+        .unwrap();
 
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(4, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Action {
             player: PlayerId::new(1),
             action: GameAction::Swap,
         })
-            .unwrap();
+        .unwrap();
 
         assert_eq!(game.next_player(), Some(PlayerId::new(0)));
         assert!(!game.check_game_over());
@@ -1377,18 +1377,18 @@ mod tests {
                 honey: HoneyRule::default(),
             },
         )
-            .unwrap();
+        .unwrap();
 
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(2, 1, 1),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Action {
             player: PlayerId::new(1),
             action: GameAction::Swap,
         })
-            .unwrap();
+        .unwrap();
 
         assert_eq!(game.next_player(), Some(PlayerId::new(0)));
         assert!(!game.check_game_over());
@@ -1401,7 +1401,7 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(4, 0, 0),
         })
-            .unwrap();
+        .unwrap();
 
         let result = game.add_move(Movement::Action {
             player: PlayerId::new(1),
@@ -1423,7 +1423,7 @@ mod tests {
                 },
             },
         )
-            .unwrap();
+        .unwrap();
 
         let blocked = Coordinates::new(2, 1, 0);
         let result = game.add_move(Movement::Placement {
@@ -1446,7 +1446,7 @@ mod tests {
                 },
             },
         )
-            .unwrap();
+        .unwrap();
 
         let allowed = Coordinates::new(2, 1, 0);
         let result = game.add_move(Movement::Placement {
@@ -1469,18 +1469,18 @@ mod tests {
                 },
             },
         )
-            .unwrap();
+        .unwrap();
 
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(3, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Action {
             player: PlayerId::new(1),
             action: GameAction::Swap,
         })
-            .unwrap();
+        .unwrap();
 
         let blocked_result = game.add_move(Movement::Placement {
             player: PlayerId::new(0),
@@ -1509,7 +1509,7 @@ mod tests {
                 "layout": "B/RB/.R."
             }"#,
         )
-            .unwrap();
+        .unwrap();
         let game = GameY::try_from(yen).unwrap();
 
         assert_eq!(game.board_size(), 3);
@@ -1526,7 +1526,7 @@ mod tests {
                 "layout": "B/RB"
             }"#,
         )
-            .unwrap();
+        .unwrap();
 
         match GameY::try_from(yen).unwrap_err() {
             GameYError::InvalidYENLayout { expected, found } => {
@@ -1547,7 +1547,7 @@ mod tests {
                 "layout": "B/RBB/..."
             }"#,
         )
-            .unwrap();
+        .unwrap();
 
         match GameY::try_from(yen).unwrap_err() {
             GameYError::InvalidYENLayoutLine {
@@ -1573,7 +1573,7 @@ mod tests {
                 "layout": "X/RB/..."
             }"#,
         )
-            .unwrap();
+        .unwrap();
 
         match GameY::try_from(yen).unwrap_err() {
             GameYError::InvalidCharInLayout { char, row, col } => {
@@ -1595,12 +1595,12 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(3, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(2, 0, 1),
         })
-            .unwrap();
+        .unwrap();
 
         game.save_to_file(&file_path).unwrap();
         let loaded_game = GameY::load_from_file(&file_path).unwrap();
@@ -1659,12 +1659,12 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(2, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(1, 1, 0),
         })
-            .unwrap();
+        .unwrap();
 
         let options = RenderOptions {
             show_3d_coords: false,
@@ -1724,7 +1724,7 @@ mod tests {
                 player: PlayerId::new(player_id),
                 coords,
             })
-                .unwrap();
+            .unwrap();
         }
 
         assert!(game.available_cells().len() < 10);
@@ -1737,37 +1737,37 @@ mod tests {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 0, 3),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(3, 0, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 3, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(2, 1, 0),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 1, 2),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(1),
             coords: Coordinates::new(2, 0, 1),
         })
-            .unwrap();
+        .unwrap();
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords: Coordinates::new(0, 2, 1),
         })
-            .unwrap();
+        .unwrap();
 
         assert!(game.check_game_over());
         match game.status() {
