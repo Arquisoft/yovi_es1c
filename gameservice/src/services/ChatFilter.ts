@@ -58,17 +58,32 @@ const DEFAULT_PERSPECTIVE_TIMEOUT_MS = 1500;
 const DEFAULT_PERSPECTIVE_FAILURE_MODE: PerspectiveFailureMode = 'allow';
 const PERSPECTIVE_URL = 'https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze';
 
-const CONTEXT_PATTERNS: RegExp[] = [
-    /\b(eres|sos|es)\s+(un[ao]?\s+)?(malo|mala|feo|fea|tonto|tonta|est[u\u00fa]pid[ao]|idiota|imb[e\u00e9]cil|in[u\u00fa]til|asqueros[ao]|p[e\u00e9]sim[ao]|nul[ao]|basura|pat[e\u00e9]tic[ao])\b/gi,
-    /\b(qu[e\u00e9]|menudo|vaya)\s+(un[ao]?\s+)?(idiota|imb[e\u00e9]cil|est[u\u00fa]pid[ao]|tont[ao]|in[u\u00fa]til)\b/gi,
-    /\b\w+\s+de\s+(mierda|porquer[i\u00ed]a|asco)\b/gi,
-    /\b(vete|[a\u00e1]ndate|m[e\u00e9]tete)\s+(a\s+la\s+)?(mierda|porra)\b/gi,
-    /\byou\s+'?re?\s+(a\s+)?(loser|idiot|stupid|dumb|moron|clown|garbage|trash|worthless|useless)\b/gi,
-    /\bwhat\s+a\s+(loser|idiot|moron|dumbass|jerk|clown)\b/gi,
-    /\byou\s+suck\b/gi,
-];
+const CONTEXT_INTROS_ES = new Set(['eres', 'sos', 'es']);
+const CONTEXT_ARTICLES = new Set(['un', 'una', 'uno', 'a']);
+const CONTEXT_INSULTS_ES = new Set([
+    'malo', 'mala', 'feo', 'fea', 'tonto', 'tonta', 'estupido', 'estupida',
+    'idiota', 'imbecil', 'inutil', 'asqueroso', 'asquerosa', 'pesimo', 'pesima',
+    'nulo', 'nula', 'basura', 'patetico', 'patetica',
+]);
+const CONTEXT_EXCLAIMS_ES = new Set(['que', 'menudo', 'vaya']);
+const CONTEXT_EXCLAIM_INSULTS_ES = new Set([
+    'idiota', 'imbecil', 'estupido', 'estupida', 'tonto', 'tonta', 'inutil',
+]);
+const CONTEXT_SUFFIX_INSULTS_ES = new Set(['mierda', 'porqueria', 'asco']);
+const CONTEXT_GO_AWAY_ES = new Set(['vete', 'andate', 'metete']);
+const CONTEXT_GO_AWAY_TARGETS_ES = new Set(['mierda', 'porra']);
+const CONTEXT_INSULTS_EN = new Set([
+    'loser', 'idiot', 'stupid', 'dumb', 'moron', 'clown', 'garbage', 'trash', 'worthless', 'useless',
+]);
+const CONTEXT_EXCLAIM_INSULTS_EN = new Set(['loser', 'idiot', 'moron', 'dumbass', 'jerk', 'clown']);
 
 interface MatchRange {
+    origStart: number;
+    origEnd: number;
+}
+
+interface ContextToken {
+    text: string;
     origStart: number;
     origEnd: number;
 }
@@ -159,6 +174,134 @@ function findBadWords(norm: string, map: number[]): MatchRange[] {
     return ranges;
 }
 
+function isAsciiAlphaNumeric(ch: string): boolean {
+    if (ch.length !== 1) return false;
+    const code = ch.charCodeAt(0);
+    return (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+}
+
+function tokenizeForContext(text: string): ContextToken[] {
+    const lower = text.toLowerCase();
+    const tokens: ContextToken[] = [];
+    let current = '';
+    let start = -1;
+    let end = -1;
+
+    const flush = () => {
+        if (!current) return;
+        tokens.push({ text: current, origStart: start, origEnd: end });
+        current = '';
+        start = -1;
+        end = -1;
+    };
+
+    for (let index = 0; index < lower.length; index += 1) {
+        const normalized = CHAR_MAP[lower[index]] ?? lower[index];
+        if (isAsciiAlphaNumeric(normalized)) {
+            if (!current) start = index;
+            current += normalized;
+            end = index;
+            continue;
+        }
+        flush();
+    }
+
+    flush();
+    return tokens;
+}
+
+function mergeRanges(ranges: MatchRange[]): MatchRange[] {
+    if (ranges.length <= 1) return ranges;
+
+    const sorted = [...ranges].sort((left, right) => left.origStart - right.origStart);
+    const merged: MatchRange[] = [sorted[0]];
+
+    for (let index = 1; index < sorted.length; index += 1) {
+        const previous = merged[merged.length - 1];
+        const current = sorted[index];
+        if (current.origStart <= previous.origEnd + 1) {
+            previous.origEnd = Math.max(previous.origEnd, current.origEnd);
+            continue;
+        }
+        merged.push({ ...current });
+    }
+
+    return merged;
+}
+
+function toRange(tokens: ContextToken[], start: number, endExclusive: number): MatchRange {
+    return {
+        origStart: tokens[start].origStart,
+        origEnd: tokens[endExclusive - 1].origEnd,
+    };
+}
+
+function matchContextSequence(tokens: ContextToken[], index: number): number | null {
+    const first = tokens[index]?.text;
+    if (!first) return null;
+
+    if (CONTEXT_INTROS_ES.has(first)) {
+        let cursor = index + 1;
+        if (CONTEXT_ARTICLES.has(tokens[cursor]?.text ?? '')) cursor += 1;
+        if (CONTEXT_INSULTS_ES.has(tokens[cursor]?.text ?? '')) return cursor + 1;
+    }
+
+    if (CONTEXT_EXCLAIMS_ES.has(first)) {
+        let cursor = index + 1;
+        if (CONTEXT_ARTICLES.has(tokens[cursor]?.text ?? '')) cursor += 1;
+        if (CONTEXT_EXCLAIM_INSULTS_ES.has(tokens[cursor]?.text ?? '')) return cursor + 1;
+    }
+
+    if (
+        tokens[index + 1]?.text === 'de'
+        && CONTEXT_SUFFIX_INSULTS_ES.has(tokens[index + 2]?.text ?? '')
+    ) {
+        return index + 3;
+    }
+
+    if (CONTEXT_GO_AWAY_ES.has(first)) {
+        let cursor = index + 1;
+        if (tokens[cursor]?.text === 'a' && tokens[cursor + 1]?.text === 'la') {
+            cursor += 2;
+        }
+        if (CONTEXT_GO_AWAY_TARGETS_ES.has(tokens[cursor]?.text ?? '')) return cursor + 1;
+    }
+
+    if (first === 'youre' || (first === 'you' && tokens[index + 1]?.text === 're')) {
+        let cursor = first === 'youre' ? index + 1 : index + 2;
+        if (tokens[cursor]?.text === 'a') cursor += 1;
+        if (CONTEXT_INSULTS_EN.has(tokens[cursor]?.text ?? '')) return cursor + 1;
+    }
+
+    if (
+        first === 'what'
+        && tokens[index + 1]?.text === 'a'
+        && CONTEXT_EXCLAIM_INSULTS_EN.has(tokens[index + 2]?.text ?? '')
+    ) {
+        return index + 3;
+    }
+
+    if (first === 'you' && tokens[index + 1]?.text === 'suck') {
+        return index + 2;
+    }
+
+    return null;
+}
+
+function findContextualMatches(text: string): MatchRange[] {
+    const tokens = tokenizeForContext(text);
+    const ranges: MatchRange[] = [];
+
+    for (let index = 0; index < tokens.length; index += 1) {
+        const endExclusive = matchContextSequence(tokens, index);
+        if (endExclusive !== null) {
+            ranges.push(toRange(tokens, index, endExclusive));
+        }
+    }
+
+    return mergeRanges(ranges);
+}
+
 async function getToxicityScore(
     text: string,
     language: string,
@@ -234,15 +377,11 @@ export class ChatFilter {
             wasFiltered = true;
         }
 
-        for (const pattern of CONTEXT_PATTERNS) {
-            pattern.lastIndex = 0;
-            let match: RegExpExecArray | null;
-            while ((match = pattern.exec(text)) !== null) {
-                for (let cursor = match.index; cursor < match.index + match[0].length; cursor += 1) {
-                    masked[cursor] = '*';
-                }
-                wasFiltered = true;
+        for (const { origStart, origEnd } of findContextualMatches(text)) {
+            for (let cursor = origStart; cursor <= origEnd; cursor += 1) {
+                masked[cursor] = '*';
             }
+            wasFiltered = true;
         }
 
         return {

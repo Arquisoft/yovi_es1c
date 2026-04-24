@@ -391,3 +391,14 @@ function getSocketVerifyClient(authServiceUrl: string): AuthVerifyClient {
     }
     return socketVerifyClient;
 }
+
+export const socketServerInternals = {
+    safeAsync,
+    createRedisBridge,
+    verifySocketToken,
+    resetForTests() {
+        ioSingleton = null;
+        realtimeServices = null;
+        socketVerifyClient = null;
+    },
+};

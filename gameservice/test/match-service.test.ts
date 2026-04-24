@@ -154,6 +154,37 @@ describe('MatchService', () => {
     });
   });
 
+  describe('getMatchState', () => {
+    it('returns null when match does not exist', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue(undefined);
+
+      await expect(matchService.getMatchState(404)).resolves.toBeNull();
+    });
+
+    it('rebuilds layout from legacy positions when no serialized layout exists', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: 'a1', player: 'USER', move_number: 1 },
+        { position_yen: 'b2', player: 'BOT', move_number: 2 },
+      ] as any);
+
+      const state = await matchService.getMatchState(1);
+
+      expect(state?.layout).toBe('B/.R/...');
+      expect(state?.board).toEqual([
+        ['B', '.', '.'],
+        ['.', 'R', '.'],
+        ['.', '.', '.'],
+      ]);
+    });
+  });
+
   describe('addMove', () => {
     it('should add a move to a match', async () => {
       const matchId = 1;
@@ -453,6 +484,100 @@ describe('MatchService', () => {
         pieRule: { enabled: true },
         honey: { enabled: true, blockedCells: [{ row: 0, col: 0 }] },
       });
+    });
+
+    it('falls back to default rules when persisted JSON rules are malformed', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+        rules: '{ definitely-not-json',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const payload = JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body)) as { position: { rules: MatchRules } };
+      expect(payload.position.rules).toEqual(classicRules);
+    });
+
+    it('uses legacy move payloads returned by gamey when layout is not nested under position', async () => {
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          move: 'b2',
+        }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(mockMatchRepository.addMove).toHaveBeenCalledWith(1, 'B/.R/...', 'BOT', 2);
+    });
+
+    it('does not queue the same bot move twice while one is already processing', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1, user_id: 1, board_size: 3, difficulty: 'easy', status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      vi.spyOn(globalThis, 'fetch' as any).mockImplementation(
+          async () => new Promise((resolve) => {
+            setTimeout(() => resolve({
+              ok: true,
+              json: async () => ({
+                position: {
+                  size: 3,
+                  turn: 0,
+                  players: ['B', 'R'],
+                  layout: afterBotReply,
+                },
+              }),
+            } satisfies Partial<Response>), 50);
+          }),
+      );
+
+      matchService.queueBotMove(1);
+      matchService.queueBotMove(1);
+
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(mockMatchRepository.getMatchById).toHaveBeenCalledTimes(1);
+      expect(mockMatchRepository.addMove).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -122,6 +122,12 @@ describe('OnlineSessionService', () => {
     await expect(service.reconnect('m1', 1, base + 61_000)).rejects.toMatchObject({ code: 'RECONNECT_EXPIRED' });
   });
 
+  it('rejects reconnect for users outside the session', async () => {
+    const { service } = await setup();
+
+    await expect(service.reconnect('m1', 999)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+
   it('forfeits when grace period expires', async () => {
     const { service } = await setup();
     const base = Date.now();
@@ -362,6 +368,31 @@ describe('OnlineSessionService', () => {
     expect(redis.del).toHaveBeenCalledWith('session:user-active:10');
   });
 
+  it('getActiveSessionForUser falls back to repository data when redis is not configured', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+    await service.createSession(
+        'repo-active',
+        5,
+        [{ userId: 10, username: 'a' }, { userId: 20, username: 'b' }],
+        'HUMAN',
+    );
+
+    await expect(service.getActiveSessionForUser(10)).resolves.toEqual({
+      matchId: 'repo-active',
+      boardSize: 5,
+    });
+  });
+
+  it('markDisconnected leaves state unchanged for non-participants', async () => {
+    const { service } = await setup();
+
+    const state = await service.markDisconnected('m1', 999);
+
+    expect(state?.status).toBe('active');
+    expect(state?.version).toBe(0);
+    expect(state?.connection[1]).toBe('CONNECTED');
+  });
+
   it('handleTurnTimeout performs a random valid move when it is current player turn', async () => {
     const { service } = await setup();
     (service as any).secureRandomInt = vi.fn(() => 0);
@@ -452,6 +483,59 @@ describe('OnlineSessionService', () => {
     expect(swept).toBe(1);
     expect(snapshot?.version).toBe(1);
     expect(snapshot?.layout).toBe('B/../...');
+  });
+
+  it('sweeps terminal redis sessions out of the maintenance index', async () => {
+    const terminalSession = {
+      matchId: 'm-terminal',
+      size: 3,
+      layout: 'B/BR/BRB',
+      rules: {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+      },
+      turn: 0,
+      version: 4,
+      timerEndsAt: 123,
+      players: [{ userId: 1, username: 'a', symbol: 'B' }, { userId: 2, username: 'b', symbol: 'R' }],
+      opponentType: 'HUMAN',
+      status: 'finished',
+      closeReason: 'winner',
+      connection: { 1: 'CONNECTED', 2: 'CONNECTED' },
+      reconnectDeadline: { 1: null, 2: null },
+      winner: 'B',
+      messages: [],
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(JSON.stringify(terminalSession)),
+      set: vi.fn(),
+      del: vi.fn().mockResolvedValue(1),
+      zAdd: vi.fn(),
+      zRem: vi.fn().mockResolvedValue(1),
+      zRange: vi.fn().mockResolvedValue(['m-terminal']),
+    };
+
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { redis });
+    const swept = await service.sweepExpiredSessions();
+
+    expect(swept).toBe(0);
+    expect(redis.zRem).toHaveBeenCalledWith('session:online:index', ['m-terminal']);
+  });
+
+  it('startMaintenanceWorker is idempotent and stopMaintenanceWorker clears the timer', () => {
+    const intervalHandle = { unref: vi.fn() };
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockReturnValue(intervalHandle as any);
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => undefined);
+
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60);
+    service.startMaintenanceWorker(1234);
+    service.startMaintenanceWorker(1234);
+    service.stopMaintenanceWorker();
+    service.stopMaintenanceWorker();
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(intervalHandle.unref).toHaveBeenCalledTimes(1);
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
   });
 
   it('dedupe by clientEventId rejects duplicate events', async () => {

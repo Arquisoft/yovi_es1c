@@ -84,8 +84,17 @@ export class AuthVerifyClient {
     }
 
     private extractBearer(authHeader: string): string | null {
-        const match = authHeader.match(/^Bearer (\S+)$/i);
-        return match?.[1] ?? null;
+        const trimmed = authHeader.trim();
+        const separator = trimmed.indexOf(' ');
+        if (separator <= 0) return null;
+
+        const scheme = trimmed.slice(0, separator).toLowerCase();
+        const token = trimmed.slice(separator + 1).trim();
+        if (scheme !== 'bearer' || !token || token.includes(' ')) {
+            return null;
+        }
+
+        return token;
     }
 
     private getCached(token: string): Claims | null {

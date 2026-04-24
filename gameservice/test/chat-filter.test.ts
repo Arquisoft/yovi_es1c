@@ -60,6 +60,33 @@ describe('ChatFilter', () => {
         expect(result.sanitized).toContain('*');
     });
 
+    it('filters contextual English insults without relying on complex regex matching', () => {
+        const filter = setup();
+
+        const result = filter.filterSync("you're a loser");
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+    });
+
+    it('filters "word de mierda" contextual phrases', () => {
+        const filter = setup();
+
+        const result = filter.filterSync('juego de mierda');
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+    });
+
+    it('filters "vete a la mierda" phrases', () => {
+        const filter = setup();
+
+        const result = filter.filterSync('vete a la mierda');
+
+        expect(result.wasFiltered).toBe(true);
+        expect(result.sanitized).toContain('*');
+    });
+
     it('does not flag neutral usage like "me siento mal"', () => {
         const filter = setup();
 
