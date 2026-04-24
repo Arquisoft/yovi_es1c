@@ -3,7 +3,9 @@ import argparse
 import copy
 import json
 import os
+import pickle
 import random
+import tempfile
 from typing import Callable
 
 import torch
@@ -74,6 +76,85 @@ def ensure_parent_dir(path: str):
         os.makedirs(parent, exist_ok=True)
 
 
+class InvalidTrainingCheckpointError(RuntimeError):
+    """Raised when a checkpoint file exists but cannot be safely resumed."""
+
+
+def _atomic_torch_save(payload: dict, path: str):
+    checkpoint_dir = os.path.dirname(path) or "."
+    file_prefix = f".{os.path.basename(path)}."
+    fd, temp_path = tempfile.mkstemp(
+        prefix=file_prefix,
+        suffix=".tmp",
+        dir=checkpoint_dir,
+    )
+    os.close(fd)
+    try:
+        with open(temp_path, "wb") as handle:
+            torch.save(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _is_corrupt_checkpoint_runtime_error(error: RuntimeError) -> bool:
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "pytorchstreamreader failed",
+            "failed finding central directory",
+            "unexpected eof",
+            "invalid header",
+        )
+    )
+
+
+def _load_checkpoint_payload(path: str) -> dict:
+    if os.path.getsize(path) == 0:
+        raise InvalidTrainingCheckpointError(f"Checkpoint {path} is empty")
+
+    try:
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    except (EOFError, pickle.UnpicklingError) as error:
+        raise InvalidTrainingCheckpointError(
+            f"Checkpoint {path} is truncated or unreadable"
+        ) from error
+    except RuntimeError as error:
+        if _is_corrupt_checkpoint_runtime_error(error):
+            raise InvalidTrainingCheckpointError(
+                f"Checkpoint {path} is corrupted"
+            ) from error
+        raise
+
+    if not isinstance(checkpoint, dict):
+        raise InvalidTrainingCheckpointError(
+            f"Checkpoint {path} has an unexpected payload type"
+        )
+
+    required_keys = {"model_state_dict", "optimizer_state_dict", "replay_buffer", "metadata"}
+    missing_keys = sorted(required_keys - checkpoint.keys())
+    if missing_keys:
+        raise InvalidTrainingCheckpointError(
+            f"Checkpoint {path} is missing required keys: {', '.join(missing_keys)}"
+        )
+
+    return checkpoint
+
+
+def quarantine_checkpoint(path: str) -> str:
+    candidate = f"{path}.corrupt"
+    suffix = 1
+    while os.path.exists(candidate):
+        suffix += 1
+        candidate = f"{path}.corrupt.{suffix}"
+    os.replace(path, candidate)
+    return candidate
+
+
 def save_training_checkpoint(
         path: str,
         model: torch.nn.Module,
@@ -91,7 +172,7 @@ def save_training_checkpoint(
     }
     if accepted_model_state_dict is not None:
         payload["accepted_model_state_dict"] = accepted_model_state_dict
-    torch.save(payload, path)
+    _atomic_torch_save(payload, path)
 
 
 def load_training_checkpoint(
@@ -99,7 +180,7 @@ def load_training_checkpoint(
         model_factory: Callable[[], torch.nn.Module],
         optimizer_factory: Callable[[list[torch.nn.Parameter]], torch.optim.Optimizer],
 ) -> tuple[torch.nn.Module, torch.optim.Optimizer, dict]:
-    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    checkpoint = _load_checkpoint_payload(path)
     model = model_factory()
     model.load_state_dict(checkpoint["model_state_dict"])
     optimizer = optimizer_factory(list(model.parameters()))
@@ -207,15 +288,23 @@ def train(
 
     if os.path.exists(checkpoint_path):
         print(f"Cargando checkpoint de entrenamiento desde {checkpoint_path}")
-        model, optimizer, checkpoint = load_training_checkpoint(
-            checkpoint_path,
-            model_factory=make_model,
-            optimizer_factory=make_optimizer,
-        )
-        replay_buffer = checkpoint.get("replay_buffer", [])
-        start_iteration = checkpoint.get("metadata", {}).get("next_iteration", 1)
-        old_model = make_model()
-        old_model.load_state_dict(checkpoint.get("accepted_model_state_dict", model.state_dict()))
+        try:
+            model, optimizer, checkpoint = load_training_checkpoint(
+                checkpoint_path,
+                model_factory=make_model,
+                optimizer_factory=make_optimizer,
+            )
+        except InvalidTrainingCheckpointError as error:
+            quarantined_path = quarantine_checkpoint(checkpoint_path)
+            print(
+                "Checkpoint inv\u00e1lido o incompleto; se ignorar\u00e1 para reanudar "
+                f"desde el warm-start. Copia movida a {quarantined_path}. Error: {error}"
+            )
+        else:
+            replay_buffer = checkpoint.get("replay_buffer", [])
+            start_iteration = checkpoint.get("metadata", {}).get("next_iteration", 1)
+            old_model = make_model()
+            old_model.load_state_dict(checkpoint.get("accepted_model_state_dict", model.state_dict()))
 
     end_iteration = start_iteration + iterations - 1
     if start_iteration > 1:

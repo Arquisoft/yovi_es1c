@@ -6,6 +6,7 @@ from model import GRID_SIZE, MAX_CELLS, NUM_CHANNELS
 from self_play import GameExample
 import train as train_module
 from train import (
+    InvalidTrainingCheckpointError,
     YGameDataset,
     append_training_metrics,
     load_training_checkpoint,
@@ -80,6 +81,26 @@ def test_training_checkpoint_roundtrip_restores_model_optimizer_and_buffer():
     assert restored["metadata"]["next_iteration"] == 3
     assert len(restored["replay_buffer"]) == 1
     assert restored_optimizer.state_dict()["param_groups"][0]["lr"] == optimizer.state_dict()["param_groups"][0]["lr"]
+
+    checkpoint_path.unlink(missing_ok=True)
+
+
+def test_load_training_checkpoint_rejects_empty_checkpoint_file():
+    checkpoint_dir = Path("training/tmp/test-artifacts")
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / "empty-checkpoint.pt"
+    checkpoint_path.write_bytes(b"")
+
+    try:
+        load_training_checkpoint(
+            str(checkpoint_path),
+            model_factory=lambda: torch.nn.Linear(4, 2),
+            optimizer_factory=lambda params: torch.optim.Adam(params, lr=1e-3),
+        )
+    except InvalidTrainingCheckpointError as error:
+        assert "empty" in str(error)
+    else:
+        raise AssertionError("empty checkpoints must be rejected")
 
     checkpoint_path.unlink(missing_ok=True)
 
@@ -259,6 +280,77 @@ def test_train_runs_requested_iterations_after_checkpoint_resume(monkeypatch):
 
     rows = [json.loads(line) for line in metrics_path.read_text(encoding="utf-8").splitlines()]
     assert [row["iteration"] for row in rows] == [3, 4]
+    assert onnx_path.read_text(encoding="utf-8") == "stub-onnx"
+
+    for path in sorted(artifact_root.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
+
+
+def test_train_quarantines_invalid_checkpoint_and_restarts_from_warm_start(monkeypatch):
+    example = GameExample(
+        encoded_state=[0.0] * (NUM_CHANNELS * GRID_SIZE * GRID_SIZE),
+        board_norm=5 / GRID_SIZE,
+        mcts_policy=[1.0],
+        outcome=1.0,
+    )
+
+    def fake_self_play_data(**kwargs):
+        return [example]
+
+    def fake_evaluate_models(new_model, old_model, board_sizes, num_games, simulations):
+        return 1.0
+
+    def fake_export_onnx(self, path: str):
+        Path(path).write_text("stub-onnx", encoding="utf-8")
+
+    monkeypatch.setattr(train_module, "generate_self_play_data", fake_self_play_data)
+    monkeypatch.setattr(train_module, "evaluate_models", fake_evaluate_models)
+    monkeypatch.setattr(train_module.PolicyValueNet, "export_onnx", fake_export_onnx)
+
+    artifact_root = Path("training/tmp/test-artifacts/train-invalid-checkpoint")
+    if artifact_root.exists():
+        for path in sorted(artifact_root.rglob("*"), reverse=True):
+            if path.is_file():
+                path.unlink()
+            else:
+                path.rmdir()
+    artifact_root.mkdir(parents=True, exist_ok=True)
+
+    model_path = artifact_root / "artifacts" / "model.pt"
+    onnx_path = artifact_root / "artifacts" / "model.onnx"
+    checkpoint_path = artifact_root / "state" / "checkpoint.pt"
+    metrics_path = artifact_root / "logs" / "metrics.jsonl"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b"")
+
+    train_module.train(
+        iterations=1,
+        games_per_iter=1,
+        simulations=1,
+        epochs_per_iter=1,
+        batch_size=4,
+        board_sizes=[5],
+        model_path=str(model_path),
+        onnx_path=str(onnx_path),
+        checkpoint_path=str(checkpoint_path),
+        metrics_path=str(metrics_path),
+        evaluation_games=2,
+        evaluation_simulations=1,
+        buffer_size=10,
+    )
+
+    assert checkpoint_path.exists()
+    quarantined = sorted(checkpoint_path.parent.glob("checkpoint.pt.corrupt*"))
+    assert len(quarantined) == 1
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    assert checkpoint["metadata"]["next_iteration"] == 2
+
+    rows = [json.loads(line) for line in metrics_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["iteration"] for row in rows] == [1]
     assert onnx_path.read_text(encoding="utf-8") == "stub-onnx"
 
     for path in sorted(artifact_root.rglob("*"), reverse=True):
