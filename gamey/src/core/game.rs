@@ -31,6 +31,7 @@ pub struct GameY {
     sets: Vec<PlayerSet>,
 
     available_cells: Vec<u32>,
+    available_lookup: Vec<usize>,
     blocked_cells: HashSet<Coordinates>,
     rules: GameRules,
 }
@@ -62,6 +63,7 @@ impl GameY {
                 next_player: PlayerId::new(0),
             },
             available_cells: (0..total_cells).collect(),
+            available_lookup: (0..total_cells as usize).collect(),
             blocked_cells: HashSet::new(),
             rules,
         };
@@ -73,7 +75,7 @@ impl GameY {
         &self.board_map
     }
 
-    pub fn get_sets(&self) -> &Vec<PlayerSet> {
+    pub(crate) fn get_sets(&self) -> &Vec<PlayerSet> {
         &self.sets
     }
 
@@ -156,17 +158,16 @@ impl GameY {
         }
     }
 
-    /// Returns an iterator over the sets and their player
-    pub fn iter_sets(&self) -> impl Iterator<Item = (usize, &PlayerSet, PlayerId)> + '_ {
-        self.board_map.iter().map(move |(coords, (set_idx, player))| (*set_idx, &self.sets[*set_idx], *player))
-    }
-
     /// Returns all the set indexes of an specific player
-    pub fn sets_of_player(&self, player: PlayerId) -> Vec<&PlayerSet> {
+    pub(crate) fn sets_of_player(&self, player: PlayerId) -> Vec<&PlayerSet> {
+        let mut seen = HashSet::new();
         let mut result = Vec::new();
         for (_, (set_idx, p)) in &self.board_map {
             if *p == player {
-                result.push(&self.sets[*set_idx]);
+                let root = self.find_const(*set_idx);
+                if seen.insert(root) {
+                    result.push(&self.sets[root]);
+                }
             }
         }
         result
@@ -235,15 +236,11 @@ impl GameY {
         // Base win condition: The piece itself touches all required sides
         let mut won = self.sets[current_set_idx].is_winning_configuration();
 
-        //
-        let neighbors = self.get_neighbors(&coords);
-
-        for neighbor in neighbors {
+        for neighbor in self.get_neighbors(&coords) {
             if let Some((neighbor_idx, neighbor_player)) = self.board_map.get(&neighbor)
                 && *neighbor_player == player
             {
                 // Union returns true if the merge resulted in a winning connection
-                //
                 let connection_won = self.union(current_set_idx, *neighbor_idx);
                 won = won || connection_won;
             }
@@ -310,7 +307,7 @@ impl GameY {
     /// Returns the index of the newly created set.
     fn register_piece(&mut self, player: PlayerId, coords: Coordinates) -> usize {
         let cell_idx = coords.to_index(self.board_size);
-        self.available_cells.retain(|&x| x != cell_idx);
+        self.mark_cell_unavailable(cell_idx);
 
         let set_idx = self.sets.len();
         let new_set = PlayerSet {
@@ -341,7 +338,7 @@ impl GameY {
             let coords = self.coords_from_blocked_cell(&blocked)?;
             self.blocked_cells.insert(coords);
             let idx = coords.to_index(self.board_size);
-            self.available_cells.retain(|&cell| cell != idx);
+            self.mark_cell_unavailable(idx);
         }
         Ok(())
     }
@@ -367,7 +364,10 @@ impl GameY {
             if next_player != player {
                 return Err(GameYError::InvalidSwapAction {
                     player,
-                    reason: format!("swap attempted out of turn (expected player {})", next_player),
+                    reason: format!(
+                        "swap attempted out of turn (expected player {})",
+                        next_player
+                    ),
                 });
             }
         }
@@ -406,25 +406,53 @@ impl GameY {
     }
 
     /// Returns the neighboring coordinates for a given cell.
-    pub(crate) fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
-        let mut neighbors = Vec::new();
+    pub(crate) fn for_each_neighbor(
+        &self,
+        coords: &Coordinates,
+        mut visit: impl FnMut(Coordinates),
+    ) {
         let x = coords.x();
         let y = coords.y();
         let z = coords.z();
 
         if x > 0 {
-            neighbors.push(Coordinates::new(x - 1, y + 1, z));
-            neighbors.push(Coordinates::new(x - 1, y, z + 1));
+            visit(Coordinates::new(x - 1, y + 1, z));
+            visit(Coordinates::new(x - 1, y, z + 1));
         }
         if y > 0 {
-            neighbors.push(Coordinates::new(x + 1, y - 1, z));
-            neighbors.push(Coordinates::new(x, y - 1, z + 1));
+            visit(Coordinates::new(x + 1, y - 1, z));
+            visit(Coordinates::new(x, y - 1, z + 1));
         }
         if z > 0 {
-            neighbors.push(Coordinates::new(x + 1, y, z - 1));
-            neighbors.push(Coordinates::new(x, y + 1, z - 1));
+            visit(Coordinates::new(x + 1, y, z - 1));
+            visit(Coordinates::new(x, y + 1, z - 1));
         }
+    }
+
+    pub(crate) fn get_neighbors(&self, coords: &Coordinates) -> Vec<Coordinates> {
+        let mut neighbors = Vec::with_capacity(6);
+        self.for_each_neighbor(coords, |neighbor| neighbors.push(neighbor));
         neighbors
+    }
+
+    fn mark_cell_unavailable(&mut self, cell_idx: u32) {
+        let lookup_idx = cell_idx as usize;
+        let position = *self.available_lookup.get(lookup_idx).unwrap_or(&usize::MAX);
+        if position == usize::MAX {
+            return;
+        }
+
+        let last = self
+            .available_cells
+            .pop()
+            .expect("available lookup referenced a missing cell");
+
+        if position < self.available_cells.len() {
+            self.available_cells[position] = last;
+            self.available_lookup[last as usize] = position;
+        }
+
+        self.available_lookup[lookup_idx] = usize::MAX;
     }
 
     /// Renders the current state of the board as a text string.
@@ -576,13 +604,16 @@ impl GameY {
         self.board_map.get(coords).map(|(_, player)| *player)
     }
 
-
     /// Disjoint Set Union 'Union' operation
     fn union(&mut self, i: SetIdx, j: SetIdx) -> bool {
-        let root_i = self.find(i);
-        let root_j = self.find(j);
+        let mut root_i = self.find(i);
+        let mut root_j = self.find(j);
 
         if root_i != root_j {
+            if self.sets[root_i].size > self.sets[root_j].size {
+                std::mem::swap(&mut root_i, &mut root_j);
+            }
+
             self.sets[root_i].parent = root_j;
             // Merge side properties
             self.sets[root_j].touches_side_a |= self.sets[root_i].touches_side_a;
@@ -591,6 +622,8 @@ impl GameY {
 
             // We add their sizes
             self.sets[root_j].size += self.sets[root_i].size;
+            let mut merged_cells = std::mem::take(&mut self.sets[root_i].cells);
+            self.sets[root_j].cells.append(&mut merged_cells);
 
             return self.sets[root_j].touches_side_a
                 && self.sets[root_j].touches_side_b
@@ -727,7 +760,9 @@ pub enum GameStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use crate::{BlockedCell, HoneyRule, PieRule};
+    use std::{collections::HashSet, fs};
+    use tempfile::tempdir;
 
     #[test]
     fn test_other_player() {
@@ -963,7 +998,8 @@ mod tests {
         game.add_move(Movement::Placement {
             player: PlayerId::new(0),
             coords,
-        }).unwrap();
+        })
+            .unwrap();
 
         // Después de colocar, debe devolver el jugador correcto
         assert_eq!(game.cell_at(&coords), Some(PlayerId::new(0)));
@@ -975,12 +1011,768 @@ mod tests {
         let c0 = Coordinates::new(2, 1, 1);
         let c1 = Coordinates::new(2, 2, 0);
 
-        game.add_move(Movement::Placement { player: PlayerId::new(0), coords: c0 }).unwrap();
-        game.add_move(Movement::Placement { player: PlayerId::new(1), coords: c1 }).unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: c0,
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: c1,
+        })
+            .unwrap();
 
         assert_eq!(game.cell_at(&c0), Some(PlayerId::new(0)));
         assert_eq!(game.cell_at(&c1), Some(PlayerId::new(1)));
         // Celda sin ocupar
         assert_eq!(game.cell_at(&Coordinates::new(0, 0, 0)), None);
+    }
+
+    #[test]
+    fn test_sets_of_player_returns_unique_merged_root_with_all_cells() {
+        let mut game = GameY::new(4);
+
+        let first = Coordinates::new(0, 0, 3);
+        let filler = Coordinates::new(3, 0, 0);
+        let second = Coordinates::new(0, 1, 2);
+
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: first,
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: filler,
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: second,
+        })
+            .unwrap();
+
+        let sets = game.sets_of_player(PlayerId::new(0));
+        assert_eq!(
+            sets.len(),
+            1,
+            "adjacent stones should collapse to one root set"
+        );
+
+        let merged = sets[0];
+        assert_eq!(
+            merged.size, 2,
+            "merged root should track the full component size"
+        );
+        assert_eq!(
+            merged.cells.len(),
+            2,
+            "merged root must keep every cell in the component"
+        );
+        assert!(merged.cells.contains(&first));
+        assert!(merged.cells.contains(&second));
+    }
+
+    #[test]
+    fn test_new_game_is_not_over() {
+        let game = GameY::new(5);
+        assert!(!game.check_game_over());
+    }
+
+    #[test]
+    fn test_new_game_has_correct_total_cells() {
+        assert_eq!(GameY::new(3).total_cells(), 6);
+        assert_eq!(GameY::new(5).total_cells(), 15);
+        assert_eq!(GameY::new(7).total_cells(), 28);
+    }
+
+    #[test]
+    fn test_new_game_all_cells_available() {
+        let game = GameY::new(5);
+        assert_eq!(game.available_cells().len(), 15);
+    }
+
+    #[test]
+    fn test_single_cell_board_initialization() {
+        let game = GameY::new(1);
+        assert_eq!(game.board_size(), 1);
+        assert_eq!(game.total_cells(), 1);
+        assert_eq!(game.available_cells().len(), 1);
+    }
+
+    #[test]
+    fn test_single_move_changes_next_player() {
+        let mut game = GameY::new(5);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(4, 0, 0),
+        })
+            .unwrap();
+        assert_eq!(game.next_player(), Some(PlayerId::new(1)));
+    }
+
+    #[test]
+    fn test_two_moves_alternate_players() {
+        let mut game = GameY::new(5);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(4, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(3, 1, 0),
+        })
+            .unwrap();
+        assert_eq!(game.next_player(), Some(PlayerId::new(0)));
+    }
+
+    #[test]
+    fn test_move_decreases_available_cells() {
+        let mut game = GameY::new(3);
+        let initial_count = game.available_cells().len();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(2, 0, 0),
+        })
+            .unwrap();
+        assert_eq!(game.available_cells().len(), initial_count - 1);
+    }
+
+    #[test]
+    fn test_multiple_moves_track_available_cells() {
+        let mut game = GameY::new(3);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(2, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(1, 1, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 2, 0),
+        })
+            .unwrap();
+        assert_eq!(game.available_cells().len(), 3);
+    }
+
+    #[test]
+    fn test_player_1_wins() {
+        let mut game = GameY::new(3);
+        let moves = vec![
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(2, 0, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(1),
+                coords: Coordinates::new(0, 0, 2),
+            },
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(1, 1, 0),
+            },
+            Movement::Placement {
+                player: PlayerId::new(1),
+                coords: Coordinates::new(0, 1, 1),
+            },
+            Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::new(1, 0, 1),
+            },
+            Movement::Placement {
+                player: PlayerId::new(1),
+                coords: Coordinates::new(0, 2, 0),
+            },
+        ];
+
+        for movement in moves {
+            game.add_move(movement).unwrap();
+        }
+
+        assert!(game.check_game_over());
+        match game.status() {
+            GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(1)),
+            _ => panic!("game should be finished with player 1 as winner"),
+        }
+    }
+
+    #[test]
+    fn test_single_cell_board_instant_win() {
+        let mut game = GameY::new(1);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 0, 0),
+        })
+            .unwrap();
+
+        assert!(game.check_game_over());
+        match game.status() {
+            GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(0)),
+            _ => panic!("game should be finished"),
+        }
+    }
+
+    #[test]
+    fn test_size_2_board_win() {
+        let mut game = GameY::new(2);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 0, 1),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(1, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 1, 0),
+        })
+            .unwrap();
+
+        assert!(game.check_game_over());
+        match game.status() {
+            GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(0)),
+            _ => panic!("game should be finished"),
+        }
+    }
+
+    #[test]
+    fn test_game_not_over_without_three_sides() {
+        let mut game = GameY::new(5);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 0, 4),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(4, 0, 0),
+        })
+            .unwrap();
+        assert!(!game.check_game_over());
+    }
+
+    #[test]
+    fn test_cannot_place_on_occupied_cell() {
+        let mut game = GameY::new(5);
+        let coords = Coordinates::new(2, 1, 1);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords,
+        })
+            .unwrap();
+
+        let result = game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords,
+        });
+
+        match result.unwrap_err() {
+            GameYError::Occupied { coordinates, .. } => assert_eq!(coordinates, coords),
+            other => panic!("expected occupied error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_check_player_turn_wrong_player() {
+        let game = GameY::new(5);
+        let movement = Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(2, 1, 1),
+        };
+
+        match game.check_player_turn(&movement).unwrap_err() {
+            GameYError::InvalidPlayerTurn { expected, found } => {
+                assert_eq!(expected, PlayerId::new(0));
+                assert_eq!(found, PlayerId::new(1));
+            }
+            other => panic!("expected invalid player turn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_check_player_turn_correct_player() {
+        let game = GameY::new(5);
+        let movement = Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(2, 1, 1),
+        };
+        assert!(game.check_player_turn(&movement).is_ok());
+    }
+
+    #[test]
+    fn test_resign_ends_game_with_opponent_winning() {
+        let mut game = GameY::new(5);
+        game.add_move(Movement::Action {
+            player: PlayerId::new(0),
+            action: GameAction::Resign,
+        })
+            .unwrap();
+
+        match game.status() {
+            GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(1)),
+            _ => panic!("game should be finished"),
+        }
+    }
+
+    #[test]
+    fn test_player_1_resign_makes_player_0_win() {
+        let mut game = GameY::new(5);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(4, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Action {
+            player: PlayerId::new(1),
+            action: GameAction::Resign,
+        })
+            .unwrap();
+
+        match game.status() {
+            GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(0)),
+            _ => panic!("game should be finished"),
+        }
+    }
+
+    #[test]
+    fn test_swap_changes_next_player() {
+        let mut game = GameY::with_rules(
+            5,
+            GameRules {
+                pie_rule: PieRule { enabled: true },
+                honey: HoneyRule::default(),
+            },
+        )
+            .unwrap();
+
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(4, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Action {
+            player: PlayerId::new(1),
+            action: GameAction::Swap,
+        })
+            .unwrap();
+
+        assert_eq!(game.next_player(), Some(PlayerId::new(0)));
+        assert!(!game.check_game_over());
+    }
+
+    #[test]
+    fn test_swap_after_opening_move() {
+        let mut game = GameY::with_rules(
+            5,
+            GameRules {
+                pie_rule: PieRule { enabled: true },
+                honey: HoneyRule::default(),
+            },
+        )
+            .unwrap();
+
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(2, 1, 1),
+        })
+            .unwrap();
+        game.add_move(Movement::Action {
+            player: PlayerId::new(1),
+            action: GameAction::Swap,
+        })
+            .unwrap();
+
+        assert_eq!(game.next_player(), Some(PlayerId::new(0)));
+        assert!(!game.check_game_over());
+    }
+
+    #[test]
+    fn test_swap_is_rejected_in_classic_mode() {
+        let mut game = GameY::new(5);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(4, 0, 0),
+        })
+            .unwrap();
+
+        let result = game.add_move(Movement::Action {
+            player: PlayerId::new(1),
+            action: GameAction::Swap,
+        });
+
+        assert!(matches!(result, Err(GameYError::InvalidSwapAction { .. })));
+    }
+
+    #[test]
+    fn test_honey_rule_blocks_cells_when_enabled() {
+        let mut game = GameY::with_rules(
+            4,
+            GameRules {
+                pie_rule: PieRule::default(),
+                honey: HoneyRule {
+                    enabled: true,
+                    blocked_cells: vec![BlockedCell { row: 1, col: 1 }],
+                },
+            },
+        )
+            .unwrap();
+
+        let blocked = Coordinates::new(2, 1, 0);
+        let result = game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: blocked,
+        });
+
+        assert!(matches!(result, Err(GameYError::BlockedCell { .. })));
+    }
+
+    #[test]
+    fn test_honey_cells_are_playable_when_disabled() {
+        let mut game = GameY::with_rules(
+            4,
+            GameRules {
+                pie_rule: PieRule::default(),
+                honey: HoneyRule {
+                    enabled: false,
+                    blocked_cells: vec![BlockedCell { row: 1, col: 1 }],
+                },
+            },
+        )
+            .unwrap();
+
+        let allowed = Coordinates::new(2, 1, 0);
+        let result = game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: allowed,
+        });
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_both_rules_enabled_apply_together() {
+        let mut game = GameY::with_rules(
+            4,
+            GameRules {
+                pie_rule: PieRule { enabled: true },
+                honey: HoneyRule {
+                    enabled: true,
+                    blocked_cells: vec![BlockedCell { row: 1, col: 0 }],
+                },
+            },
+        )
+            .unwrap();
+
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(3, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Action {
+            player: PlayerId::new(1),
+            action: GameAction::Swap,
+        })
+            .unwrap();
+
+        let blocked_result = game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(2, 0, 1),
+        });
+        assert!(matches!(blocked_result, Err(GameYError::BlockedCell { .. })));
+    }
+
+    #[test]
+    fn test_yen_round_trip_empty_board() {
+        let game = GameY::new(3);
+        let yen: YEN = (&game).into();
+        let loaded_game = GameY::try_from(yen).unwrap();
+
+        assert_eq!(game.board_size(), loaded_game.board_size());
+        assert_eq!(game.available_cells().len(), loaded_game.available_cells().len());
+    }
+
+    #[test]
+    fn test_yen_preserves_board_state() {
+        let yen: YEN = serde_json::from_str(
+            r#"{
+                "size": 3,
+                "turn": 0,
+                "players": ["B","R"],
+                "layout": "B/RB/.R."
+            }"#,
+        )
+            .unwrap();
+        let game = GameY::try_from(yen).unwrap();
+
+        assert_eq!(game.board_size(), 3);
+        assert_eq!(game.available_cells().len(), 2);
+    }
+
+    #[test]
+    fn test_yen_invalid_layout_wrong_rows() {
+        let yen: YEN = serde_json::from_str(
+            r#"{
+                "size": 3,
+                "turn": 0,
+                "players": ["B","R"],
+                "layout": "B/RB"
+            }"#,
+        )
+            .unwrap();
+
+        match GameY::try_from(yen).unwrap_err() {
+            GameYError::InvalidYENLayout { expected, found } => {
+                assert_eq!(expected, 3);
+                assert_eq!(found, 2);
+            }
+            other => panic!("expected invalid yen layout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_yen_invalid_layout_wrong_cells_in_row() {
+        let yen: YEN = serde_json::from_str(
+            r#"{
+                "size": 3,
+                "turn": 0,
+                "players": ["B","R"],
+                "layout": "B/RBB/..."
+            }"#,
+        )
+            .unwrap();
+
+        match GameY::try_from(yen).unwrap_err() {
+            GameYError::InvalidYENLayoutLine {
+                expected,
+                found,
+                line,
+            } => {
+                assert_eq!(expected, 2);
+                assert_eq!(found, 3);
+                assert_eq!(line, 1);
+            }
+            other => panic!("expected invalid yen layout line, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_yen_invalid_character() {
+        let yen: YEN = serde_json::from_str(
+            r#"{
+                "size": 3,
+                "turn": 0,
+                "players": ["B","R"],
+                "layout": "X/RB/..."
+            }"#,
+        )
+            .unwrap();
+
+        match GameY::try_from(yen).unwrap_err() {
+            GameYError::InvalidCharInLayout { char, row, col } => {
+                assert_eq!(char, 'X');
+                assert_eq!(row, 0);
+                assert_eq!(col, 0);
+            }
+            other => panic!("expected invalid char in layout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_game_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_game.yen");
+        let mut game = GameY::new(4);
+
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(3, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(2, 0, 1),
+        })
+            .unwrap();
+
+        game.save_to_file(&file_path).unwrap();
+        let loaded_game = GameY::load_from_file(&file_path).unwrap();
+
+        assert_eq!(game.board_size(), loaded_game.board_size());
+        assert_eq!(game.available_cells().len(), loaded_game.available_cells().len());
+
+        let yen_original: YEN = (&game).into();
+        let yen_loaded: YEN = (&loaded_game).into();
+        assert_eq!(yen_original.layout(), yen_loaded.layout());
+    }
+
+    #[test]
+    fn test_load_nonexistent_file() {
+        let dir = tempdir().unwrap();
+        let missing_file = dir.path().join("missing.yen");
+
+        match GameY::load_from_file(&missing_file).unwrap_err() {
+            GameYError::IoError { message, .. } => {
+                assert!(message.contains("Failed to read file"));
+            }
+            other => panic!("expected io error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_load_invalid_json_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("invalid.yen");
+        fs::write(&file_path, "{ invalid json }").unwrap();
+
+        match GameY::load_from_file(&file_path).unwrap_err() {
+            GameYError::SerdeError { .. } => {}
+            other => panic!("expected serde error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_render_empty_board() {
+        let game = GameY::new(3);
+        let options = RenderOptions {
+            show_3d_coords: false,
+            show_idx: false,
+            show_colors: false,
+        };
+        let rendered = game.render(&options);
+
+        assert!(rendered.contains("Game of Y (Size 3)"));
+        assert!(rendered.contains('.'));
+    }
+
+    #[test]
+    fn test_render_with_pieces() {
+        let mut game = GameY::new(3);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(2, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(1, 1, 0),
+        })
+            .unwrap();
+
+        let options = RenderOptions {
+            show_3d_coords: false,
+            show_idx: false,
+            show_colors: false,
+        };
+        let rendered = game.render(&options);
+
+        assert!(rendered.contains('0'));
+        assert!(rendered.contains('1'));
+    }
+
+    #[test]
+    fn test_render_with_3d_coords() {
+        let game = GameY::new(2);
+        let options = RenderOptions {
+            show_3d_coords: true,
+            show_idx: false,
+            show_colors: false,
+        };
+        let rendered = game.render(&options);
+
+        assert!(rendered.contains('('));
+        assert!(rendered.contains(')'));
+    }
+
+    #[test]
+    fn test_render_with_indices() {
+        let game = GameY::new(2);
+        let options = RenderOptions {
+            show_3d_coords: false,
+            show_idx: true,
+            show_colors: false,
+        };
+        let rendered = game.render(&options);
+
+        assert!(rendered.contains("(0)") || rendered.contains("(1)") || rendered.contains("(2)"));
+    }
+
+    #[test]
+    fn test_full_game_on_size_4_board() {
+        let mut game = GameY::new(4);
+        let moves = vec![
+            (0, Coordinates::new(3, 0, 0)),
+            (1, Coordinates::new(2, 1, 0)),
+            (0, Coordinates::new(2, 0, 1)),
+            (1, Coordinates::new(1, 2, 0)),
+            (0, Coordinates::new(1, 0, 2)),
+            (1, Coordinates::new(0, 3, 0)),
+            (0, Coordinates::new(0, 0, 3)),
+            (1, Coordinates::new(0, 2, 1)),
+            (0, Coordinates::new(1, 1, 1)),
+        ];
+
+        for (player_id, coords) in moves {
+            game.add_move(Movement::Placement {
+                player: PlayerId::new(player_id),
+                coords,
+            })
+                .unwrap();
+        }
+
+        assert!(game.available_cells().len() < 10);
+    }
+
+    #[test]
+    fn test_union_find_correctly_merges_components() {
+        let mut game = GameY::new(4);
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 0, 3),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(3, 0, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 3, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(2, 1, 0),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 1, 2),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(1),
+            coords: Coordinates::new(2, 0, 1),
+        })
+            .unwrap();
+        game.add_move(Movement::Placement {
+            player: PlayerId::new(0),
+            coords: Coordinates::new(0, 2, 1),
+        })
+            .unwrap();
+
+        assert!(game.check_game_over());
+        match game.status() {
+            GameStatus::Finished { winner } => assert_eq!(*winner, PlayerId::new(0)),
+            _ => panic!("player 0 should have won"),
+        }
     }
 }

@@ -449,6 +449,7 @@ fn apply_move(game: &mut GameY, movement: Movement, error_msg: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn test_mode_display_computer() {
@@ -493,9 +494,45 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_idx_float_number() {
+        let result = parse_idx("5.5", 10);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_idx_empty_string() {
+        let result = parse_idx("", 10);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_idx_bound_of_one() {
+        assert_eq!(parse_idx("0", 1), Ok(0));
+        assert!(parse_idx("1", 1).is_err());
+    }
+
+    #[test]
+    fn test_parse_idx_large_valid_number() {
+        let result = parse_idx("999", 1000);
+        assert_eq!(result, Ok(999));
+    }
+
+    #[test]
     fn test_parse_command_place() {
         let cmd = parse_command("5", 10);
         assert_eq!(cmd, Command::Place { idx: 5 });
+    }
+
+    #[test]
+    fn test_parse_command_place_zero_index() {
+        let cmd = parse_command("0", 10);
+        assert_eq!(cmd, Command::Place { idx: 0 });
+    }
+
+    #[test]
+    fn test_parse_command_place_max_valid_index() {
+        let cmd = parse_command("9", 10);
+        assert_eq!(cmd, Command::Place { idx: 9 });
     }
 
     #[test]
@@ -613,6 +650,35 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_command_invalid_command() {
+        let cmd = parse_command("invalid_command", 10);
+        assert!(matches!(cmd, Command::Error { .. }));
+    }
+
+    #[test]
+    fn test_parse_command_with_leading_whitespace() {
+        let cmd = parse_command("  5", 10);
+        assert_eq!(cmd, Command::Place { idx: 5 });
+    }
+
+    #[test]
+    fn test_parse_command_with_trailing_whitespace() {
+        let cmd = parse_command("5  ", 10);
+        assert_eq!(cmd, Command::Place { idx: 5 });
+    }
+
+    #[test]
+    fn test_parse_command_save_with_path() {
+        let cmd = parse_command("save /tmp/game.json", 10);
+        assert_eq!(
+            cmd,
+            Command::Save {
+                filename: "/tmp/game.json".to_string()
+            }
+        );
+    }
+
+    #[test]
     fn test_command_debug() {
         let cmd = Command::Place { idx: 5 };
         let debug = format!("{:?}", cmd);
@@ -680,5 +746,133 @@ mod tests {
         assert_eq!(rules.honey.blocked_cells.len(), 2);
         assert_eq!(rules.honey.blocked_cells[0].row, 2);
         assert_eq!(rules.honey.blocked_cells[0].col, 1);
+    }
+
+    #[test]
+    fn test_mode_equality() {
+        assert_eq!(Mode::Computer, Mode::Computer);
+        assert_eq!(Mode::Human, Mode::Human);
+        assert_eq!(Mode::Server, Mode::Server);
+        assert_ne!(Mode::Computer, Mode::Human);
+        assert_ne!(Mode::Human, Mode::Server);
+    }
+
+    #[test]
+    fn test_cli_args_default_values() {
+        let args = CliArgs::try_parse_from(["gamey"]).unwrap();
+        assert_eq!(args.size, 7);
+        assert_eq!(args.mode, Mode::Human);
+        assert_eq!(args.bot, "random");
+        assert_eq!(args.port, 3000);
+    }
+
+    #[test]
+    fn test_cli_args_custom_size() {
+        let args = CliArgs::try_parse_from(["gamey", "--size", "10"]).unwrap();
+        assert_eq!(args.size, 10);
+    }
+
+    #[test]
+    fn test_cli_args_custom_size_short() {
+        let args = CliArgs::try_parse_from(["gamey", "-s", "5"]).unwrap();
+        assert_eq!(args.size, 5);
+    }
+
+    #[test]
+    fn test_cli_args_mode_computer() {
+        let args = CliArgs::try_parse_from(["gamey", "--mode", "computer"]).unwrap();
+        assert_eq!(args.mode, Mode::Computer);
+    }
+
+    #[test]
+    fn test_cli_args_mode_human() {
+        let args = CliArgs::try_parse_from(["gamey", "--mode", "human"]).unwrap();
+        assert_eq!(args.mode, Mode::Human);
+    }
+
+    #[test]
+    fn test_cli_args_mode_server() {
+        let args = CliArgs::try_parse_from(["gamey", "--mode", "server"]).unwrap();
+        assert_eq!(args.mode, Mode::Server);
+    }
+
+    #[test]
+    fn test_cli_args_mode_short() {
+        let args = CliArgs::try_parse_from(["gamey", "-m", "computer"]).unwrap();
+        assert_eq!(args.mode, Mode::Computer);
+    }
+
+    #[test]
+    fn test_cli_args_custom_bot() {
+        let args = CliArgs::try_parse_from(["gamey", "--bot", "smart_bot"]).unwrap();
+        assert_eq!(args.bot, "smart_bot");
+    }
+
+    #[test]
+    fn test_cli_args_custom_bot_short() {
+        let args = CliArgs::try_parse_from(["gamey", "-b", "my_bot"]).unwrap();
+        assert_eq!(args.bot, "my_bot");
+    }
+
+    #[test]
+    fn test_cli_args_custom_port() {
+        let args = CliArgs::try_parse_from(["gamey", "--port", "8080"]).unwrap();
+        assert_eq!(args.port, 8080);
+    }
+
+    #[test]
+    fn test_cli_args_custom_port_short() {
+        let args = CliArgs::try_parse_from(["gamey", "-p", "9000"]).unwrap();
+        assert_eq!(args.port, 9000);
+    }
+
+    #[test]
+    fn test_cli_args_combined_options() {
+        let args = CliArgs::try_parse_from([
+            "gamey",
+            "-s",
+            "9",
+            "-m",
+            "computer",
+            "-b",
+            "advanced_bot",
+            "-p",
+            "5000",
+        ])
+            .unwrap();
+        assert_eq!(args.size, 9);
+        assert_eq!(args.mode, Mode::Computer);
+        assert_eq!(args.bot, "advanced_bot");
+        assert_eq!(args.port, 5000);
+    }
+
+    #[test]
+    fn test_cli_args_invalid_mode() {
+        let result = CliArgs::try_parse_from(["gamey", "--mode", "invalid"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_args_invalid_size_not_number() {
+        let result = CliArgs::try_parse_from(["gamey", "--size", "abc"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_args_invalid_port_not_number() {
+        let result = CliArgs::try_parse_from(["gamey", "--port", "not_a_port"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_args_help_flag() {
+        let result = CliArgs::try_parse_from(["gamey", "--help"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_args_version_flag() {
+        let result = CliArgs::try_parse_from(["gamey", "--version"]);
+        assert!(result.is_err());
     }
 }
