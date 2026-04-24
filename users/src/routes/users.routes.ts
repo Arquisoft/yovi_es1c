@@ -8,6 +8,8 @@ export function createUsersRouter(controller: UsersController): Router {
     router.get('/profiles/by-username/:username', controller.getProfileByUsername.bind(controller));
     router.get('/profiles/:id', controller.getProfile.bind(controller));
     router.put('/profiles/:id', controller.updateProfile.bind(controller));
+    router.get('/me', controller.getMyProfile.bind(controller))
+    router.put('/me', controller.updateMyProfile.bind(controller))
 
     return router;
 }
