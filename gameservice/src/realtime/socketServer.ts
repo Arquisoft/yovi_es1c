@@ -9,7 +9,7 @@ import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository
 import { TurnTimerService as TurnTimerSvc } from '../services/TurnTimerService';
 import { MovePayload, PieSwapPayload } from '../types/online';
 import { MatchRules, normalizeMatchRules } from '../types/rules.js';
-import { activeSocketConnections } from '../metrics';
+import { activeSocketConnections, socketConnectionsTotal } from '../metrics';
 import { AuthVerifyClient } from '../services/AuthVerifyClient';
 interface AuthenticatedUser {
     userId: number;
@@ -173,6 +173,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
     );
 
     matchmakingService.startWorker();
+    sessionService.startMaintenanceWorker(Number(process.env.ONLINE_SESSION_SWEEP_MS ?? 5_000));
 
     io.use(async (socket, next) => {
         try {
@@ -203,6 +204,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
         }
 
         activeSocketConnections.inc();
+        socketConnectionsTotal.inc();
         socket.join(`user:${user.userId}`);
 
         socket.on(

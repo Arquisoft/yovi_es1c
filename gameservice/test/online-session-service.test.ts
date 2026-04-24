@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnlineSessionRepository } from '../src/repositories/OnlineSessionRepository';
 import { OnlineSessionService } from '../src/services/OnlineSessionService';
 import { TurnTimerService } from '../src/services/TurnTimerService';
+import { ChatFilter, ChatFilterError } from '../src/services/ChatFilter';
 import { MatchRules } from '../src/types/rules';
 
 describe('OnlineSessionService', () => {
@@ -192,6 +193,105 @@ describe('OnlineSessionService', () => {
     nowSpy.mockRestore();
   });
 
+  it('addChatMessage sanitizes filtered content before storing and emitting', async () => {
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+    const chatFilter = {
+      filter: vi.fn().mockResolvedValue({
+        sanitized: '****',
+        wasFiltered: true,
+        toxicityScore: undefined,
+      }),
+    } as unknown as ChatFilter;
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+        undefined,
+        chatFilter,
+    );
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(22222);
+    await service.createSession('m-filter', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    const message = await service.addChatMessage('m-filter', 1, 'a', 'puta');
+
+    expect(chatFilter.filter).toHaveBeenCalledWith('puta');
+    expect(message.text).toBe('****');
+    const snapshot = await service.getSnapshot('m-filter');
+    expect(snapshot?.messages).toEqual([message]);
+    expect(emit).toHaveBeenCalledWith('chat:message', {
+      matchId: 'm-filter',
+      userId: 1,
+      username: 'a',
+      text: '****',
+      timestamp: 22222,
+    });
+
+    nowSpy.mockRestore();
+  });
+
+  it('addChatMessage rejects messages blocked by the chat filter', async () => {
+    const chatFilter = {
+      filter: vi.fn().mockRejectedValue(new ChatFilterError('blocked', 0.95)),
+    } as unknown as ChatFilter;
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        {},
+        undefined,
+        chatFilter,
+    );
+    await service.createSession('m-reject', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    await expect(service.addChatMessage('m-reject', 1, 'a', 'hostile')).rejects.toMatchObject({
+      code: 'INVALID_MOVE',
+      message: 'Message contains inappropriate content',
+    });
+
+    const snapshot = await service.getSnapshot('m-reject');
+    expect(snapshot?.messages).toEqual([]);
+  });
+
+  it('addChatMessage uses static filtering when Perspective API is not configured', async () => {
+    delete process.env.PERSPECTIVE_API_KEY;
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+    );
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(33333);
+    await service.createSession('m-static', 3, [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }], 'HUMAN');
+
+    const message = await service.addChatMessage('m-static', 1, 'a', 'p.u.t.a');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(message.text).toBe('*******');
+    const snapshot = await service.getSnapshot('m-static');
+    expect(snapshot?.messages).toEqual([message]);
+    expect(emit).toHaveBeenCalledWith('chat:message', {
+      matchId: 'm-static',
+      userId: 1,
+      username: 'a',
+      text: '*******',
+      timestamp: 33333,
+    });
+
+    nowSpy.mockRestore();
+  });
+
   it('getActiveSessionForUser uses user active index and returns active session', async () => {
     const redis = {
       get: vi
@@ -303,6 +403,31 @@ describe('OnlineSessionService', () => {
     await service.markDisconnected('m1', 1, base);
     await service.expireGrace('m1', 1, base + 61_000);
     await expect(service.reconnect('m1', 1, base + 61_500)).rejects.toMatchObject({ code: 'SESSION_TERMINAL' });
+  });
+
+  it('sweeps reconnect grace deadlines without requiring a client event', async () => {
+    const { service } = await setup();
+    const base = Date.now();
+
+    await service.markDisconnected('m1', 1, base);
+    const swept = await service.sweepExpiredSessions(base + 61_000);
+    const snapshot = await service.getSnapshot('m1');
+
+    expect(swept).toBe(1);
+    expect(snapshot?.status).toBe('expired');
+    expect(snapshot?.winner).toBe('R');
+  });
+
+  it('sweeps expired turn timers without requiring a client event', async () => {
+    const { service, session } = await setup();
+    (service as any).secureRandomInt = vi.fn(() => 0);
+
+    const swept = await service.sweepExpiredSessions(session.timerEndsAt + 1);
+    const snapshot = await service.getSnapshot('m1');
+
+    expect(swept).toBe(1);
+    expect(snapshot?.version).toBe(1);
+    expect(snapshot?.layout).toBe('B/../...');
   });
 
   it('dedupe by clientEventId rejects duplicate events', async () => {

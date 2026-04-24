@@ -4,10 +4,9 @@ import { OnlineChatMessage, OnlineSessionState } from '../types/online';
 import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
-import { onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts } from '../metrics';
+import {activeGames, onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts} from '../metrics';
 import { randomFillSync } from 'crypto';
 import { ChatFilter, ChatFilterError } from './ChatFilter';
-
 export type MoveErrorCode =
     | 'VERSION_CONFLICT'
     | 'NOT_YOUR_TURN'
@@ -23,6 +22,9 @@ export interface RedisSessionClient {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, options?: { EX?: number; NX?: boolean }): Promise<string | null>;
   del(key: string): Promise<number>;
+  zAdd?(key: string, members: { score: number; value: string }[]): Promise<number>;
+  zRem?(key: string, members: string[]): Promise<number>;
+  zRange?(key: string, start: number, stop: number): Promise<string[]>;
 }
 
 export interface SocketEmitter {
@@ -40,6 +42,13 @@ export interface MoveCommand {
 }
 
 type TimeoutAction = { type: 'move'; move: MoveCommand } | { type: 'swap' };
+const ONLINE_SESSION_INDEX_KEY = 'session:online:index';
+const DEFAULT_SESSION_TTL_SEC = 3600;
+
+function resolvePositiveInteger(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
 
 export class OnlineSessionError extends Error {
   constructor(public readonly code: MoveErrorCode, message: string) {
@@ -53,7 +62,9 @@ export class OnlineSessionService {
   private readonly dedupeTtlMs = 60_000;
   private readonly dedupeTtlSec = Math.ceil(this.dedupeTtlMs / 1000);
   private readonly persistedSessions = new Set<string>();
+  private readonly sessionTtlSec = resolvePositiveInteger(process.env.ONLINE_SESSION_TTL_SEC, DEFAULT_SESSION_TTL_SEC);
   private readonly chatFilter: ChatFilter;
+  private maintenanceTimer: NodeJS.Timeout | null = null;
 
   constructor(
       private readonly repository: OnlineSessionRepository,
@@ -123,25 +134,22 @@ export class OnlineSessionService {
       throw new OnlineSessionError('INVALID_MOVE', 'Chat message must be between 1 and 200 characters');
     }
 
-    // Filtering chat
     let finalText: string;
     try {
       const result = await this.chatFilter.filter(normalizedText);
-
       if (result.wasFiltered) {
-        console.warn(`[ChatFilter] Tier-1 match — user ${userId} in match ${matchId}`);
+        console.warn(`[ChatFilter] Sanitized chat message for user ${userId} in match ${matchId}`);
       }
       if (result.toxicityScore !== undefined) {
-        console.info(`[ChatFilter] Perspective score ${result.toxicityScore.toFixed(2)} — user ${userId} in match ${matchId}`);
+        console.info(`[ChatFilter] Perspective score ${result.toxicityScore.toFixed(2)} for user ${userId} in match ${matchId}`);
       }
-
       finalText = result.sanitized;
-    } catch (err) {
-      if (err instanceof ChatFilterError) {
-        console.warn(`[ChatFilter] Tier-2 reject score=${err.score.toFixed(2)} — user ${userId} in match ${matchId}`);
+    } catch (error) {
+      if (error instanceof ChatFilterError) {
+        console.warn(`[ChatFilter] Rejected message score=${error.score.toFixed(2)} for user ${userId} in match ${matchId}`);
         throw new OnlineSessionError('INVALID_MOVE', 'Message contains inappropriate content');
       }
-      throw err;
+      throw error;
     }
 
     const message: OnlineChatMessage = {
@@ -214,7 +222,6 @@ export class OnlineSessionService {
       return nextState;
     });
   }
-
   async handlePieSwap(matchId: string, userId: number, expectedVersion: number): Promise<OnlineSessionState> {
     return this.withMatchLock(matchId, async () => {
       const state = await this.getState(matchId);
@@ -269,14 +276,23 @@ export class OnlineSessionService {
       if (this.isTerminal(state)) return state;
       if (!state.players.some((player) => player.userId === userId)) return state;
 
-      state.connection[userId] = 'DISCONNECTED';
-      state.reconnectDeadline[userId] = now + this.reconnectGraceSec * 1000;
-      state.status = 'waiting_reconnect';
-      state.version += 1;
-      await this.saveState(state);
+      const nextState: OnlineSessionState = {
+        ...state,
+        connection: {
+          ...state.connection,
+          [userId]: 'DISCONNECTED',
+        },
+        reconnectDeadline: {
+          ...state.reconnectDeadline,
+          [userId]: now + this.reconnectGraceSec * 1000,
+        },
+        status: 'waiting_reconnect',
+        version: state.version + 1,
+      };
+      await this.saveState(nextState);
       reconnectEvents.inc({ event: 'disconnected' });
 
-      return state;
+      return nextState;
     });
   }
 
@@ -299,16 +315,26 @@ export class OnlineSessionService {
         throw error;
       }
 
-      state.connection[userId] = 'CONNECTED';
-      state.reconnectDeadline[userId] = null;
-      state.status = 'active';
-      state.version += 1;
-      await this.saveState(state);
+      const nextState: OnlineSessionState = {
+        ...state,
+        connection: {
+          ...state.connection,
+          [userId]: 'CONNECTED',
+        },
+        reconnectDeadline: {
+          ...state.reconnectDeadline,
+          [userId]: null,
+        },
+        status: 'active',
+        version: state.version + 1,
+      };
+      await this.saveState(nextState);
       reconnectEvents.inc({ event: 'reconnected' });
 
-      return state;
+      return nextState;
     });
   }
+
 
   async expireGrace(matchId: string, userId: number, now = Date.now()): Promise<OnlineSessionState | null> {
     return this.withMatchLock(matchId, async () => {
@@ -318,23 +344,32 @@ export class OnlineSessionService {
 
       const deadline = state.reconnectDeadline[userId];
       if (deadline && deadline <= now) {
-        state.connection[userId] = 'DISCONNECTED';
-        state.winner = state.players[0].userId === userId ? 'R' : 'B';
-        state.status = 'expired';
-        state.closeReason = 'expired';
-        state.version += 1;
-        await this.saveState(state);
+        const winner: 'B' | 'R' = state.players[0].userId === userId ? 'R' : 'B';
+        const nextState: OnlineSessionState = {
+          ...state,
+          connection: {
+            ...state.connection,
+            [userId]: 'DISCONNECTED',
+          },
+          winner,
+          status: 'expired',
+          closeReason: 'expired',
+          version: state.version + 1,
+        };
+        await this.saveState(nextState);
 
         reconnectEvents.inc({ event: 'expired_forfeit' });
         onlineSessionEvents.inc({ event: 'finished' });
-        await this.persistOnlineResult(state, state.winner);
+        await this.persistOnlineResult(nextState, winner);
 
-        this.emitSessionState(state);
+        this.emitSessionState(nextState);
+        return nextState;
       }
 
       return state;
     });
   }
+
 
   async getSnapshot(matchId: string): Promise<OnlineSessionState | null> {
     return this.getState(matchId);
@@ -369,19 +404,68 @@ export class OnlineSessionService {
   }
 
   private async saveState(state: OnlineSessionState): Promise<void> {
+    const previous = await this.getState(state.matchId);
+    const wasTerminal = previous ? this.isTerminal(previous) : false;
+    const isTerminal = this.isTerminal(state);
+
     if (this.deps.redis) {
-      await this.deps.redis.set(this.sessionKey(state.matchId), JSON.stringify(state));
+      await this.deps.redis.set(this.sessionKey(state.matchId), JSON.stringify(state), { EX: this.sessionTtlSec });
+      await this.updateRedisSessionIndex(state);
       for (const player of state.players) {
-        if (this.isTerminal(state)) {
+        if (isTerminal) {
           await this.deps.redis.del(this.userActiveKey(player.userId));
         } else {
-          await this.deps.redis.set(this.userActiveKey(player.userId), state.matchId);
+          await this.deps.redis.set(this.userActiveKey(player.userId), state.matchId, { EX: this.sessionTtlSec });
         }
       }
+      this.updateActiveGameMetric(previous, state, wasTerminal, isTerminal);
       return;
     }
 
     await this.repository.save(state);
+    this.updateActiveGameMetric(previous, state, wasTerminal, isTerminal);
+  }
+
+  private updateActiveGameMetric(
+      previous: OnlineSessionState | null,
+      state: OnlineSessionState,
+      wasTerminal: boolean,
+      isTerminal: boolean,
+  ): void {
+    if (!previous && !isTerminal) {
+      activeGames.inc();
+      return;
+    }
+
+    if (previous && !wasTerminal && isTerminal) {
+      activeGames.dec();
+    }
+  }
+
+  private async updateRedisSessionIndex(state: OnlineSessionState): Promise<void> {
+    const redis = this.deps.redis;
+    if (!redis?.zAdd || !redis.zRem) return;
+
+    if (this.isTerminal(state)) {
+      await redis.zRem(ONLINE_SESSION_INDEX_KEY, [state.matchId]);
+      return;
+    }
+
+    await redis.zAdd(ONLINE_SESSION_INDEX_KEY, [{
+      score: this.nextMaintenanceAt(state),
+      value: state.matchId,
+    }]);
+  }
+
+  private nextMaintenanceAt(state: OnlineSessionState): number {
+    if (state.status === 'waiting_reconnect') {
+      const deadlines = Object.values(state.reconnectDeadline)
+          .filter((deadline): deadline is number => typeof deadline === 'number');
+      if (deadlines.length > 0) {
+        return Math.min(...deadlines);
+      }
+    }
+    return state.timerEndsAt;
   }
 
   private isMoveValid(state: OnlineSessionState, move: MoveCommand): boolean {
@@ -544,7 +628,6 @@ export class OnlineSessionService {
       message: error.message,
     });
   }
-
   async handleTurnTimeout(matchId: string, userId: number, expectedVersion: number): Promise<void> {
     return this.withMatchLock(matchId, async () => {
       const state = await this.getState(matchId);
@@ -627,14 +710,15 @@ export class OnlineSessionService {
     this.persistedSessions.add(state.matchId);
 
     await Promise.all(
-        state.players.map(async (player) => {
+        state.players.map(async (player, idx) => {
+          const opponent = state.players[idx === 0 ? 1 : 0];
           try {
             const matchId = await this.matchService!.createMatch(
                 player.userId, state.size, 'medium', 'ONLINE'
             );
             if (matchId == null) return;
             const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
-            await this.matchService!.finishMatch(matchId, winner);
+            await this.matchService!.finishMatch(matchId, winner, opponent.userId, player.username);
           } catch (err) {
             console.error('[OnlineSessionService] Failed to persist result for user', player.userId, err);
           }
@@ -668,15 +752,97 @@ export class OnlineSessionService {
         return state;
       }
 
-      state.status = 'abandoned';
-      state.closeReason = 'abandoned';
-      state.winner = state.players.find((player) => player.userId !== userId)!.symbol;
-      state.version += 1;
-      await this.saveState(state);
-      await this.persistOnlineResult(state, state.winner);
-      this.emitSessionState(state);
-      return state;
+      const winner = state.players.find((player) => player.userId !== userId)!.symbol;
+      const nextState: OnlineSessionState = {
+        ...state,
+        status: 'abandoned',
+        closeReason: 'abandoned',
+        winner,
+        version: state.version + 1,
+      };
+      await this.saveState(nextState);
+      onlineSessionEvents.inc({ event: 'finished' });
+      await this.persistOnlineResult(nextState, winner);
+      this.emitSessionState(nextState);
+      return nextState;
     });
+  }
+
+  async sweepExpiredSessions(now = Date.now()): Promise<number> {
+    const sessions = await this.listKnownSessions();
+    let swept = 0;
+
+    for (const session of sessions) {
+      if (this.isTerminal(session)) {
+        await this.removeFromRedisSessionIndex(session.matchId);
+        continue;
+      }
+
+      if (session.status === 'waiting_reconnect') {
+        const expiredPlayer = session.players.find((player) => {
+          const deadline = session.reconnectDeadline[player.userId];
+          return typeof deadline === 'number' && deadline <= now;
+        });
+
+        if (expiredPlayer) {
+          const next = await this.expireGrace(session.matchId, expiredPlayer.userId, now);
+          if (next && this.isTerminal(next)) {
+            swept += 1;
+          }
+        }
+        continue;
+      }
+
+      if (session.timerEndsAt <= now) {
+        const currentPlayer = session.players[session.turn];
+        await this.handleTurnTimeout(session.matchId, currentPlayer.userId, session.version);
+        swept += 1;
+      }
+    }
+
+    return swept;
+  }
+
+  startMaintenanceWorker(intervalMs = 5_000): void {
+    if (this.maintenanceTimer) return;
+    this.maintenanceTimer = setInterval(() => {
+      this.sweepExpiredSessions().catch((error) => {
+        console.error('[OnlineSessionService] Session maintenance sweep failed:', error);
+      });
+    }, intervalMs);
+    this.maintenanceTimer.unref?.();
+  }
+
+  stopMaintenanceWorker(): void {
+    if (!this.maintenanceTimer) return;
+    clearInterval(this.maintenanceTimer);
+    this.maintenanceTimer = null;
+  }
+
+  private async listKnownSessions(): Promise<OnlineSessionState[]> {
+    if (!this.deps.redis) {
+      return this.repository.getAll();
+    }
+
+    if (!this.deps.redis.zRange) {
+      return [];
+    }
+
+    const matchIds = await this.deps.redis.zRange(ONLINE_SESSION_INDEX_KEY, 0, -1);
+    const sessions = await Promise.all(matchIds.map(async (matchId) => {
+      const session = await this.getState(matchId);
+      if (!session) {
+        await this.removeFromRedisSessionIndex(matchId);
+      }
+      return session;
+    }));
+
+    return sessions.filter((session): session is OnlineSessionState => session !== null);
+  }
+
+  private async removeFromRedisSessionIndex(matchId: string): Promise<void> {
+    if (!this.deps.redis?.zRem) return;
+    await this.deps.redis.zRem(ONLINE_SESSION_INDEX_KEY, [matchId]);
   }
 
   async ensureNotDuplicateEvent(matchId: string, userId: number, clientEventId?: string): Promise<void> {
