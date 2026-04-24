@@ -337,55 +337,9 @@ mod tests {
         let fixture = include_str!("../../../training/fixtures/encoder_contract_cases.json");
         let cases: Vec<EncoderFixtureCase> = serde_json::from_str(fixture).expect("valid encoder fixture");
         let dummy_net = make_dummy_net();
-        let per_channel = GRID_SIZE * GRID_SIZE;
 
         for case in cases {
-            let board = board_from_fixture(&case);
-            assert_eq!(
-                board.next_player().map(|player| player.id()),
-                Some(case.current_player),
-                "fixture current player drifted for {}",
-                case.name
-            );
-
-            let (spatial, board_norm) = dummy_net.encode_board(&board);
-            assert!(
-                (board_norm - case.board_norm).abs() < 1e-6,
-                "board_norm mismatch for {}",
-                case.name
-            );
-
-            let expected: HashMap<(usize, usize, usize), f32> = case
-                .non_zero
-                .iter()
-                .map(|entry| ((entry.channel, entry.row, entry.col), entry.value))
-                .collect();
-
-            let mut observed = HashMap::new();
-            for channel in 0..NUM_CHANNELS {
-                for row in 0..case.board_size as usize {
-                    for col in 0..=row {
-                        let pos = row * GRID_SIZE + col;
-                        let value = spatial[channel * per_channel + pos];
-                        if value.abs() > 1e-9 {
-                            observed.insert((channel, row, col), value);
-                        }
-                    }
-                }
-            }
-
-            assert_eq!(observed.len(), expected.len(), "non-zero entry count mismatch for {}", case.name);
-            for (key, expected_value) in expected {
-                let actual = observed.get(&key).copied().unwrap_or_default();
-                assert!(
-                    (actual - expected_value).abs() < 1e-6,
-                    "fixture mismatch for {} at {:?}: expected {}, got {}",
-                    case.name,
-                    key,
-                    expected_value,
-                    actual
-                );
-            }
+            assert_fixture_case_matches(&dummy_net, &case);
         }
     }
 
@@ -416,7 +370,7 @@ mod tests {
                 honey: HoneyRule::default(),
             },
         )
-        .unwrap();
+            .unwrap();
 
         assert_eq!(classic.available_cells(), pie.available_cells());
         assert_ne!(NeuralNet::board_hash(&classic), NeuralNet::board_hash(&pie));
@@ -549,5 +503,75 @@ mod tests {
     fn make_dummy_net() -> Arc<NeuralNet> {
         NeuralNet::load("models/yovi_model.onnx")
             .expect("Para tests de encoding necesitas el modelo. Si no tienes .onnx, usa los tests de encoding directos.")
+    }
+
+    fn assert_fixture_case_matches(dummy_net: &Arc<NeuralNet>, case: &EncoderFixtureCase) {
+        let board = board_from_fixture(case);
+        assert_eq!(
+            board.next_player().map(|player| player.id()),
+            Some(case.current_player),
+            "fixture current player drifted for {}",
+            case.name
+        );
+
+        let (spatial, board_norm) = dummy_net.encode_board(&board);
+        assert!(
+            (board_norm - case.board_norm).abs() < 1e-6,
+            "board_norm mismatch for {}",
+            case.name
+        );
+
+        let expected = expected_non_zero_entries(case);
+        let observed = observed_non_zero_entries(case, &spatial);
+        assert_non_zero_entries_match(case, expected, observed);
+    }
+
+    fn expected_non_zero_entries(case: &EncoderFixtureCase) -> HashMap<(usize, usize, usize), f32> {
+        case
+            .non_zero
+            .iter()
+            .map(|entry| ((entry.channel, entry.row, entry.col), entry.value))
+            .collect()
+    }
+
+    fn observed_non_zero_entries(
+        case: &EncoderFixtureCase,
+        spatial: &[f32],
+    ) -> HashMap<(usize, usize, usize), f32> {
+        let per_channel = GRID_SIZE * GRID_SIZE;
+        let mut observed = HashMap::new();
+
+        for channel in 0..NUM_CHANNELS {
+            for row in 0..case.board_size as usize {
+                for col in 0..=row {
+                    let pos = row * GRID_SIZE + col;
+                    let value = spatial[channel * per_channel + pos];
+                    if value.abs() > 1e-9 {
+                        observed.insert((channel, row, col), value);
+                    }
+                }
+            }
+        }
+
+        observed
+    }
+
+    fn assert_non_zero_entries_match(
+        case: &EncoderFixtureCase,
+        expected: HashMap<(usize, usize, usize), f32>,
+        observed: HashMap<(usize, usize, usize), f32>,
+    ) {
+        assert_eq!(observed.len(), expected.len(), "non-zero entry count mismatch for {}", case.name);
+        for (key, expected_value) in expected {
+            let actual = observed.get(&key).copied().unwrap_or_default();
+            assert!(
+                (actual - expected_value).abs() < 1e-6,
+                "fixture mismatch for {} at {:?}: expected {}, got {}",
+                case.name,
+                key,
+                expected_value,
+                actual
+            );
+        }
     }
 }

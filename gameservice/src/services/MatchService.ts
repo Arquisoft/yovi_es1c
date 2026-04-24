@@ -34,6 +34,14 @@ function resolveGameyTimeoutMs(): number {
   return Math.floor(configured);
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
 export class MatchService {
   private readonly botStatus = new Map<number, 'processing' | 'done'>();
   private readonly botTasks = new Map<number, Promise<void>>();
@@ -166,7 +174,7 @@ export class MatchService {
   ): Promise<string | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.gameyTimeoutMs);
-    const baseUrl = (process.env.GAMEY_SERVICE_URL ?? '').replace(/\/+$/, '');
+    const baseUrl = trimTrailingSlashes(process.env.GAMEY_SERVICE_URL ?? '');
     const stopTimer = botMoveDuration.startTimer();
 
     try {

@@ -446,6 +446,38 @@ describe('MatchService', () => {
       expect(payload.position.rules).toEqual(expectedRules);
     });
 
+    it('trims trailing slashes from GAMEY_SERVICE_URL before calling gamey', async () => {
+      process.env.GAMEY_SERVICE_URL = 'http://gamey///';
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 1,
+        user_id: 1,
+        board_size: 3,
+        difficulty: 'easy',
+        status: 'ONGOING',
+      } as any);
+      vi.spyOn(mockMatchRepository, 'listMoves').mockResolvedValue([
+        { position_yen: afterUserOpening, player: 'USER', move_number: 1 },
+      ] as any);
+      vi.spyOn(mockMatchRepository, 'addMove').mockResolvedValue(undefined);
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          position: {
+            size: 3,
+            turn: 0,
+            players: ['B', 'R'],
+            layout: afterBotReply,
+          },
+        }),
+      } as Response);
+
+      matchService.queueBotMove(1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(String(fetchSpy.mock.calls[0][0])).toBe('http://gamey/v1/ybot/play');
+    });
+
     it('parses persisted JSON-string rules before calling gamey', async () => {
       const storedRules = JSON.stringify({
         pieRule: { enabled: true },

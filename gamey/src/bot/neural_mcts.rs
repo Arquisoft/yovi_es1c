@@ -245,6 +245,70 @@ impl NeuralMctsBot {
             child.prior = (1.0 - epsilon) * child.prior + epsilon * ni;
         }
     }
+
+    fn run_worker_tree(&self, board: &GameY, root_policy: &[f32], worker_budget: u32) -> MctsNode {
+        let mut local_cache: HashMap<u64, (Vec<f32>, f32)> = HashMap::with_capacity(1000);
+        let mut local_root = Self::build_root(board, root_policy);
+        if self.use_dirichlet {
+            self.add_dirichlet_noise(&mut local_root);
+        }
+
+        for _ in 0..worker_budget {
+            self.run_simulation(&mut local_root, board, &mut local_cache);
+            if self.should_break_worker_loop(&local_root) {
+                break;
+            }
+        }
+
+        local_root
+    }
+
+    fn should_break_worker_loop(&self, root: &MctsNode) -> bool {
+        self.early_stop
+            .is_some_and(|config| Self::should_stop_early(root, config))
+    }
+
+    fn aggregate_tree_visits(trees: &[MctsNode], board_size: u32) -> HashMap<u32, u32> {
+        let mut aggregate = HashMap::new();
+        for tree in trees {
+            for child in &tree.children {
+                if let Some(coords) = child.action {
+                    let idx = coords.to_index(board_size);
+                    *aggregate.entry(idx).or_insert(0) += child.visits;
+                }
+            }
+        }
+        aggregate
+    }
+
+    fn fallback_best_prior(root: &MctsNode) -> Option<Coordinates> {
+        root.children
+            .iter()
+            .max_by(|left, right| {
+                left.prior
+                    .partial_cmp(&right.prior)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .and_then(|child| child.action)
+    }
+
+    fn best_aggregated_move(
+        aggregate: &HashMap<u32, u32>,
+        board_size: u32,
+        fallback_root: &MctsNode,
+    ) -> Option<Coordinates> {
+        aggregate
+            .iter()
+            .max_by_key(|(_, visits)| **visits)
+            .and_then(|(idx, visits)| {
+                if *visits > 0 {
+                    Some(Coordinates::from_index(*idx, board_size))
+                } else {
+                    Self::fallback_best_prior(fallback_root)
+                }
+            })
+            .or_else(|| Self::fallback_best_prior(fallback_root))
+    }
 }
 
 impl YBot for NeuralMctsBot {
@@ -259,48 +323,13 @@ impl YBot for NeuralMctsBot {
         let budgets = Self::simulation_budgets(self.simulations, worker_count);
         let (root_policy, _) = self.net.evaluate(board).unwrap_or_else(|_| NeuralNet::fallback_evaluation(board));
         let fallback_root = Self::build_root(board, &root_policy);
-        let trees: Vec<MctsNode> = budgets.into_par_iter().map(|worker_budget| {
-            let mut local_cache: HashMap<u64, (Vec<f32>, f32)> = HashMap::with_capacity(1000);
-            let mut local_root = Self::build_root(board, &root_policy);
-            if self.use_dirichlet { self.add_dirichlet_noise(&mut local_root); }
-            for _ in 0..worker_budget {
-                self.run_simulation(&mut local_root, board, &mut local_cache);
-                if let Some(config) = self.early_stop {
-                    if Self::should_stop_early(&local_root, config) {
-                        break;
-                    }
-                }
-            }
-            local_root
-        }).collect();
+        let trees: Vec<MctsNode> = budgets
+            .into_par_iter()
+            .map(|worker_budget| self.run_worker_tree(board, &root_policy, worker_budget))
+            .collect();
 
-        let mut aggregate: HashMap<u32, u32> = HashMap::new();
-        for tree in &trees {
-            for child in &tree.children {
-                if let Some(coords) = child.action {
-                    let idx = coords.to_index(board.board_size());
-                    *aggregate.entry(idx).or_insert(0) += child.visits;
-                }
-            }
-        }
-        aggregate
-            .iter()
-            .max_by_key(|(_, visits)| **visits)
-            .and_then(|(idx, visits)| {
-                if *visits > 0 {
-                    Some(Coordinates::from_index(*idx, board.board_size()))
-                } else {
-                    fallback_root
-                        .children
-                        .iter()
-                        .max_by(|left, right| {
-                            left.prior
-                                .partial_cmp(&right.prior)
-                                .unwrap_or(std::cmp::Ordering::Equal)
-                        })
-                        .and_then(|child| child.action)
-                }
-            })
+        let aggregate = Self::aggregate_tree_visits(&trees, board.board_size());
+        Self::best_aggregated_move(&aggregate, board.board_size(), &fallback_root)
     }
 }
 #[cfg(test)]

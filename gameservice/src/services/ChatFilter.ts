@@ -88,6 +88,8 @@ interface ContextToken {
     origEnd: number;
 }
 
+type ContextMatcher = (tokens: ContextToken[], index: number) => number | null;
+
 function resolvePositiveInteger(raw: string | undefined, fallback: number): number {
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
@@ -105,11 +107,8 @@ function normalize(text: string): { norm: string; map: number[] } {
     for (let i = 0; i < lower.length; i += 1) {
         const ch = lower[i];
 
-        if (EVASION_CHARS.has(ch)) {
-            const prevIsAlpha = normChars.length > 0 && /[a-z0-9]/.test(normChars[normChars.length - 1]);
-            const nextCh = lower[i + 1] ?? '';
-            const nextIsAlpha = /[a-z0-9\u00e4\u00e1\u00e0\u00e2\u00e3\u00e9\u00e8\u00ea\u00eb\u00ed\u00ec\u00ee\u00ef\u00f3\u00f2\u00f4\u00f6\u00f5\u00fa\u00f9\u00fb\u00fc\u00f1\u00e7@4310!|$57986]/.test(nextCh);
-            if (prevIsAlpha && nextIsAlpha) continue;
+        if (EVASION_CHARS.has(ch) && shouldSkipEvasionChar(normChars, lower[i + 1] ?? '')) {
+            continue;
         }
 
         const normalized = CHAR_MAP[ch] ?? ch;
@@ -176,8 +175,19 @@ function findBadWords(norm: string, map: number[]): MatchRange[] {
 
 function isAsciiAlphaNumeric(ch: string): boolean {
     if (ch.length !== 1) return false;
-    const code = ch.charCodeAt(0);
+    const code = ch.codePointAt(0);
+    if (code === undefined) return false;
     return (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+}
+
+function shouldSkipEvasionChar(normChars: string[], nextCh: string): boolean {
+    const previousChar = normChars.length > 0 ? normChars[normChars.length - 1] : undefined;
+    return previousChar !== undefined && isAsciiAlphaNumeric(previousChar) && isJoinableTokenChar(nextCh);
+}
+
+function isJoinableTokenChar(ch: string): boolean {
+    if (!ch) return false;
+    return isAsciiAlphaNumeric(CHAR_MAP[ch] ?? ch);
 }
 
 function tokenizeForContext(text: string): ContextToken[] {
@@ -236,55 +246,88 @@ function toRange(tokens: ContextToken[], start: number, endExclusive: number): M
     };
 }
 
+function tokenText(tokens: ContextToken[], index: number): string {
+    return tokens[index]?.text ?? '';
+}
+
+function skipOptionalArticle(tokens: ContextToken[], index: number): number {
+    return CONTEXT_ARTICLES.has(tokenText(tokens, index)) ? index + 1 : index;
+}
+
+function matchSpanishIntro(tokens: ContextToken[], index: number): number | null {
+    if (!CONTEXT_INTROS_ES.has(tokenText(tokens, index))) return null;
+    const cursor = skipOptionalArticle(tokens, index + 1);
+    return CONTEXT_INSULTS_ES.has(tokenText(tokens, cursor)) ? cursor + 1 : null;
+}
+
+function matchSpanishExclaim(tokens: ContextToken[], index: number): number | null {
+    if (!CONTEXT_EXCLAIMS_ES.has(tokenText(tokens, index))) return null;
+    const cursor = skipOptionalArticle(tokens, index + 1);
+    return CONTEXT_EXCLAIM_INSULTS_ES.has(tokenText(tokens, cursor)) ? cursor + 1 : null;
+}
+
+function matchSpanishSuffix(tokens: ContextToken[], index: number): number | null {
+    return tokenText(tokens, index + 1) === 'de' && CONTEXT_SUFFIX_INSULTS_ES.has(tokenText(tokens, index + 2))
+        ? index + 3
+        : null;
+}
+
+function matchSpanishGoAway(tokens: ContextToken[], index: number): number | null {
+    if (!CONTEXT_GO_AWAY_ES.has(tokenText(tokens, index))) return null;
+
+    let cursor = index + 1;
+    if (tokenText(tokens, cursor) === 'a' && tokenText(tokens, cursor + 1) === 'la') {
+        cursor += 2;
+    }
+
+    return CONTEXT_GO_AWAY_TARGETS_ES.has(tokenText(tokens, cursor)) ? cursor + 1 : null;
+}
+
+function matchEnglishYoure(tokens: ContextToken[], index: number): number | null {
+    const first = tokenText(tokens, index);
+    if (first !== 'youre' && !(first === 'you' && tokenText(tokens, index + 1) === 're')) {
+        return null;
+    }
+
+    let cursor = first === 'youre' ? index + 1 : index + 2;
+    if (tokenText(tokens, cursor) === 'a') {
+        cursor += 1;
+    }
+
+    return CONTEXT_INSULTS_EN.has(tokenText(tokens, cursor)) ? cursor + 1 : null;
+}
+
+function matchEnglishExclaim(tokens: ContextToken[], index: number): number | null {
+    return tokenText(tokens, index) === 'what'
+    && tokenText(tokens, index + 1) === 'a'
+    && CONTEXT_EXCLAIM_INSULTS_EN.has(tokenText(tokens, index + 2))
+        ? index + 3
+        : null;
+}
+
+function matchEnglishSuck(tokens: ContextToken[], index: number): number | null {
+    return tokenText(tokens, index) === 'you' && tokenText(tokens, index + 1) === 'suck'
+        ? index + 2
+        : null;
+}
+
+const CONTEXT_MATCHERS: ContextMatcher[] = [
+    matchSpanishIntro,
+    matchSpanishExclaim,
+    matchSpanishSuffix,
+    matchSpanishGoAway,
+    matchEnglishYoure,
+    matchEnglishExclaim,
+    matchEnglishSuck,
+];
+
 function matchContextSequence(tokens: ContextToken[], index: number): number | null {
-    const first = tokens[index]?.text;
-    if (!first) return null;
-
-    if (CONTEXT_INTROS_ES.has(first)) {
-        let cursor = index + 1;
-        if (CONTEXT_ARTICLES.has(tokens[cursor]?.text ?? '')) cursor += 1;
-        if (CONTEXT_INSULTS_ES.has(tokens[cursor]?.text ?? '')) return cursor + 1;
-    }
-
-    if (CONTEXT_EXCLAIMS_ES.has(first)) {
-        let cursor = index + 1;
-        if (CONTEXT_ARTICLES.has(tokens[cursor]?.text ?? '')) cursor += 1;
-        if (CONTEXT_EXCLAIM_INSULTS_ES.has(tokens[cursor]?.text ?? '')) return cursor + 1;
-    }
-
-    if (
-        tokens[index + 1]?.text === 'de'
-        && CONTEXT_SUFFIX_INSULTS_ES.has(tokens[index + 2]?.text ?? '')
-    ) {
-        return index + 3;
-    }
-
-    if (CONTEXT_GO_AWAY_ES.has(first)) {
-        let cursor = index + 1;
-        if (tokens[cursor]?.text === 'a' && tokens[cursor + 1]?.text === 'la') {
-            cursor += 2;
+    for (const matcher of CONTEXT_MATCHERS) {
+        const endExclusive = matcher(tokens, index);
+        if (endExclusive !== null) {
+            return endExclusive;
         }
-        if (CONTEXT_GO_AWAY_TARGETS_ES.has(tokens[cursor]?.text ?? '')) return cursor + 1;
     }
-
-    if (first === 'youre' || (first === 'you' && tokens[index + 1]?.text === 're')) {
-        let cursor = first === 'youre' ? index + 1 : index + 2;
-        if (tokens[cursor]?.text === 'a') cursor += 1;
-        if (CONTEXT_INSULTS_EN.has(tokens[cursor]?.text ?? '')) return cursor + 1;
-    }
-
-    if (
-        first === 'what'
-        && tokens[index + 1]?.text === 'a'
-        && CONTEXT_EXCLAIM_INSULTS_EN.has(tokens[index + 2]?.text ?? '')
-    ) {
-        return index + 3;
-    }
-
-    if (first === 'you' && tokens[index + 1]?.text === 'suck') {
-        return index + 2;
-    }
-
     return null;
 }
 
