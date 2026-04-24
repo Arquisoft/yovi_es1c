@@ -93,12 +93,12 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "gameservice_socket_connections_active{job=\"game-service\"}",
+          "expr": "max_over_time(gameservice_socket_connections_active{job=\"game-service\"}[$__range])",
           "instant": true,
           "refId": "A"
         }
       ],
-      "title": "Socket connections",
+      "title": "Socket connections peak",
       "type": "stat"
     },
     {

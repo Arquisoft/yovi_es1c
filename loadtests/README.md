@@ -20,8 +20,12 @@ These tests are independent from unit/integration tests and are executed manuall
 
 ### Artillery suites
 
-- `online-session.yml`: socket flow (`queue:join` → `matchmaking:matched` → `match:join` → `session:state` + chat).
-- `turn-timeout.yml`: timeout trigger flow (`turn:timeout`) over Socket.IO.
+- `online-session.yml`: socket flow for environments with valid TLS certificates.
+- `turn-timeout.yml`: timeout trigger flow for environments with valid TLS certificates.
+- `online-session.local.yml`: local socket flow with explicit insecure TLS for self-signed Docker certificates.
+- `turn-timeout.local.yml`: local timeout flow with explicit insecure TLS for self-signed Docker certificates.
+- `online-session.smoke.local.yml`: short local smoke for matchmaking, join and chat over socket.
+- `turn-timeout.smoke.local.yml`: short local smoke for timeout flow over socket.
 
 ## Prerequisites
 
@@ -67,12 +71,14 @@ TARGET_ENV=remote TARGET_URL_REMOTE=https://yovi-es1c.duckdns.org K6_INSECURE_TL
 
 ```bash
 # Local mode
-TARGET_URL=https://localhost NODE_TLS_REJECT_UNAUTHORIZED=0 artillery run artillery/online-session.yml
-TARGET_URL=https://localhost NODE_TLS_REJECT_UNAUTHORIZED=0 artillery run artillery/turn-timeout.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/online-session.local.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/turn-timeout.local.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/online-session.smoke.local.yml
+TARGET_URL=https://localhost LOADTEST_INSECURE_TLS=true artillery run artillery/turn-timeout.smoke.local.yml
 
 # Remote mode
-TARGET_URL=https://yovi-es1c.duckdns.org NODE_TLS_REJECT_UNAUTHORIZED=1 artillery run artillery/online-session.yml
-TARGET_URL=https://yovi-es1c.duckdns.org NODE_TLS_REJECT_UNAUTHORIZED=1 artillery run artillery/turn-timeout.yml
+TARGET_URL=https://yovi-es1c.duckdns.org artillery run artillery/online-session.yml
+TARGET_URL=https://yovi-es1c.duckdns.org artillery run artillery/turn-timeout.yml
 ```
 
 ## Docker Compose runs

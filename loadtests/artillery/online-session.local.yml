@@ -1,0 +1,59 @@
+config:
+  target: "{{ $env.TARGET_URL }}"
+  tls:
+    rejectUnauthorized: false
+  phases:
+    - duration: 10
+      arrivalCount: 40
+      name: "Initial burst"
+    - duration: 120
+      arrivalRate: 5
+      name: "Sustained load"
+    - pause: 35
+      name: "Cool down"
+  engines:
+    socketio-v3:
+      path: "/api/game/socket.io"
+      transports:
+        - websocket
+  processor: "./helpers.js"
+
+scenarios:
+  - name: "Online session - matchmaking, join and chat"
+    engine: socketio-v3
+    flow:
+      - function: "getAuthToken"
+      - connect:
+          path: "/api/game/socket.io"
+          transports:
+            - websocket
+          rejectUnauthorized: false
+          auth:
+            token: "{{ token }}"
+      - think: 1
+
+      - emit:
+          - "queue:join"
+          - boardSize: 5
+        response:
+          on: "matchmaking:matched"
+          capture:
+            json: "$.matchId"
+            as: "matchId"
+          timeout: 35
+
+      - emit:
+          - "match:join"
+          - matchId: "{{ matchId }}"
+        response:
+          on: "session:state"
+          timeout: 10
+
+      - think: 1
+
+      - emit:
+          - "chat:message"
+          - matchId: "{{ matchId }}"
+            text: "loadtest hello"
+
+      - think: 3

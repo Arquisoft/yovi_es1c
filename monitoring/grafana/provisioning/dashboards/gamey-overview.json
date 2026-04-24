@@ -24,7 +24,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Métricas del motor `gamey`: salud del scrape y latencia de inferencia del bot ONNX, desglosada por `bot_id` para comparar dificultades durante pruebas de carga."
+        "content": "Métricas del motor `gamey`: salud del scrape y latencia de respuesta del bot, desglosada por `bot_id` para comparar dificultades y endpoints durante pruebas de carga."
       }
     },
     {
@@ -155,7 +155,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(gamey_inference_latency_seconds_count[$__range]))",
+          "expr": "sum(increase(gamey_bot_move_duration_seconds_count[$__range]))",
           "instant": true
         }
       ],
@@ -197,7 +197,7 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "Inference p95",
+      "title": "Bot move p95",
       "gridPos": {
         "h": 4,
         "w": 6,
@@ -211,7 +211,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(gamey_inference_latency_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(gamey_bot_move_duration_seconds_bucket[5m])) by (le))",
           "instant": true
         }
       ],
@@ -253,7 +253,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Inference latency p95 by bot",
+      "title": "Bot move latency p95 by bot and endpoint",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -267,8 +267,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, bot_id) (rate(gamey_inference_latency_seconds_bucket[5m])))",
-          "legendFormat": "{{bot_id}}"
+          "expr": "histogram_quantile(0.95, sum by (le, bot_id, endpoint) (rate(gamey_bot_move_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{endpoint}} {{bot_id}}"
         }
       ],
       "fieldConfig": {
@@ -335,7 +335,7 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Inference avg by bot",
+      "title": "Bot move avg by bot and endpoint",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -349,8 +349,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (bot_id) (rate(gamey_inference_latency_seconds_sum[5m])) / clamp_min(sum by (bot_id) (rate(gamey_inference_latency_seconds_count[5m])), 0.000001)",
-          "legendFormat": "{{bot_id}}"
+          "expr": "sum by (bot_id, endpoint) (rate(gamey_bot_move_duration_seconds_sum[5m])) / clamp_min(sum by (bot_id, endpoint) (rate(gamey_bot_move_duration_seconds_count[5m])), 0.000001)",
+          "legendFormat": "{{endpoint}} {{bot_id}}"
         }
       ],
       "fieldConfig": {
@@ -417,7 +417,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Inference throughput by bot",
+      "title": "Bot move throughput by bot and endpoint",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -431,8 +431,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (bot_id) (rate(gamey_inference_latency_seconds_count[5m]))",
-          "legendFormat": "{{bot_id}}"
+          "expr": "sum by (bot_id, endpoint) (rate(gamey_bot_move_duration_seconds_count[5m]))",
+          "legendFormat": "{{endpoint}} {{bot_id}}"
         }
       ],
       "fieldConfig": {
@@ -498,7 +498,7 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Inference bucket distribution",
+      "title": "Bot move bucket distribution",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -512,7 +512,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (le) (rate(gamey_inference_latency_seconds_bucket[5m]))",
+          "expr": "sum by (le) (rate(gamey_bot_move_duration_seconds_bucket[5m]))",
           "legendFormat": "<={{le}}s"
         }
       ],
