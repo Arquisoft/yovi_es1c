@@ -3,140 +3,74 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-design-decisions]]
 == Architecture Decisions
 
-=== ADR 1: Microservices Architecture
-* **Context:** The platform is expected to scale with increasing user demand, evolve over time with new features or game modes, and support parallel development by multiple team members. High availability and maintainability are important non-functional requirements.
-* **Status:** Accepted by the teacher and development team.
-* **Possible alternatives:**
-** **Monolithic architecture:** where all game logic, API web and data storage services would be integrated in a single backend app.
-Although it would have simplified the development at first, this solution presents big issues in terms of scalability and maintainability.
-* **Decision:** We decided to implement a microservice-based architecture with a clear separation between game logic, data persistence, and presentation layers. The system will consist of:
-** **Game Server (Rust)** handling core game rules, move validation, and bot strategies
-** **Auth Service (Node.js + Express + TypeScript)** managing user authentication, registration, and JWT token lifecycle, with exclusive access to `authdb` (PostgreSQL)
-** **Users Service (Node.js + Express + TypeScript)** managing user profile data, with exclusive access to `users.db`
-** **Game Service (Node.js + Express + TypeScript)** managing match persistence, move history, statistics, online matchmaking, and real-time sessions, with exclusive access to `gamedb` (PostgreSQL) and Redis
-** **React Frontend (Vite + TypeScript)** for user interaction, running entirely in the browser and coordinating API calls to backend services
-** **Nginx API Gateway** routing requests and handling cross-cutting concerns (CORS, rate limiting, WebSocket proxying, security)
-** Each service owns its own data store, ensuring fault isolation at the data layer +
-This approach allows each component to evolve independently while using the most appropriate technology for its responsibilities.
-* **Pros:**
-** Clear separation of concerns between game logic, data persistence, and user interface
-** Enables independent development and deployment of all services
-** Each data store is isolated per domain, ensuring fault isolation
-** Nginx provides security isolation for backend services
-* **Cons:**
-** Increased architectural complexity compared to a single monolithic backend
-** Introduces inter-service communication overhead and potential latency
-** Frontend must coordinate multiple API calls for complex workflows
+This section records the main accepted architectural decisions. Rejected options are kept inside each ADR as alternatives, so the trade-off is visible without duplicating mirror-image decisions.
 
-=== ADR 2: Rust for Game Server
-* **Context:** The game server must be performant, safe, and reliable, as errors in the game logic could compromise fairness or stability. Additionally, the engine may need to handle multiple concurrent games and interact efficiently with other services in the system.
-* **Status:** Accepted by the teacher and development team.
-* **Possible alternatives:**
-** There were no possible alternatives because this was an imposed constraint, given by the course's teachers.
-* **Decision:** We decided to implement the Game Server using Rust, which provides strong compile-time guarantees for memory safety and concurrency without relying on a garbage collector. This makes it well-suited for implementing complex game logic that must be both efficient and robust. The Game Server will be completely stateless, with no database access. All persistence is delegated to the Game Service.
-* **Pros:**
-** Strong memory safety guarantees, reducing runtime errors and crashes
-** High performance and excellent support for concurrency, which is important for managing game sessions in parallel
-** Stateless design enables horizontal scaling
-* **Cons:**
-** Steeper learning curve, as the development team is not familiar with this programming language
+=== ADR 1: Microservices by Domain Boundary
 
-=== ADR 3: Docker Containerization
-* **Context:** The platform is composed of multiple independent components implemented with different technologies and runtimes. A way to ensure consistent development, testing, and deployment across different environments is essential to reduce configuration issues and simplify setup for new team members.
-* **Status:** Accepted by the teacher and development team.
-* **Possible alternatives:**
-** There were no possible alternatives because this was an imposed constraint, given by the course's teachers.
-* **Decision:** We decided to containerize all major components of the system using Docker. Each service (React Frontend, Nginx, Auth Service, Users Service, Game Service, Game Server, Redis, Prometheus, Grafana) will run inside its own Docker container, with Docker Compose used to orchestrate and manage the multi-container setup. This ensures environment consistency and simplifies deployment and execution of the full system.
-* **Pros:**
-** Provides consistent environments across development, testing, and deployment
-** Simplifies setup and onboarding by reducing manual configuration
-** Enables easier deployment and scaling of individual services
-** Isolated network for backend services through Docker networking
-** Each database file is mounted as an independent volume per service container
-* **Cons:**
-** Adds an extra layer of complexity to the development workflow
-** Requires basic knowledge of Docker and container orchestration from the development team
+* **Context:** The platform combines authentication, profiles, durable game history, realtime online play and compute-heavy bot logic. These concerns evolve at different speeds and fail in different ways.
+* **Status:** Accepted.
+* **Alternatives:** A monolithic backend, or a partially split backend with shared persistence.
+* **Decision:** Split the platform into Auth Service, Users Service, Game Service, Gamey, Webapp and Nginx. Each service owns a narrow responsibility and explicit interfaces.
+* **Pros:** Clearer ownership, better fault isolation, independent scaling paths, and cleaner separation between gameplay orchestration and engine logic.
+* **Cons:** More HTTP hops, more operational components, and more integration-testing effort across services.
+* **Consequences:** The backend is structured around explicit domain boundaries instead of a single application boundary.
 
-=== ADR 4: Polyglot Persistence (PostgreSQL + SQLite)
-* **Context:** The application requires persistent storage for game data, user information, and match states. The database solution should be simple to operate, easy to integrate with the existing backend services, and appropriate for an academic project deployed in a cloud environment.
-* **Status:** Proposed by the development team.
-* **Possible alternatives:**
-** **MongoDB:** A document-oriented NoSQL database was considered. It would allow the development team to store game states in a more flexible way, using JSON structures. This alternative was not adopted as the development team was not familiar with this kind of DBs when the decision was taken.
-* **Decision:** We use a polyglot persistence model: PostgreSQL for Auth (`authdb`) and Game Service (`gamedb`), plus SQLite for Users (`users.db`). Each service owns its database and no service has direct access to another service's data store.
-* **Pros:**
-** Easy integration with backend services and containerized environments
-** Suitable for small-to-medium workloads
-** Low learning curve, as the development team is used to working with relational databases
-** Each service owns its own database, enforcing data isolation
-** Users Service keeps SQLite embedded; Auth and Game use managed PostgreSQL containers
-* **Cons:**
-** Limited scalability and concurrency support compared to cloud-native database solutions
-** Not ideal for high-availability or horizontally scaled write-heavy workloads
+=== ADR 2: Rust for the Game Engine
 
-=== ADR 5: Nginx as API Gateway
-* **Context:** The system requires a secure entry point for all external requests. Backend services (Auth Service, Users Service, Game Service, and Game Server) should not be directly accessible from the internet. Additionally, cross-cutting concerns such as CORS, rate limiting, and request routing need to be handled consistently.
-* **Status:** Proposed by the development team.
-* **Possible alternatives:**
-** **Direct access to backend services:** Each service could expose its own public port, but this would increase security risks and make it harder to manage cross-cutting concerns.
-** **Cloud API Gateway services (AWS API Gateway, Azure API Management):** These would provide more features but add complexity and cost for an academic project.
-* **Decision:** We decided to use Nginx as a reverse proxy and API Gateway. Nginx is the only public ingress layer, exposing `80` (HTTP redirect) and `443` (HTTPS/TLS). It routes requests based on URL paths:
-** `/api/auth/*` → Auth Service (port 3001, internal)
-** `/api/users/*` → Users Service (port 3000, internal)
-** `/api/game/*` → Game Service (port 3002, internal), including WebSocket upgrade for Socket.IO
-** `/api/gamey/*` → Game Server (port 4000, internal)
-** `/*` → React Frontend static files
-Nginx will also handle CORS headers, rate limiting, WebSocket proxying, and request logging.
-* **Pros:**
-** Single public entry point enhances security (defense in depth)
-** Backend services are isolated on internal Docker network
-** Centralized handling of CORS, rate limiting, WebSocket proxying, and logging
-** High performance and battle-tested in production environments
-** Simple configuration and widely known by the development community
-* **Cons:**
-** Adds an additional component to the system architecture
-** Requires learning Nginx configuration syntax
-** Single point of failure (mitigated by its reliability)
+* **Context:** Move computation and rules enforcement are the most performance-sensitive and correctness-sensitive part of the system.
+* **Status:** Accepted.
+* **Alternatives:** Implement the engine inside Node.js, or use another managed-language backend for bot logic.
+* **Decision:** Implement Gamey in Rust and expose it through a small HTTP API.
+* **Pros:** Strong memory safety, predictable performance, a clean benchmark boundary, and a good fit for search-heavy bot logic.
+* **Cons:** Steeper learning curve, separate build pipeline, and additional complexity around runtime model compatibility.
+* **Consequences:** Game rules and bot strategies are isolated inside Gamey and can be tuned independently from persistence and session orchestration.
 
-=== ADR 6: Three Independent Databases for Fault Isolation
-* **Context:** The initial architecture used a single SQLite database accessed exclusively by the Users Service. As the system evolved and the number of concurrent users and game sessions grew, a concern arose: a single overloaded or failed database would bring down all data-dependent functionality simultaneously — authentication, user profiles, and game data would all fail together.
-* **Status:** Accepted by the teacher and development team.
-* **Possible alternatives:**
-** **Single database:** One SQLite file accessed by one service. Simple but creates a single point of failure at the data layer. If the database is locked or overloaded (e.g., by a high volume of match writes), authentication also fails.
-** **Single service with multiple internal connections:** A single backend service managing three internal database connections. This keeps one entry point but does not achieve true fault isolation at the service level — if the service crashes, all three databases become inaccessible anyway.
-* **Decision:** We split the data layer into three independent services, each owning its own database:
-** **Auth Service** → `authdb` (PostgreSQL): stores credentials and JWT token metadata
-** **Users Service** → `users.db`: stores user profile data
-** **Game Service** → `gamedb` (PostgreSQL): stores matches, move history, and statistics
-Each database is mounted as an independent Docker volume, and no service has access to another service's database.
-* **Pros:**
-** **Fault isolation**: a failure or overload in `gamedb` (PostgreSQL) (e.g., caused by a high volume of concurrent matches) does not affect authentication or user profile access
-** **Independent scalability**: each service and its database can be scaled according to its own load profile
-** **Single responsibility**: each service has a clearly defined data domain, improving maintainability
-* **Cons:**
-** Queries that previously joined data across domains (e.g., linking statistics to a user profile) now require inter-service HTTP calls, adding latency and complexity
-** Three services to maintain instead of one, increasing development and operational overhead
-** Cross-service consistency (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level
+=== ADR 3: Polyglot Persistence with Explicit Data Ownership
 
-=== ADR 7: Redis and Socket.IO for Online Matchmaking and Real-time Sessions
-* **Context:** Adding online human-vs-human matches required two capabilities that the existing architecture could not provide efficiently: (1) a low-latency shared queue to pair players waiting for an opponent, and (2) a real-time bidirectional communication channel to propagate board state updates to both players instantly after each move. Polling a REST endpoint for both purposes would introduce unacceptable latency and unnecessary load on `gamedb` (PostgreSQL).
-* **Status:** Proposed by the development team.
-* **Possible alternatives:**
-** **REST polling only (no Redis, no WebSocket):** Both matchmaking and move synchronisation would be handled by clients polling REST endpoints against `gamedb` (PostgreSQL). Simple to implement, but introduces high latency for move propagation, increased database load, and a poor real-time user experience.
-** **Long polling / Server-Sent Events (SSE):** A lighter alternative to WebSocket for server-to-client push. Would reduce polling overhead but does not support bidirectional communication natively, complicating turn submission and event acknowledgment.
-** **In-memory matchmaking queue (no Redis):** A plain Node.js in-memory queue instead of Redis. Simpler to set up, but the queue is lost on service restart and does not support multiple Game Service instances sharing the same queue state.
-* **Decision:** We decided to introduce **Redis** as an ephemeral in-memory store and **Socket.IO** as the real-time communication layer, both exclusively used by the Game Service:
-** **Redis** stores the matchmaking queue entries and active online session snapshots (board state, current turn, player list). It also acts as the `@socket.io/redis-adapter` pub/sub backend, ensuring Socket.IO events are delivered correctly even if multiple Game Service instances are running.
-** **Socket.IO** provides a WebSocket-based bidirectional channel between the React Frontend and the Game Service. After each move, the Game Service broadcasts the updated board state to all players in the session. Turn timeout events and bot fallback notifications are also delivered via Socket.IO.
-** Redis runs as a separate Docker container (port 6379, internal only) with no host volume, as its data is fully ephemeral.
-** Nginx proxies the Socket.IO WebSocket connection transparently under `/api/game/socket.io/`.
-* **Pros:**
-** Low-latency real-time updates: board state changes are pushed to clients instantly via WebSocket instead of requiring polling
-** Redis decouples matchmaking queue state from `gamedb` (PostgreSQL), avoiding write contention under high concurrency
-** The `@socket.io/redis-adapter` enables horizontal scaling of the Game Service without losing session events
-** Turn timeout and bot fallback logic integrates naturally with Socket.IO event emission
-** Redis failure only affects online matchmaking and active sessions; AI matches, authentication, and statistics remain fully operational
-* **Cons:**
-** Adds two new components (Redis and Socket.IO) to the architecture, increasing operational complexity
-** Online session state is ephemeral: a Redis restart causes active online sessions to be lost (ongoing match state cannot be recovered without additional persistence logic)
-** Nginx must be configured to handle WebSocket upgrades correctly for the Socket.IO path
-** Debugging real-time event flows is more complex than tracing synchronous REST calls
+* **Context:** Credentials, profiles, durable match history and live online sessions have different persistence needs.
+* **Status:** Accepted.
+* **Alternatives:** A single shared relational database, or a document database for all domains.
+* **Decision:** Use `authdb` (PostgreSQL) for auth, `users.db` (SQLite) for profiles, `gamedb` (PostgreSQL) for matches and rankings, and Redis for ephemeral online state.
+* **Pros:** Strong ownership boundaries, better fault isolation, persistence technology matched to domain needs, and clearer operational responsibilities.
+* **Cons:** More data stores to operate, no distributed transaction boundary, and more explicit cross-service coordination.
+* **Consequences:** Durable and ephemeral data are now separated by domain and lifetime instead of being administered as one shared persistence layer.
+
+=== ADR 4: Nginx as the Only Public Ingress
+
+* **Context:** The system needs TLS termination, CORS, rate limiting, static frontend delivery, websocket proxying and path-based routing.
+* **Status:** Accepted.
+* **Alternatives:** Expose each service directly, or rely on a managed cloud API gateway.
+* **Decision:** Put Nginx in front of all services and expose only `443` publicly, with `80` redirecting to HTTPS.
+* **Pros:** Centralized ingress policy, smaller public attack surface, uniform TLS and websocket handling, and a single routing layer for the SPA and APIs.
+* **Cons:** One more critical component, and Nginx configuration becomes part of application correctness.
+* **Consequences:** Nginx now owns public ingress, blocks external `/api/auth/verify`, and exposes monitoring through path prefixes.
+
+=== ADR 5: Redis plus Socket.IO for Online Play
+
+* **Context:** Human-vs-human online matches need low-latency queueing and realtime bidirectional updates.
+* **Status:** Accepted.
+* **Alternatives:** REST polling only, SSE, or in-memory matchmaking without Redis.
+* **Decision:** Keep live queue and session state in Redis and use Socket.IO for queue, session and chat events. Nginx proxies the websocket path `/api/game/socket.io/`.
+* **Pros:** Low-latency updates, better user experience, scalable pub/sub through the Redis adapter, and lower pressure on `gamedb` for transient session state.
+* **Cons:** Additional operational complexity, ephemeral state loss on Redis restart, and more difficult debugging of realtime flows.
+* **Consequences:** Online play is modeled as a Redis-backed live system plus durable persistence in Game Service.
+
+=== ADR 6: Centralized JWT Verification in Auth Service
+
+* **Context:** Duplicating JWT parsing and validation rules across services creates drift, inconsistent failure behavior and duplicated security logic.
+* **Status:** Accepted.
+* **Alternatives:** Local JWT verification inside `users` and `gameservice`, or gateway-level authorization only.
+* **Decision:** Auth Service exposes `/api/auth/verify` for internal callers only. `users` and `gameservice` call it through `AUTH_SERVICE_URL` and treat failures as `401` or `503`.
+* **Pros:** One source of truth for token semantics, consistent claims validation, simpler security maintenance, and easier token-policy evolution.
+* **Cons:** Protected requests depend on Auth availability, add internal HTTP latency, and require careful timeout handling.
+* **Consequences:** Token semantics are centralized, and both profile and game APIs fail closed when verification cannot be completed.
+
+=== ADR 7: Benchmark and Load Evidence as Architecture Assets
+
+* **Context:** Bot strength and latency regressions are easy to introduce and difficult to reason about from code inspection alone.
+* **Status:** Accepted.
+* **Alternatives:** Rely only on ad-hoc manual profiling and sporadic load runs.
+* **Decision:** Keep Criterion benchmarks, k6 profiles, Artillery profiles, Prometheus metrics and Grafana dashboards in the repository and reference them from the architecture documentation.
+* **Pros:** Measurable performance baselines, repeatable regression detection, better architectural traceability, and better incident diagnosis.
+* **Cons:** More maintenance effort, evidence must be kept fresh, and benchmark or metric interpretation requires discipline.
+* **Consequences:** Performance and load behavior are now documented as part of the architecture instead of being treated as informal operational knowledge.

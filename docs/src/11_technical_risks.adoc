@@ -3,83 +3,76 @@ ifndef::imagesdir[:imagesdir: ../images]
 [[section-technical-risks]]
 == Risks and Technical Debts
 
-ifdef::arc42help[]
-[role="arc42help"]
-****
-.Contents
-A list of identified technical risks or technical debts, ordered by priority.
-****
-endif::arc42help[]
-
-We identified some technical risks that can affect the development of the Y game project. These risks must be identified and registered, and we can mitigate or accept them.
-
 === Risks
 
-Risks can appear like part of Quality Attributes scenarios. We categorized the next ones based on the risk criteria of the project.
-
-.Risk table
 [options="header",cols="2,4,4,1,1,1"]
 |===
-|Area (Risk Criterion)
-|Brief Description
-|Mitigation measures
-|Probability (1-3)
-|Impact (1-3)
-|Total Risk
+| Area
+| Brief description
+| Mitigation
+| Prob.
+| Impact
+| Total
 
-|*Security*
-|The project needs to pass strict security tests. There is a risk to not complete these requirements when we implement the backend and expose vulnerabilities in the game or the connection.
-|Do early validations, use security tools integrated in the Rust compiler (cargo audit) and make exhaustive code reviews.
-| 2
-| 2
-| *4*
-
-|*Data Integrity*
-|The system now uses three independent databases (`authdb` (PostgreSQL), `users.db`, `gamedb` (PostgreSQL)). Operations that span multiple services (e.g., deleting a user requires coordinating Auth Service, Users Service, and Game Service) must be handled at the application level without native transaction support across services. This increases the risk of partial failures leaving data in an inconsistent state.
-|Implement compensating operations for cross-service data changes. Define clear ownership rules per data domain. Add integration tests that verify consistency across services after multi-step operations.
+| Security and availability
+| `users` and `gameservice` depend on Auth Service for every protected request. If Auth becomes unavailable or slow, profile and game endpoints degrade even if their own databases are healthy.
+| Keep short internal timeouts, small positive caches, clear `503` behavior, and monitor auth verification latency.
 | 2
 | 3
-| *6*
+| 6
 
-|*Performance*
-|The game engine in Rust must allow to play against a bot with different strategies. If the decision algorithms of the robot are not optimized, the response time can degrade the experience of the user.
-|Design efficient AI strategies, measure times of execution (benchmarking) in the Rust engine from the first sprints and profile the code if there is bottlenecks.
+| Model compatibility
+| Neural bots depend on an ONNX artifact that must stay compatible with the runtime loader. Training/export changes can produce models that fail at startup.
+| Freeze export contracts, add model-load smoke checks, and keep benchmark fixtures tied to the same export format.
 | 2
-| 2
-| *4*
-
-|*Inter-service Communication Complexity*
-|The separation into three independent backend services (Auth Service, Users Service, Game Service) introduces inter-service HTTP calls for operations that previously were internal (e.g., JWT verification, linking statistics to user profiles). This adds latency, increases the number of potential failure points, and complicates local development and debugging.
-|Define clear and versioned internal API contracts between services. Use Docker Compose to simplify local multi-service orchestration. Implement timeouts and fallback strategies for inter-service calls. Add end-to-end tests that cover cross-service flows.
-| 2
-| 2
-| *4*
-
-|*Unknowns*
-|Lack of deep knowledge in the ownership model of Rust and the typing of TypeScript. Sometimes we don't have enough information about how an architecture can satisfy the requirements.
-|Dedicate initial time to Proof of Concepts (PoC), read official documentation and establish pair programming to level the knowledge of the team.
 | 3
-| 3
-| *9*
+| 6
 
+| Online ephemeral state
+| Redis stores queue and live session state only. A Redis restart drops active online sessions even if durable match history remains intact.
+| Keep reconnect and cleanup logic simple, document the limitation, and consider snapshot recovery only if the product scope requires it.
+| 2
+| 2
+| 4
+
+| Cross-service consistency
+| Multi-step operations across auth, users and game data have no distributed transaction boundary.
+| Prefer compensating actions, explicit ownership rules and end-to-end regression tests around the affected workflows.
+| 2
+| 3
+| 6
+
+| Performance on larger boards
+| Stronger bots and neural paths can increase latency quickly as board size grows or search depth is increased.
+| Keep Criterion benchmarks and Prometheus histograms under version control; gate strategy changes behind measured budgets.
+| 2
+| 2
+| 4
+
+| Operational drift
+| Dashboards, load profiles and service behavior can drift apart, leading to misleading observability.
+| Treat load tests and Grafana queries as code, rerun smoke suites after protocol changes, and document known metric semantics.
+| 2
+| 2
+| 4
 |===
 
-=== Technical debts
+=== Technical Debts
 
 [options="header",cols="3,5"]
 |===
-|Technical debt
-|Brief description
+| Technical debt
+| Brief description
 
-|*External API Dependency*
-|Our app depends a lot of external services (like map services or data APIs). If those services change their API or go down, parts of our app will stop working. Right now, we don't have a good abstraction layer to swap those services easily.
+| Distributed user lifecycle
+| User creation and eventual deletion span auth, users and game data without a saga or distributed transaction mechanism.
 
-|*Network Inconsistency*
-|The performance of the app depends directly on how good the user's internet connection is. We still haven't implemented a solid offline mode or cache system (like Service Workers), so with a bad connection the user experience will be very bad.
+| Redis durability for online matches
+| Online sessions are optimized for speed, not recovery. A full recovery story after Redis restart is not implemented.
 
-|*Monolithic Configuration*
-|Because we don't have much experience with server deployment, our first configuration will probably be a bit hardcoded or less modular than it should be. Later we need to refactor this to move to a more scalable setup using environment variables.
+| Model validation in CI
+| Neural model export and runtime load compatibility are not yet enforced by a dedicated CI smoke stage.
 
-|*Cross-service Data Consistency*
-|Operations that affect multiple data domains (e.g., user deletion, which must remove records from `authdb` (PostgreSQL), `users.db`, and `gamedb` (PostgreSQL)) currently have no distributed transaction mechanism. This is accepted as a technical debt for the academic scope of the project and should be addressed with compensating transactions or a saga pattern in a production-grade system.
+| Load-test evidence freshness
+| k6 thresholds are committed, but not every suite is rerun on every architecture change. Fresh execution evidence must be maintained deliberately.
 |===

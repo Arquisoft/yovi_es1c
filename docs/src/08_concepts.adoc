@@ -5,260 +5,153 @@ ifndef::imagesdir[:imagesdir: ../images]
 
 === Domain Model
 
-A first version of the domain model of the application, representing all the entities
-that interact with the application and their relations, is shown in the following
-diagram:
-
-[plantuml, "domain-model", png]
+[plantuml, domain-model, png]
 ----
 @startuml
 
 class Player {
-  +id(): PlayerId
-  +name(): String
+  +id: number
+  +username: string
 }
 
-class PlayerId {
-  +id(): u32
+class Match {
+  +mode: BOT | LOCAL_2P | ONLINE
+  +status: ONGOING | FINISHED
+  +rules
 }
 
-class GameY {
-  .. game state ..
-  +new(size: usize)
-  +add_move(m: Movement)
-  +render(options: RenderOptions)
+class OnlineSession {
+  +matchId: string
+  +version: number
+  +turn: 0 | 1
 }
 
-class Movement {
+class Ranking {
+  +eloRating: number
+  +gamesPlayed: number
 }
 
-class Coordinates {
-  +from_index(idx: usize, size: usize)
-  +to_index(size: usize)
+class YEN {
+  +size: usize
+  +turn: number
+  +layout: string
 }
 
-class GameAction {
-}
-
-class YBot {
-  <<trait>>
-  +name(): &str
-  +choose_move(board: &GameY): Option<Coordinates>
-}
-
-Player --> PlayerId : has >
-Movement --> PlayerId : references >
-Movement --> Coordinates : uses >
-GameY --> Movement : records >
-GameY --> Coordinates : uses >
-YBot --> GameY : reads >
-YBot --> Coordinates : returns >
+Player --> Match
+Match --> OnlineSession
+Match --> Ranking
+Match --> YEN
+OnlineSession --> YEN
 
 @enduml
 ----
 
-=== User Experience (UX)
+The central domain concepts are:
 
-Since the project includes a web interface,
-we wanted the user experience to be as smooth
-and intuitive as possible. The idea is that anyone
-can open the application and start playing without
-needing instructions.
+* **Player**: authenticated user participating in matches and rankings,
+* **Match**: durable record of a game,
+* **OnlineSession**: live Redis-backed state for realtime play,
+* **Ranking**: ELO-based standing in competitive play,
+* **YEN**: contract used to send board state to the Rust engine.
 
-Key UX ideas:
+=== User Experience Concepts
 
-• Visual Feedback: The interface reacts immediately
-to user actions (valid moves, turn changes, errors).
-This helps players understand what is happening in
-the game at all times.
+The browser experience follows a few stable rules:
 
-• Consistency: We try to keep the same style and
-interaction patterns across all pages so the user
-does not have to "relearn" how to use the app.
+* authentication, profile, history, rankings and gameplay are reachable without changing applications,
+* bot matches are responsive and deterministic when forced lines exist,
+* online play uses realtime updates instead of polling as the primary experience,
+* reconnect and timeout behavior are explicit in the UI so players understand whether they are waiting for a human move or an automatic fallback.
 
-• Accessibility: Clear colors, readable text,
-and simple layouts help make the game accessible
-to a wider audience.
+=== Security Concepts
 
-=== Safety and Security Concepts
+[cols="1,3", options="header"]
+|===
+| Concept | How it is applied
 
-Security is a cross‑cutting concern because it
-affects both the backend services and the frontend.
-Even though this is an academic project, we still apply basic security principles.
+| Single ingress
+| Nginx is the only public entry point. Backend services stay on the internal Docker network.
 
-• **API Gateway Isolation:**
-Nginx acts as the single public entry point, isolating backend services from direct external access. Only Nginx is exposed on port 80, while all backend services run on internal Docker network ports.
+| Centralized token verification
+| Auth Service owns `/api/auth/verify`; `users` and `gameservice` call it internally instead of validating tokens independently.
 
-• **Authentication and Authorization:**
-Only authenticated users can access certain features, such as creating matches or viewing their profile. The Auth Service handles JWT authentication and exposes token verification for internal service-to-service authorization checks.
+| Fail closed
+| If token verification fails or Auth Service is unavailable, protected requests return `401` or `503`; they are never accepted optimistically.
 
-• **Password Protection:**
-Passwords are never stored in plain text. Instead, they are hashed and salted before being saved in the database using bcrypt or Argon2.
+| Data ownership
+| Credentials stay in `authdb`, profiles stay in `users.db`, and game history stays in `gamedb`.
 
-• **Data Protection:**
-We only store the minimum amount of user information needed for the system to work. Data is split by domain with strict ownership: `authdb` (PostgreSQL) is accessible only through Auth Service, `users.db` only through Users Service, and `gamedb` (PostgreSQL) only through Game Service.
-
-• **CORS and Rate Limiting:**
-Nginx handles Cross-Origin Resource Sharing (CORS) headers and rate limiting to prevent abuse and ensure legitimate API usage.
+| Gateway protection
+| Nginx rate-limits public API traffic and blocks external `/api/auth/verify`.
+|===
 
 === Architecture and Design Patterns
 
-The system follows a microservice-based architecture. Instead of having one big monolithic
-application, we split the project into several smaller, independent services:
+* **Microservices**: auth, users, gameservice and gamey are deployable services with explicit responsibilities.
+* **Layered design**: controllers, services, repositories and middleware are separated in the Node.js services.
+* **Strategy pattern**: Gamey resolves difficulty aliases to concrete bot strategies.
+* **Event-driven realtime flow**: Socket.IO is used for queue status, matchmaking, session state, chat and move propagation.
+* **Gateway pattern**: Nginx centralizes cross-cutting HTTP concerns.
 
-• **React Frontend (webapp/):** The user interface running in the browser. It is a single-page application (SPA) built with React, Vite, and TypeScript. The frontend manages UI state and coordinates API calls to backend services.
+=== Persistence Concepts
 
-• **Nginx:** The API Gateway and reverse proxy that routes requests to appropriate backend services. It handles CORS, rate limiting, WebSocket proxying for Socket.IO, and serves the React frontend static files.
+Durable and ephemeral data are intentionally separated:
 
-• **Auth Service (auth/):** Node.js + Express + TypeScript service that manages registration, authentication (JWT access/refresh lifecycle), and internal token verification. It is the single point of access to `authdb` (PostgreSQL).
+* `authdb` stores credentials and token metadata,
+* `users.db` stores profile data,
+* `gamedb` stores matches, move history, rankings and statistics,
+* Redis stores queue entries, live online sessions and Socket.IO adapter state.
 
-• **Users Service (users/):** Node.js + Express + TypeScript service that manages user profile data. It is the single point of access to `users.db`.
+This split allows online-state failures to be isolated from historical data and credentials.
 
-• **Game Service (gameservice/):** Node.js + Express + TypeScript service that manages match persistence, move history, player statistics, online matchmaking, and real-time sessions via Socket.IO. It is the single point of access to `gamedb` (PostgreSQL) and Redis.
+=== Ranking Concept
 
-• **Game Server (gamey/):** Rust service that implements the Y‑game engine and bot logic. It is stateless and focuses purely on game rules, move validation, and bot strategies.
+Ranked results use an ELO model maintained by Game Service:
 
-Some patterns we use:
+* BOT matches use fixed bot ratings as the opponent reference,
+* ONLINE matches use the actual opponent rating at finish time,
+* LOCAL_2P matches do not update rankings,
+* ranking updates are best-effort relative to match completion: the match result is more important than the leaderboard write.
 
-**API Gateway Pattern:**
-Nginx centralizes all external requests and routes them to the appropriate service based on URL paths (`/api/auth/*`, `/api/users/*`, `/api/game/*`, `/api/gamey/*`, `/`).
+=== Testing and Verification Concept
 
-**Repository Pattern:**
-Each backend service uses the Repository pattern to abstract database access, making it easier to test and maintain.
+Testing is treated as architecture evidence, not only as implementation support.
 
-**Strategy Pattern:**
-The Game Server uses the Strategy pattern to implement multiple bot difficulty levels (random, heuristic, neural network) in an extensible way.
+[cols="1,3", options="header"]
+|===
+| Test family | Tools and scope
 
-**Observer Pattern (via Socket.IO events):**
-The Game Service uses Socket.IO events to notify all connected clients of board state changes in real time, decoupling the session state update from the client rendering logic.
+| Unit and integration
+| Vitest in `auth`, `users`, `gameservice` and `webapp`; `cargo test` in `gamey`, including property-based tests through `proptest`.
 
-**Separation of Concerns:**
-The frontend separates UI components, state management (React hooks/context), and API call logic into distinct layers.
+| System / acceptance
+| Cucumber + Playwright in `webapp/test/e2e`, executed through `npm run test:e2e:docker`.
 
-=== Development Concepts
+| Load testing
+| k6 for REST flows and Artillery for Socket.IO flows, both documented in `loadtests/README.md`.
 
-These concepts describe the practices that the whole team follows during development.
+| Benchmarks
+| Criterion benchmarks in `gamey/benches/gamey_benchmarks.rs`, including `evaluate`, `evaluate_batch` and choose-move paths.
 
-**Version Control:**
+| Regression diagnostics
+| Service-specific auth middleware tests, matchmaking regression tests and Artillery smoke profiles for TLS and websocket validation.
+|===
 
-The project is developed collaboratively using GitHub. Branching, pull requests and code reviews
-ensure that all components evolve consistently.
+=== Observability Concept
 
-**Testing:**
+The observability stack is based on Prometheus and Grafana:
 
-Each part of the system includes automated tests:
+* every backend service exports `/metrics`,
+* Nginx exposes `/prometheus/` and `/grafana/`,
+* the provisioned Grafana overview dashboard includes service health, active games, socket connection peak, bot-move latency, matchmaking latency and HTTP request rate panels,
+* load tests and benchmarks are used to validate suspicious metrics before changing alert or dashboard semantics.
 
-• Rust Game Server: unit tests for game logic and strategies
-• Users Service (Node.js): API endpoint tests and integration tests
-• Auth Service (Node.js): unit and integration tests for authentication flows
-• Game Service (Node.js): unit and integration tests for match, matchmaking, and online session logic
-• React Frontend: component tests and end-to-end tests
+=== Error Handling Concept
 
-Testing is transversal because it guarantees correctness across all services.
+Errors are normalized per layer:
 
-**Continuous Integration:**
-
-GitHub Actions automatically run builds and tests whenever code is pushed.
-This helps detect errors early and keeps all services aligned.
-
-=== Persistence Layer
-
-The application relies on two complementary persistence mechanisms split by domain and lifetime:
-
-**Durable storage (relational):**
-
-Three independent databases (PostgreSQL for auth/game + SQLite for users) store long-lived data:
-
-* `authdb` (PostgreSQL) — accessible only through Auth Service. Stores user credentials and JWT token metadata.
-* `users.db` — accessible only through Users Service. Stores user profile data.
-* `gamedb` (PostgreSQL) — accessible only through Game Service. Stores match records, move history, and player statistics.
-
-Each database is accessed exclusively by its owning service. This design decision ensures data consistency, security, and separation of concerns.
-
-**Ephemeral storage (Redis):**
-
-Redis is used exclusively by the Game Service for data that is short-lived and must be accessed with low latency:
-
-* **Matchmaking queue**: stores the list of players waiting for an online opponent. Entries are created when a player joins and removed when matched or when the timeout expires.
-* **Online session snapshots**: stores the current board state, active turn, and player list for each ongoing online match. This allows the Game Service to process moves and broadcast updates without hitting `gamedb` (PostgreSQL) on every turn.
-* **Socket.IO pub/sub adapter**: Redis acts as the message broker between Socket.IO server instances, ensuring events are delivered to all connected clients even if multiple Game Service replicas are running.
-
-Redis data is ephemeral and requires no host volume. If Redis restarts, ongoing online sessions are lost, but durable match history in `gamedb` (PostgreSQL) is unaffected.
-
-=== Player Ranking (ELO)
-
-The Game Service keeps a global ranking of players so that competitive results have a
-persistent, comparable meaning across matches.
-
-**Rating algorithm.**
-We use the classical ELO rating formula:
-
-----
-expected = 1 / (1 + 10 ^ ((opponentRating - currentRating) / 400))
-newRating = currentRating + K * (actualScore - expected)
-----
-
-`actualScore` is `1` for a win and `0` for a loss; draws are not modelled because Y has no
-ties. The K-factor adapts to player experience: `K = 40` while the player has fewer than
-30 ranked games and `K = 20` afterwards, so new players converge fast while established
-players are protected against single-match volatility.
-
-**Opponent rating.**
-The opponent rating depends on the match mode:
-
-* **BOT matches** use a fixed difficulty ladder (`easy = 1000`, `medium = 1300`,
-`hard = 1600`, `expert = 1900`). This lets the bots act as a stable calibration scale.
-* **ONLINE matches** use the actual opponent's current rating, resolved at the moment
-the match is finished.
-* **LOCAL_2P matches** are explicitly excluded from ranking: no call is made to the ranking
-service and no history row is written.
-
-**Persistence.**
-Two tables in `gamedb` (PostgreSQL) back the feature. `player_rankings` stores one row per
-user with `elo_rating`, `games_played`, `peak_rating` and `last_updated`; a new player is
-implicitly created at `1200` the first time `applyRatingUpdate` runs for them. Each rating
-change also appends a row to `ranking_history`, which links to the originating match via
-foreign key so the match timeline and the rating timeline stay consistent.
-
-**Integration with match lifecycle.**
-`MatchService.finishMatch` invokes `RankingService.applyRatingUpdate` after the match row
-is marked as `FINISHED`. The ranking update is best-effort: a failure inside
-`applyRatingUpdate` is logged but never aborts the finish transaction, because the match
-result is more important than the rating bookkeeping. The database write that updates the
-ranking and inserts into `ranking_history` is itself wrapped in a single transaction so
-the two tables cannot diverge.
-
-**Public API.**
-Two endpoints under `/api/game` expose the ranking to the frontend:
-
-* `GET /rankings?limit=20&offset=0` returns a paginated leaderboard. `limit` is capped at
-`100` to keep payloads bounded and to make denial-of-service amplification harder.
-* `GET /rankings/{userId}` returns the ranking row and position of a specific user, or
-`404` if the user has not played a ranked match yet.
-
-Both endpoints require a valid JWT, the same as the rest of `/api/game`.
-
-=== Error Handling
-
-The application includes a consistent error handling strategy to deal with the different types of errors that may
-appear during execution. The goal is to detect problems early, avoid unexpected crashes and provide clear feedback
-both to developers and to users.
-
-At the user level, the application only displays simple and understandable messages, without exposing technical
-details. This prevents confusion and avoids leaking internal information. On the other hand, the backend services
-and the Rust game engine generate structured error messages and log them internally so developers can identify the
-cause of the problem more easily.
-
-**Error Handling Across Services:**
-
-• **React Frontend:** Displays user-friendly error messages for API failures, invalid moves, or authentication errors. Uses try-catch blocks and error boundaries for React component errors.
-
-• **Nginx:** Returns standard HTTP error codes (400, 401, 404, 500) and logs errors for monitoring.
-
-• **Auth Service:** Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.
-
-• **Users Service:** Validates input, handles database errors, and returns appropriate HTTP status codes with error messages. Uses middleware for centralized error handling.
-
-• **Game Service:** Uses typed domain errors (`MatchNotFoundError`, `UnauthorizedMatchError`, `InvalidMoveError`) mapped to HTTP status codes by a global error handler middleware. Socket.IO errors are emitted as structured events to the affected client.
-
-• **Game Server:** Returns structured error responses for invalid YEN notation, illegal moves, or computation failures. Rust's Result type ensures explicit error handling.
+* the frontend turns backend failures into user-readable states,
+* Node.js services map domain errors to structured HTTP responses,
+* Socket.IO errors are emitted only to the affected session/client when appropriate,
+* Gamey returns structured HTTP failures for invalid requests and engine problems,
+* internal auth verification failures are surfaced as `503` instead of leaking transport details.
