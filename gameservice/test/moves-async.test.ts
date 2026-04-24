@@ -28,9 +28,12 @@ class InMemoryMatchRepo {
 describe('async bot move flow', () => {
     let app: express.Express;
     let matchService: MatchService;
+    const afterUserOpening = 'B/../...';
+    const afterBotReply = 'B/R./...';
 
     beforeEach(() => {
         vi.restoreAllMocks();
+        process.env.GAMEY_SERVICE_URL = 'http://gamey';
         matchService = new MatchService(new InMemoryMatchRepo() as any);
 
         app = express();
@@ -47,14 +50,24 @@ describe('async bot move flow', () => {
         vi.spyOn(globalThis, 'fetch' as any).mockImplementation(
             async (..._args: any[]) =>
                 new Promise((resolve) => setTimeout(
-                    () => resolve({ ok: true, json: async () => ({ position_yen: 'b1' }) } as Response),
+                    () => resolve({
+                        ok: true,
+                        json: async () => ({
+                            position: {
+                                size: 3,
+                                turn: 0,
+                                players: ['B', 'R'],
+                                layout: afterBotReply,
+                            },
+                        }),
+                    } as Response),
                     900,
                 )),
         );
 
         const start = Date.now();
         const response = await request(app).post('/api/game/matches/1/moves').send({
-            position_yen: 'a1',
+            position_yen: afterUserOpening,
             player: 'USER',
             moveNumber: 1,
         });
@@ -68,11 +81,18 @@ describe('async bot move flow', () => {
     it('updates match after async bot move and reports botStatus done', async () => {
         vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
             ok: true,
-            json: async () => ({ position_yen: 'b1' }),
+            json: async () => ({
+                position: {
+                    size: 3,
+                    turn: 0,
+                    players: ['B', 'R'],
+                    layout: afterBotReply,
+                },
+            }),
         } as Response);
 
         await request(app).post('/api/game/matches/1/moves').send({
-            position_yen: 'a1',
+            position_yen: afterUserOpening,
             player: 'USER',
             moveNumber: 1,
         });
@@ -83,8 +103,9 @@ describe('async bot move flow', () => {
         expect(matchResponse.status).toBe(200);
         expect(matchResponse.body.botStatus).toBe('done');
         expect(matchResponse.body.moves).toEqual([
-            expect.objectContaining({ position_yen: 'a1', player: 'USER' }),
-            expect.objectContaining({ position_yen: 'b1', player: 'BOT' }),
+            expect.objectContaining({ position_yen: afterUserOpening, player: 'USER' }),
+            expect.objectContaining({ position_yen: afterBotReply, player: 'BOT' }),
         ]);
+        expect(matchResponse.body.layout).toBe(afterBotReply);
     });
 });

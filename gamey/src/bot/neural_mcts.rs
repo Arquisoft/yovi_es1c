@@ -48,17 +48,82 @@ pub struct NeuralMctsBot {
     simulations: u32,
     c_puct: f32,
     pub use_dirichlet: bool,
+    early_stop: Option<EarlyStopConfig>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EarlyStopConfig {
+    pub visit_ratio: f32,
+    pub min_visits: u32,
 }
 
 impl NeuralMctsBot {
     pub fn new(net: Arc<NeuralNet>, simulations: u32) -> Self {
-        Self { name: format!("neural_mcts_s{}", simulations), net, simulations, c_puct: std::f32::consts::SQRT_2, use_dirichlet: false }
+        Self {
+            name: format!("neural_mcts_s{}", simulations),
+            net,
+            simulations,
+            c_puct: std::f32::consts::SQRT_2,
+            use_dirichlet: false,
+            early_stop: None,
+        }
     }
 
     pub fn new_self_play(net: Arc<NeuralNet>, simulations: u32) -> Self {
         let mut bot = Self::new(net, simulations);
         bot.use_dirichlet = true;
         bot
+    }
+
+    pub fn with_early_stop(mut self, visit_ratio: f32, min_visits: u32) -> Self {
+        self.early_stop = Some(EarlyStopConfig {
+            visit_ratio,
+            min_visits,
+        });
+        self
+    }
+
+    fn build_root(board: &GameY, policy: &[f32]) -> MctsNode {
+        let available = board.available_cells();
+        let uniform = if available.is_empty() { 0.0 } else { 1.0 / available.len() as f32 };
+        let mut root = MctsNode::new(None, 1.0);
+        root.children = available
+            .iter()
+            .map(|&idx| {
+                let coords = Coordinates::from_index(idx, board.board_size());
+                let prior = policy.get(idx as usize).copied().unwrap_or(0.0).max(0.0);
+                MctsNode::new(Some(coords), prior)
+            })
+            .collect();
+
+        let prior_sum: f32 = root.children.iter().map(|child| child.prior).sum();
+        if prior_sum > 0.0 {
+            for child in &mut root.children {
+                child.prior /= prior_sum;
+            }
+        } else {
+            for child in &mut root.children {
+                child.prior = uniform;
+            }
+        }
+
+        root.expanded = true;
+        root.visits = 1;
+        root
+    }
+
+    fn simulation_budgets(total: u32, workers: usize) -> Vec<u32> {
+        if workers == 0 {
+            return Vec::new();
+        }
+
+        let worker_count = workers.min(total.max(1) as usize);
+        let base = total / worker_count as u32;
+        let remainder = total % worker_count as u32;
+
+        (0..worker_count)
+            .map(|idx| base + u32::from(idx < remainder as usize))
+            .collect()
     }
 
     fn get_cached_value(&self, board: &GameY, local_cache: &mut HashMap<u64, (Vec<f32>, f32)>) -> f32 {
@@ -79,22 +144,40 @@ impl NeuralMctsBot {
             local_cache.insert(key, res.clone());
             res
         };
-        let available = board.available_cells();
-        leaf.children = available.iter().map(|&idx| {
-            let coords = Coordinates::from_index(idx, board.board_size());
-            let prior = if (idx as usize) < policy.len() { policy[idx as usize] } else { 1.0 / available.len() as f32 };
-            MctsNode::new(Some(coords), prior)
-        }).collect();
-        leaf.expanded = true;
+        Self::expand_leaf_with_policy(leaf, board, &policy);
         value
     }
-    
+
+    fn expand_leaf_with_policy(leaf: &mut MctsNode, board: &GameY, policy: &[f32]) {
+        let available = board.available_cells();
+        let uniform = if available.is_empty() { 0.0 } else { 1.0 / available.len() as f32 };
+        leaf.children = available
+            .iter()
+            .map(|&idx| {
+                let coords = Coordinates::from_index(idx, board.board_size());
+                let prior = policy.get(idx as usize).copied().unwrap_or(uniform).max(0.0);
+                MctsNode::new(Some(coords), prior)
+            })
+            .collect();
+
+        let prior_sum: f32 = leaf.children.iter().map(|child| child.prior).sum();
+        if prior_sum > 0.0 {
+            for child in &mut leaf.children {
+                child.prior /= prior_sum;
+            }
+        } else {
+            for child in &mut leaf.children {
+                child.prior = uniform;
+            }
+        }
+        leaf.expanded = true;
+    }
 
     fn run_simulation(&self, root: &mut MctsNode, board: &GameY, local_cache: &mut HashMap<u64, (Vec<f32>, f32)>) {
         let mut path: Vec<*mut MctsNode> = vec![root as *mut MctsNode];
         let mut current_board = board.clone();
-
         let mut node = root;
+
         loop {
             if !node.expanded || node.children.is_empty() { break; }
             if current_board.check_game_over() { break; }
@@ -129,6 +212,24 @@ impl NeuralMctsBot {
         }
     }
 
+    fn should_stop_early(root: &MctsNode, config: EarlyStopConfig) -> bool {
+        if root.children.is_empty() {
+            return false;
+        }
+
+        let total_visits: u32 = root.children.iter().map(|child| child.visits).sum();
+        if total_visits < config.min_visits {
+            return false;
+        }
+
+        let best_visits = root.children.iter().map(|child| child.visits).max().unwrap_or(0);
+        if best_visits == 0 {
+            return false;
+        }
+
+        (best_visits as f32 / total_visits as f32) >= config.visit_ratio
+    }
+
     fn add_dirichlet_noise(&self, node: &mut MctsNode) {
         if node.children.is_empty() { return; }
         let alpha = 0.3_f32;
@@ -144,6 +245,70 @@ impl NeuralMctsBot {
             child.prior = (1.0 - epsilon) * child.prior + epsilon * ni;
         }
     }
+
+    fn run_worker_tree(&self, board: &GameY, root_policy: &[f32], worker_budget: u32) -> MctsNode {
+        let mut local_cache: HashMap<u64, (Vec<f32>, f32)> = HashMap::with_capacity(1000);
+        let mut local_root = Self::build_root(board, root_policy);
+        if self.use_dirichlet {
+            self.add_dirichlet_noise(&mut local_root);
+        }
+
+        for _ in 0..worker_budget {
+            self.run_simulation(&mut local_root, board, &mut local_cache);
+            if self.should_break_worker_loop(&local_root) {
+                break;
+            }
+        }
+
+        local_root
+    }
+
+    fn should_break_worker_loop(&self, root: &MctsNode) -> bool {
+        self.early_stop
+            .is_some_and(|config| Self::should_stop_early(root, config))
+    }
+
+    fn aggregate_tree_visits(trees: &[MctsNode], board_size: u32) -> HashMap<u32, u32> {
+        let mut aggregate = HashMap::new();
+        for tree in trees {
+            for child in &tree.children {
+                if let Some(coords) = child.action {
+                    let idx = coords.to_index(board_size);
+                    *aggregate.entry(idx).or_insert(0) += child.visits;
+                }
+            }
+        }
+        aggregate
+    }
+
+    fn fallback_best_prior(root: &MctsNode) -> Option<Coordinates> {
+        root.children
+            .iter()
+            .max_by(|left, right| {
+                left.prior
+                    .partial_cmp(&right.prior)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .and_then(|child| child.action)
+    }
+
+    fn best_aggregated_move(
+        aggregate: &HashMap<u32, u32>,
+        board_size: u32,
+        fallback_root: &MctsNode,
+    ) -> Option<Coordinates> {
+        aggregate
+            .iter()
+            .max_by_key(|(_, visits)| **visits)
+            .and_then(|(idx, visits)| {
+                if *visits > 0 {
+                    Some(Coordinates::from_index(*idx, board_size))
+                } else {
+                    Self::fallback_best_prior(fallback_root)
+                }
+            })
+            .or_else(|| Self::fallback_best_prior(fallback_root))
+    }
 }
 
 impl YBot for NeuralMctsBot {
@@ -154,38 +319,23 @@ impl YBot for NeuralMctsBot {
         if moves.is_empty() { return None; }
         if moves.len() == 1 { return Some(Coordinates::from_index(moves[0], board.board_size())); }
 
-        let moves_coords: Vec<Coordinates> = moves.iter().map(|&idx| Coordinates::from_index(idx, board.board_size())).collect();
-        let num_threads = rayon::current_num_threads().max(1);
-        let sims_per_thread = self.simulations / num_threads as u32;
-        let n = moves_coords.len();
+        let worker_count = rayon::current_num_threads().max(1);
+        let budgets = Self::simulation_budgets(self.simulations, worker_count);
+        let (root_policy, _) = self.net.evaluate(board).unwrap_or_else(|_| NeuralNet::fallback_evaluation(board));
+        let fallback_root = Self::build_root(board, &root_policy);
+        let trees: Vec<MctsNode> = budgets
+            .into_par_iter()
+            .map(|worker_budget| self.run_worker_tree(board, &root_policy, worker_budget))
+            .collect();
 
-        let trees: Vec<MctsNode> = (0..num_threads).into_par_iter().map(|_| {
-            let mut local_cache: HashMap<u64, (Vec<f32>, f32)> = HashMap::with_capacity(1000);
-            let uniform = 1.0 / n as f32;
-            let mut local_root = MctsNode::new(None, 1.0);
-            local_root.children = moves_coords.iter().map(|&c| MctsNode::new(Some(c), uniform)).collect();
-            local_root.expanded = true;
-            local_root.visits = 1;
-            if self.use_dirichlet { self.add_dirichlet_noise(&mut local_root); }
-            for _ in 0..sims_per_thread { self.run_simulation(&mut local_root, board, &mut local_cache); }
-            local_root
-        }).collect();
-
-        let mut aggregate: HashMap<u32, u32> = HashMap::new();
-        for tree in &trees {
-            for child in &tree.children {
-                if let Some(coords) = child.action {
-                    let idx = coords.to_index(board.board_size());
-                    *aggregate.entry(idx).or_insert(0) += child.visits;
-                }
-            }
-        }
-        aggregate.into_iter().max_by_key(|(_, v)| *v).map(|(idx, _)| Coordinates::from_index(idx, board.board_size()))
+        let aggregate = Self::aggregate_tree_visits(&trees, board.board_size());
+        Self::best_aggregated_move(&aggregate, board.board_size(), &fallback_root)
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PlayerId;
 
     #[test]
     fn new_node_has_zero_visits_and_not_expanded() {
@@ -264,6 +414,78 @@ mod tests {
         ];
         node.children[0].prior = 0.5;
         assert!((node.children[0].prior - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn simulation_budgets_use_full_budget_without_losing_remainder() {
+        let budgets = NeuralMctsBot::simulation_budgets(10, 4);
+        assert_eq!(budgets.iter().sum::<u32>(), 10);
+        assert_eq!(budgets.len(), 4);
+        let min = budgets.iter().min().copied().unwrap();
+        let max = budgets.iter().max().copied().unwrap();
+        assert!(max - min <= 1, "budgets are imbalanced: {:?}", budgets);
+    }
+
+    #[test]
+    fn should_stop_early_requires_minimum_visits_and_confidence() {
+        let mut root = MctsNode::new(None, 1.0);
+        let mut dominant = MctsNode::new(Some(Coordinates::from_index(0, 5)), 0.7);
+        dominant.visits = 70;
+        let mut trailing = MctsNode::new(Some(Coordinates::from_index(1, 5)), 0.3);
+        trailing.visits = 20;
+        root.children = vec![dominant, trailing];
+
+        assert!(NeuralMctsBot::should_stop_early(
+            &root,
+            EarlyStopConfig {
+                visit_ratio: 0.7,
+                min_visits: 64,
+            }
+        ));
+        assert!(!NeuralMctsBot::should_stop_early(
+            &root,
+            EarlyStopConfig {
+                visit_ratio: 0.8,
+                min_visits: 64,
+            }
+        ));
+        assert!(!NeuralMctsBot::should_stop_early(
+            &root,
+            EarlyStopConfig {
+                visit_ratio: 0.7,
+                min_visits: 128,
+            }
+        ));
+    }
+
+    #[test]
+    fn build_root_uses_policy_priors_for_available_moves_only() {
+        let mut board = GameY::new(3);
+        board
+            .add_move(Movement::Placement {
+                player: PlayerId::new(0),
+                coords: Coordinates::from_index(0, 3),
+            })
+            .unwrap();
+
+        let mut policy = vec![0.0; board.total_cells() as usize];
+        policy[0] = 0.95;
+        policy[1] = 0.1;
+        policy[2] = 0.3;
+        policy[3] = 0.6;
+
+        let root = NeuralMctsBot::build_root(&board, &policy);
+        let priors_by_index: HashMap<u32, f32> = root
+            .children
+            .iter()
+            .map(|child| (child.action.unwrap().to_index(board.board_size()), child.prior))
+            .collect();
+
+        assert!(!priors_by_index.contains_key(&0));
+        assert!(priors_by_index[&3] > priors_by_index[&2]);
+        assert!(priors_by_index[&2] > priors_by_index[&1]);
+        let total: f32 = priors_by_index.values().sum();
+        assert!((total - 1.0).abs() < 1e-6);
     }
     #[test]
     fn coordinates_known_values_board_5() {

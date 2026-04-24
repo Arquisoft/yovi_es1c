@@ -94,7 +94,10 @@ include::src/10_quality_requirements.adoc[]
 include::src/11_technical_risks.adoc[]
 
 <<<<
-// 12. Glossary
-include::src/12_glossary.adoc[]
+// 12. Test Report
+include::src/13_test_report.adoc[]
 
+<<<<
+// 13. Glossary
+include::src/12_glossary.adoc[]
 

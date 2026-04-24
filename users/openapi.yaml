@@ -3,14 +3,31 @@ info:
   title: Users Service API
   version: 1.0.0
   description: |
-    Current HTTP surface exposed by the TypeScript users microservice behind the gateway.
-    This service is still minimal and does not expose the historical `/createuser` route.
+    Current HTTP surface exposed by the TypeScript users microservice.
+    Profile endpoints require JWT verification through the Auth Service.
+
 servers:
   - url: /api/users
+    description: Public gateway path through Nginx
+  - url: http://users:3000/api/users
+    description: Internal Docker network endpoint
+
+tags:
+  - name: Profiles
+    description: Authenticated user profile operations
+  - name: Operations
+    description: Health and metrics endpoints
+
 paths:
   /:
     get:
+      tags: [Operations]
       summary: Service health/info endpoint
+      servers:
+        - url: /
+          description: Service root path
+        - url: http://users:3000
+          description: Internal Docker network endpoint
       responses:
         '200':
           description: Service is running
@@ -18,9 +35,210 @@ paths:
             text/plain:
               schema:
                 type: string
+                example: Users Service (TypeScript) is running!
+
+  /profiles:
+    post:
+      tags: [Profiles]
+      summary: Create a user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProfileRequest'
+            example:
+              username: alice
+              avatar: knight
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Missing or invalid username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+              example:
+                error: username is required
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+              example:
+                error: Username already exists
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /profiles/by-username/{username}:
+    get:
+      tags: [Profiles]
+      summary: Get a profile by username
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+          example: alice
+      responses:
+        '200':
+          description: Profile found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+              example:
+                error: Profile not found
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /profiles/{id}:
+    get:
+      tags: [Profiles]
+      summary: Get a profile by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Profile found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+              example:
+                error: Invalid id
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+              example:
+                error: Profile not found
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+    put:
+      tags: [Profiles]
+      summary: Update a profile
+      description: The current implementation only updates the `avatar` field.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+            example:
+              avatar: mage
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicError'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
   /metrics:
     get:
+      tags: [Operations]
       summary: Prometheus metrics
+      servers:
+        - url: /
+          description: Service root path
+        - url: http://users:3000
+          description: Internal Docker network endpoint
       responses:
         '200':
           description: Metrics payload
@@ -28,3 +246,77 @@ paths:
             text/plain:
               schema:
                 type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateProfileRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        avatar:
+          type: string
+          nullable: true
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        avatar:
+          type: string
+          nullable: true
+
+    UserProfile:
+      type: object
+      required: [id, username, created_at]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          description: SQLite timestamp string generated by CURRENT_TIMESTAMP.
+          example: '2026-04-24 10:30:00'
+
+    BasicError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    AuthError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: unauthorized
+        message:
+          type: string
+          example: Missing authorization header
+
+    AuthUnavailableError:
+      type: object
+      required: [error, message, reason]
+      properties:
+        error:
+          type: string
+          example: auth_unavailable
+        message:
+          type: string
+          example: Authentication service unavailable
+        reason:
+          type: string
+          example: AUTH_UNAVAILABLE

@@ -1,5 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use gamey::{Coordinates, GameY, Movement, PlayerId, RenderOptions};
+use gamey::neural_net::NeuralNet;
+use gamey::{Coordinates, GameY, Movement, NeuralMctsBot, PlayerId, RenderOptions, YBot};
+use std::path::Path;
+use std::sync::Arc;
 
 /// Benchmarks for coordinate conversion functions
 fn bench_coordinates(c: &mut Criterion) {
@@ -198,6 +201,117 @@ fn bench_touches_side(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_neural_evaluate(c: &mut Criterion) {
+    let Some((net, boards)) = load_neural_benchmark_fixture() else {
+        return;
+    };
+
+    let hot_board = &boards[0];
+    let _ = net.evaluate(hot_board);
+    let mut group = c.benchmark_group("neural_evaluate");
+
+    group.bench_function("cache_hit", |b| {
+        b.iter(|| black_box(net.evaluate(hot_board).expect("evaluate cache hit")))
+    });
+
+    group.bench_function("cache_miss", |b| {
+        let mut index = 0usize;
+        b.iter(|| {
+            net.clear_cache().expect("clear cache before miss benchmark");
+            let board = &boards[index % boards.len()];
+            index += 1;
+            black_box(net.evaluate(board).expect("evaluate cache miss"))
+        })
+    });
+
+    group.finish();
+}
+
+fn bench_neural_evaluate_batch(c: &mut Criterion) {
+    let Some((net, boards)) = load_neural_benchmark_fixture() else {
+        return;
+    };
+
+    let hot_batch = vec![&boards[0], &boards[1], &boards[2], &boards[3]];
+    let _ = net.evaluate_batch(&hot_batch);
+    let mut group = c.benchmark_group("neural_evaluate_batch");
+
+    group.bench_function("cache_hit", |b| {
+        b.iter(|| black_box(net.evaluate_batch(black_box(&hot_batch))))
+    });
+
+    group.bench_function("cache_miss", |b| {
+        let mut index = 0usize;
+        b.iter(|| {
+            net.clear_cache().expect("clear cache before batch miss benchmark");
+            let batch: Vec<&GameY> = (0..4)
+                .map(|offset| &boards[(index + offset) % boards.len()])
+                .collect();
+            index = (index + 4) % boards.len();
+            black_box(net.evaluate_batch(black_box(&batch)))
+        })
+    });
+
+    group.finish();
+}
+
+fn bench_neural_choose_move(c: &mut Criterion) {
+    let Some((net, boards)) = load_neural_benchmark_fixture() else {
+        return;
+    };
+
+    let hot_board = &boards[0];
+    let bot = NeuralMctsBot::new(net, 64);
+    let mut group = c.benchmark_group("neural_choose_move");
+
+    group.bench_function("mcts_64", |b| {
+        b.iter(|| black_box(bot.choose_move(hot_board)))
+    });
+
+    group.finish();
+}
+
+fn neural_benchmark_boards() -> Vec<GameY> {
+    vec![
+        build_neural_board(5, &[0, 1, 3, 6]),
+        build_neural_board(5, &[0, 2, 4]),
+        build_neural_board(7, &[0, 1, 3, 6, 7]),
+        build_neural_board(7, &[0, 2, 5, 8, 11, 12]),
+        build_neural_board(8, &[0, 1, 3, 6, 10, 15]),
+        build_neural_board(8, &[0, 2, 5, 9, 14, 20]),
+        build_neural_board(9, &[0, 1, 3, 6, 10, 15, 21]),
+        build_neural_board(9, &[0, 2, 5, 9, 14, 20, 27]),
+    ]
+}
+
+fn build_neural_board(size: u32, placements: &[u32]) -> GameY {
+    let mut board = GameY::new(size);
+    for &idx in placements {
+        let coords = Coordinates::from_index(idx, size);
+        let player = board.next_player().unwrap();
+        board.add_move(Movement::Placement { player, coords }).unwrap();
+    }
+    board
+}
+
+fn load_neural_benchmark_fixture() -> Option<(Arc<NeuralNet>, Vec<GameY>)> {
+    let model_path = Path::new("models").join("yovi_model.onnx");
+    if !model_path.exists() {
+        return None;
+    }
+
+    let model_path = model_path.to_str().expect("valid model path");
+    let net = match NeuralNet::load(model_path) {
+        Ok(net) => net,
+        Err(error) => {
+            eprintln!("Skipping neural benchmarks: failed to load {model_path}: {error}");
+            return None;
+        }
+    };
+
+    Some((net, neural_benchmark_boards()))
+}
+
 criterion_group!(
     benches,
     bench_coordinates,
@@ -205,6 +319,9 @@ criterion_group!(
     bench_add_move,
     bench_render,
     bench_touches_side,
+    bench_neural_evaluate,
+    bench_neural_evaluate_batch,
+    bench_neural_choose_move,
 );
 
 criterion_main!(benches);

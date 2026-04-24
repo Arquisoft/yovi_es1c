@@ -85,11 +85,13 @@ const matchmakingThresholdsByEnv = {
         'http_req_duration{operation:queue_join}': ['p(95)<800'],
         'http_req_duration{operation:queue_poll}': ['p(95)<800'],
         'http_req_duration{operation:queue_cancel}': ['p(95)<800'],
+        'http_req_duration{operation:session_abandon}': ['p(95)<800'],
     },
     remote: {
         'http_req_duration{operation:queue_join}': ['p(95)<1800'],
         'http_req_duration{operation:queue_poll}': ['p(95)<1800'],
         'http_req_duration{operation:queue_cancel}': ['p(95)<1800'],
+        'http_req_duration{operation:session_abandon}': ['p(95)<1800'],
     },
 };
 

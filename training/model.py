@@ -17,7 +17,11 @@ def total_cells(board_size: int) -> int:
     return board_size * (board_size + 1) // 2
 
 
-def encode_board(board_state: list[int], board_size: int, current_player: int) -> torch.Tensor:
+def encode_board(
+        board_state: list[int],
+        board_size: int,
+        current_player: int,
+) -> tuple[torch.Tensor, float]:
     """
     Codifica el estado del tablero como tensor 2D de shape (6, GRID_SIZE, GRID_SIZE).
     El triángulo de lado board_size se mapea a la esquina superior-izquierda de la
@@ -134,7 +138,7 @@ class PolicyValueNet(nn.Module):
     def forward(
             self,
             spatial: torch.Tensor,    # (batch, 6, GRID_SIZE, GRID_SIZE)
-            board_norm: torch.Tensor, # (batch, 1)  — escalar por muestra
+            board_norm: torch.Tensor, # (batch, 1) o (batch, 1, GRID_SIZE, GRID_SIZE)
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Devuelve:
@@ -143,8 +147,17 @@ class PolicyValueNet(nn.Module):
         """
         batch = spatial.shape[0]
 
-        # Expandimos board_norm a un canal completo y lo concatenamos
-        bn_channel = board_norm.view(batch, 1, 1, 1).expand(batch, 1, GRID_SIZE, GRID_SIZE)
+        if board_norm.dim() == 2:
+            # Entrenamiento/Python: recibimos un escalar por muestra.
+            bn_channel = board_norm.view(batch, 1, 1, 1).expand(batch, 1, GRID_SIZE, GRID_SIZE)
+        elif board_norm.dim() == 4:
+            # ONNX/Rust: recibimos el canal ya expandido para evitar un Expand dinamico
+            # que tract no puede inferir de forma estable.
+            bn_channel = board_norm
+        else:
+            raise ValueError(
+                "board_norm must have shape (batch, 1) or (batch, 1, GRID_SIZE, GRID_SIZE)"
+            )
         x = torch.cat([spatial, bn_channel], dim=1)  # (batch, 7, 32, 32)
 
         x = self.stem(x)
@@ -181,8 +194,13 @@ class PolicyValueNet(nn.Module):
 
             log_policy, val = self.forward(spatial, board_norm)
 
-            n      = total_cells(board_size)
-            policy = log_policy[0, :n].exp().tolist()
+            n = total_cells(board_size)
+            policy = log_policy[0, :n].exp()
+            total = policy.sum().item()
+            if total > 0.0:
+                policy = (policy / total).tolist()
+            else:
+                policy = [1.0 / n] * n
             value  = val[0, 0].item()
 
         return policy, value
@@ -201,14 +219,14 @@ class PolicyValueNet(nn.Module):
         """
         Exporta el modelo a ONNX con DOS inputs:
           - 'spatial'    : (batch, 6, 32, 32)  — canales del tablero
-          - 'board_norm' : (batch, 1)           — escalar de tamaño normalizado
+          - 'board_norm' : (batch, 1, 32, 32)  — canal de tamaño normalizado
 
         Rust (neural_net.rs) debe construir exactamente estos dos tensores.
         El encoding 2D está definido en encode_board() de este mismo fichero.
         """
         self.eval()
         dummy_spatial    = torch.zeros(1, NUM_CHANNELS, GRID_SIZE, GRID_SIZE)
-        dummy_board_norm = torch.zeros(1, 1)
+        dummy_board_norm = torch.zeros(1, 1, GRID_SIZE, GRID_SIZE)
 
         torch.onnx.export(
             self,
@@ -221,10 +239,11 @@ class PolicyValueNet(nn.Module):
                 "board_norm": {0: "batch_size"},
             },
             opset_version=17,
+            dynamo=False,
         )
         print(f"Modelo exportado a {path}")
         print(f"  spatial    : (batch, {NUM_CHANNELS}, {GRID_SIZE}, {GRID_SIZE})")
-        print(f"  board_norm : (batch, 1)")
+        print(f"  board_norm : (batch, 1, {GRID_SIZE}, {GRID_SIZE})")
         print(f"  policy     : (batch, {MAX_CELLS})")
         print(f"  value      : (batch, 1)")
 

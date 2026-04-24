@@ -1,74 +1,88 @@
 # Webapp
 
-The YOVI frontend application, built as a single-page application (SPA) with **React**, **Vite**, and **TypeScript**.
-
-In production, static assets are served by the Nginx API Gateway. In development, the Vite dev server is available at `http://localhost:5173`.
+React + Vite + TypeScript single-page application for YOVI.
 
 ## Responsibilities
 
-- Renders the game board and manages the client-side game flow.
-- Handles user authentication (login, registration, token refresh) via the Auth Service.
-- Communicates with backend services through the Nginx API Gateway.
-- Establishes a **Socket.IO** connection to the Game Service for real-time online match updates.
-- Displays player statistics and match history.
-- Provides an interface for external bots to interact with the system API.
+- Provide login, registration, logout and authenticated navigation.
+- Render the Game Y board and match creation flow.
+- Support bot matches, local two-player matches and online matchmaking.
+- Connect to Game Service Socket.IO for online sessions.
+- Display reconnect prompts for active online sessions.
+- Display chat, turn timers, winner overlay and connection state.
+- Show user statistics and the ranking leaderboard.
+- Provide an external bot API information screen.
+- Provide i18n resources for English, Spanish, French, Italian and Chinese.
+
+## Runtime
+
+- Development server: `http://localhost:5173`.
+- Production build is served by the `webapp` container on port `80`.
+- Public access in Compose is through Nginx at `https://localhost`.
+
+## Main Routes
+
+| Route | Screen |
+|---|---|
+| `/` | Authenticated home screen. |
+| `/login` | Login form. |
+| `/register` | Registration form. |
+| `/create-match` | Match creation for bot/local/online options. |
+| `/online/matchmaking` | Online matchmaking queue screen. |
+| `/gamey` | Game board and session UI. |
+| `/stats` | Player statistics. |
+| `/ranking` | Leaderboard. |
+
+## API Configuration
+
+Runtime API paths are defined in `src/config/api.config.ts`.
+
+| Variable | Default | Used for |
+|---|---|---|
+| `VITE_GAME_ENGINE_API_URL` | `/api/gamey` | Rust Gamey bot API. |
+| `VITE_GAME_SERVICE_API_URL` | `/api/game` | Match, stats, ranking and online session REST API. |
+| `VITE_AUTH_API_URL` | `/api/auth` | Login, register, refresh and logout. |
+| `VITE_USERS_API_URL` | `/api/users` | User profile API. |
+
+Socket.IO connects through the Nginx-compatible path `/api/game/socket.io`.
 
 ## Internal Structure
-```
-src/
-├── main.tsx # Application entry point
-├── app/ # Root app component and router setup
-├── features/
-│ ├── auth/ # Login and registration pages and logic
-│ ├── game/ # Game board, turn flow, and match management
-│ ├── stats/ # Player statistics and match history
-│ └── botApi/ # External bot API interface
-├── components/ # Shared reusable UI components
-├── shared/ # Shared utilities, hooks, and TypeScript types
-├── config/ # App-level configuration (API URLs, constants)
-└── assets/ # Static assets (images, icons)
-```
 
-## Environment Variables (Build-time)
-
-Configured via Vite build args in `docker-compose.yml`:
-
-| Variable | Description |
+| Path | Purpose |
 |---|---|
-| `VITE_API_URL` | Base URL for the Users Service API (e.g. `/api/users`) |
-| `VITE_GAMEY_API_URL` | Base URL for the Gamey API (e.g. `/api/gamey`) |
+| `src/app/` | Root app, routes, theme and global styles. |
+| `src/components/` | Shared UI components and layout. |
+| `src/config/` | API configuration. |
+| `src/features/auth/` | Auth API, context, login and registration UI. |
+| `src/features/game/` | Game API clients, hooks, realtime client, board and session UI. |
+| `src/features/stats/` | Stats hooks and UI. |
+| `src/features/ranking/` | Ranking hooks and UI. |
+| `src/features/botApi/` | External bot API UI. |
+| `src/i18n/` | i18next setup and locale files. |
+| `src/shared/` | Shared API helpers and contracts. |
+| `src/__tests__/` | Vitest component/hook/unit tests. |
+| `test/e2e/` | Cucumber + Playwright end-to-end tests. |
 
-## Running
-
-### With Docker (recommended)
-
-From the project root:
-
-```bash
-docker-compose up --build
-```
-
-The application is served at `http://localhost` via Nginx.
-
-### Locally
+## Local Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-The development server will be available at `http://localhost:5173`.
+For full functionality, run the backend stack too. The default dev configuration expects the gateway-style API paths unless overridden with Vite env variables.
 
-> When running locally without Docker, make sure the `users` service is also running. Use `npm run start:all` to start both concurrently.
+## Scripts
 
-## Available Scripts
-
-- `npm run dev`: Start the Vite development server.
-- `npm run build`: Compile TypeScript and generate the production bundle.
-- `npm run preview`: Preview the production build locally.
-- `npm run lint`: Run ESLint.
-- `npm test`: Run unit tests with Vitest.
-- `npm run test:coverage`: Run unit tests with coverage report.
-- `npm run test:watch`: Run tests in watch mode.
-- `npm run test:e2e`: Run end-to-end tests with Cucumber + Playwright (requires all services running).
-- `npm run start:all`: Start the webapp and users service concurrently (shortcut for local E2E testing).
+- `npm run dev`: start Vite.
+- `npm run build`: run `tsc -b` and `vite build`.
+- `npm run preview`: preview the production build.
+- `npm run lint`: run ESLint.
+- `npm test`: run Vitest.
+- `npm run test:coverage`: run unit tests with coverage.
+- `npm run test:watch`: run Vitest in watch mode.
+- `npm run test:e2e`: start `start:all`, wait for `http://localhost:5173`, then run Cucumber + Playwright.
+- `npm run test:e2e:run`: run Cucumber + Playwright directly.
+- `npm run test:e2e:docker`: run Cucumber + Playwright against an already running Docker stack.
+- `npm run test:e2e:install-browsers`: install Playwright browsers.
+- `npm run start:all`: start Vite and `../users` with `npm start`; build `../users` first if `dist/` is not present.

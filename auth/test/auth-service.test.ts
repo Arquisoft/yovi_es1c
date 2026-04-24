@@ -8,6 +8,7 @@ import {
     InvalidRefreshTokenError,
     UserAlreadyExistsError,
 } from '../src/errors/domain-errors.js';
+import { authActiveRefreshTokens, setActiveRefreshTokens } from '../src/metrics.js';
 
 
 function scryptAsync(
@@ -30,6 +31,11 @@ async function hashPasswordForTest(password: string): Promise<string> {
     const salt = randomBytes(32).toString('hex');
     const hash = (await scryptAsync(password, salt, KEY_LEN, SCRYPT_PARAMS)) as Buffer;
     return `${salt}:${hash.toString('hex')}`;
+}
+
+async function readActiveRefreshTokenGauge(): Promise<number> {
+    const metric = await authActiveRefreshTokens.get();
+    return metric.values[0]?.value ?? 0;
 }
 
 type MockRepo = {
@@ -262,6 +268,17 @@ describe('AuthService', () => {
         expect(repo.revokeSessionById).toHaveBeenCalledWith('sess-abc');
     });
 
+    it('logout decrements the active refresh token gauge by revoked token count', async () => {
+        const repo = buildRepoMock();
+        repo.revokeSessionById.mockResolvedValue(2);
+        setActiveRefreshTokens(10);
+
+        const service = new AuthService(repo as any);
+        await service.logout('sess-abc');
+
+        expect(await readActiveRefreshTokenGauge()).toBe(8);
+    });
+
     it('logout without sessionId does nothing', async () => {
         const repo = buildRepoMock();
         const service = new AuthService(repo as any);
@@ -275,5 +292,16 @@ describe('AuthService', () => {
         const service = new AuthService(repo as any);
         await service.logoutAll(42);
         expect(repo.revokeAllUserSessions).toHaveBeenCalledWith(42);
+    });
+
+    it('logoutAll decrements the active refresh token gauge by revoked token count', async () => {
+        const repo = buildRepoMock();
+        repo.revokeAllUserSessions.mockResolvedValue(3);
+        setActiveRefreshTokens(10);
+
+        const service = new AuthService(repo as any);
+        await service.logoutAll(42);
+
+        expect(await readActiveRefreshTokenGauge()).toBe(7);
     });
 });

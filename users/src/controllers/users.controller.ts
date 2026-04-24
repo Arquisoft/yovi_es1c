@@ -74,6 +74,43 @@ export class UsersController {
         res.json(profile);
     }
 
+    async updateMyProfile(req: Request, res: Response): Promise<void> {
+        const userId = Number((req as any).userId);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const { displayName, email, avatar } = req.body;
+
+        try {
+            const updated = await this.userRepository.updateProfile(userId, {
+                displayName,
+                email,
+                avatar,
+            });
+
+            if (!updated) {
+                res.status(404).json({ error: 'Profile not found' });
+                return;
+            }
+
+            this.usersService.onProfileUpdated();
+
+            res.json({
+                id: updated.user_id ?? userId,
+                username: updated.username,
+                displayName: updated.display_name,
+                email: updated.email,
+                avatar: updated.avatar,
+            });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
     async updateProfile(req: Request, res: Response): Promise<void> {
         const id = parseInt(req.params['id'] as string, 10);
         if (isNaN(id)) {

@@ -113,7 +113,7 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Socket Connections Active",
+      "title": "Socket Connections Peak",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -127,14 +127,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "gameservice_socket_connections_active"
+          "expr": "max_over_time(gameservice_socket_connections_active[$__range])"
         }
       ]
     },
     {
       "id": 5,
       "type": "stat",
-      "title": "Gamey Inference p95",
+      "title": "Gamey Bot move p95",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -148,7 +148,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(gamey_inference_latency_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(gamey_bot_move_duration_seconds_bucket[5m])) by (le))",
           "instant": true
         }
       ],
@@ -211,7 +211,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Gamey Inference Rate by Bot",
+      "title": "Gamey Bot move rate by bot and endpoint",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -225,8 +225,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (bot_id) (rate(gamey_inference_latency_seconds_count[5m]))",
-          "legendFormat": "{{bot_id}}"
+          "expr": "sum by (bot_id, endpoint) (rate(gamey_bot_move_duration_seconds_count[5m]))",
+          "legendFormat": "{{endpoint}} {{bot_id}}"
         }
       ]
     },

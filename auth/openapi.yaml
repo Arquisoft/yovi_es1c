@@ -128,7 +128,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthTokensResponse'
+                $ref: '#/components/schemas/RefreshResponse'
         '400':
           description: Invalid input
           content:
@@ -159,9 +159,27 @@ paths:
       summary: Revoke current session refresh tokens
       security:
         - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
       responses:
         '204':
           description: Logout processed (idempotent)
+        '400':
+          description: Invalid input or JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/auth/logout-all:
     post:
@@ -172,6 +190,12 @@ paths:
       responses:
         '204':
           description: Logout all processed (idempotent)
+        '401':
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/auth/verify:
     post:
@@ -206,6 +230,24 @@ paths:
                 invalidToken:
                   value:
                     valid: false
+
+  /metrics:
+    get:
+      tags: [Internal]
+      summary: Prometheus metrics
+      security: []
+      servers:
+        - url: http://auth:3001
+          description: Internal Docker network endpoint
+        - url: http://localhost:3001
+          description: Local direct service endpoint
+      responses:
+        '200':
+          description: Metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string
 
 components:
   securitySchemes:
@@ -249,6 +291,13 @@ components:
           type: string
           description: Optional JWT when Authorization header is not used
 
+    LogoutRequest:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          description: Optional explicit session id. If omitted, the session id is read from the access token `sid` claim.
+
     AuthTokensResponse:
       type: object
       required: [accessToken, refreshToken]
@@ -264,12 +313,25 @@ components:
       allOf:
         - $ref: '#/components/schemas/AuthTokensResponse'
         - type: object
-          required: [user]
+          required: [user, session]
           properties:
             user:
               $ref: '#/components/schemas/AuthUser'
             session:
               $ref: '#/components/schemas/SessionRef'
+
+    RefreshResponse:
+      allOf:
+        - $ref: '#/components/schemas/AuthTokensResponse'
+        - type: object
+          required: [session]
+          properties:
+            session:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
 
     AuthUser:
       type: object
@@ -302,6 +364,8 @@ components:
           properties:
             sub:
               type: string
+            sid:
+              type: string
             username:
               type: string
             tokenType:
@@ -328,6 +392,7 @@ components:
           type: string
           enum:
             - invalid_input
+            - invalid_json
             - bad_credentials
             - invalid_refresh_token
             - user_already_exists

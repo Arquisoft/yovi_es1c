@@ -56,6 +56,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /matches/{id}:
     get:
@@ -119,17 +125,15 @@ paths:
               player: USER
               moveNumber: 1
       responses:
-        '201':
-          description: Move added
+        '202':
+          description: Move accepted and bot processing queued when needed
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
+                $ref: '#/components/schemas/MoveAcceptedResponse'
               example:
-                message: Move added
+                status: processing
+                matchId: 42
         '400':
           description: Validation error or match already finished
           content:
@@ -280,12 +284,14 @@ paths:
                 entries:
                   - rank: 1
                     userId: 42
+                    username: alice
                     eloRating: 1875
                     gamesPlayed: 128
                     peakRating: 1902
                     lastUpdated: '2026-04-18T09:32:10Z'
                   - rank: 2
                     userId: 17
+                    username: bob
                     eloRating: 1790
                     gamesPlayed: 88
                     peakRating: 1821
@@ -324,6 +330,7 @@ paths:
               example:
                 rank: 7
                 userId: 42
+                username: alice
                 eloRating: 1432
                 gamesPlayed: 22
                 peakRating: 1450
@@ -563,6 +570,23 @@ paths:
         '204':
           description: Session abandoned
 
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      security: []
+      servers:
+        - url: /
+          description: Service root path
+        - url: http://gameservice:3002
+          description: Internal Docker network endpoint
+      responses:
+        '200':
+          description: Metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string
+
 components:
   securitySchemes:
     bearerAuth:
@@ -577,6 +601,7 @@ components:
       properties:
         boardSize:
           type: integer
+          minimum: 1
           example: 11
         difficulty:
           type: string
@@ -641,24 +666,37 @@ components:
 
     MatchRules:
       type: object
-      required: [pieRule, honey]
+      description: |
+        If omitted in requests, the service applies classic rules.
+        `blockedCells` must be omitted or empty in client requests; Honey cells are generated server-side when Honey is enabled.
       properties:
         pieRule:
           type: object
-          required: [enabled]
           properties:
             enabled:
               type: boolean
+              default: false
         honey:
           type: object
-          required: [enabled, blockedCells]
           properties:
             enabled:
               type: boolean
+              default: false
             blockedCells:
               type: array
+              default: []
               items:
                 $ref: '#/components/schemas/BlockedCell'
+
+    MoveAcceptedResponse:
+      type: object
+      required: [status, matchId]
+      properties:
+        status:
+          type: string
+          enum: [processing]
+        matchId:
+          type: integer
 
     BlockedCell:
       type: object
@@ -708,6 +746,9 @@ components:
           minimum: 1
         userId:
           type: integer
+        username:
+          type: string
+          nullable: true
         eloRating:
           type: integer
         gamesPlayed:
@@ -748,6 +789,10 @@ components:
         code:
           type: string
           example: SESSION_NOT_FOUND
+        error:
+          type: string
+          nullable: true
+          description: Present on errors produced by the global Express error handler.
         message:
           type: string
           example: Online session not found
