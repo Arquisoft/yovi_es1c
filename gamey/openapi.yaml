@@ -1,339 +1,276 @@
 openapi: 3.1.0
 info:
-  title: GameY Bot Server API
-  description: REST API for querying Y game bots.
-  version: "1.0.0"
+  title: Gamey Bot Server API
+  description: REST API exposed by the Rust Game Y engine and bot server.
+  version: 1.0.0
 
 servers:
   - url: http://localhost:4000
-    description: Local server (Docker default port)
+    description: Local Docker/default server port
+  - url: /api/gamey
+    description: Public gateway path through Nginx
+
+tags:
+  - name: Operations
+  - name: Bots
+  - name: Competition
 
 paths:
   /status:
     get:
-      summary: Health check endpoint
-      description: Returns "OK" if the server is running.
+      tags: [Operations]
+      summary: Health check
       responses:
-        "200":
+        '200':
           description: Server is running
           content:
             text/plain:
               schema:
                 type: string
-                example: "OK"
+                example: OK
+
+  /metrics:
+    get:
+      tags: [Operations]
+      summary: Prometheus metrics
+      responses:
+        '200':
+          description: Metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /{api_version}/ybot/choose/{bot_id}:
     post:
-      summary: Request a move from a bot
+      tags: [Bots]
+      summary: Request one move from a bot
       description: |
-        Given a YEN board state in JSON format, returns a move chosen by the specified bot.
-        Only the following bot aliases are supported:
-        - `easy` → `random`
-        - `medium` → `minimax_set_d2`
-        - `hard` → `minimax_set_d4`
-        - `expert_fast` → `neural_mcts_s200`
-        If an error occurs (invalid YEN, bot not found, or no valid moves), the server still returns HTTP 200 OK with an ErrorResponse object in JSON.
+        Accepts a YEN board as JSON and returns the coordinates selected by the requested bot.
+        Handler-level errors are encoded as JSON `ErrorResponse` payloads. Because the handler returns
+        `Result<Json<_>, Json<ErrorResponse>>`, those errors are serialized with HTTP 200 by Axum.
       parameters:
         - name: api_version
           in: path
           required: true
-          description: API version (currently only "v1" is supported)
           schema:
             type: string
-            enum: [v1]
+          example: v1
         - name: bot_id
           in: path
           required: true
-          description: Bot alias (difficulty)
+          description: Bot id or alias.
           schema:
             type: string
-            enum: [easy, medium, hard, expert, expert_fast]
-            example: easy
+          examples:
+            alias:
+              value: medium
+            concrete:
+              value: neural_mcts_s200
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/YEN'
-            examples:
-              yen_example:
-                summary: Example of YEN board in JSON
-                value:
-                  size: 3
-                  turn: 0
-                  players: [ "B", "R" ]
-                  layout: "./B./.RB"
-                  rules:
-                    pieRule:
-                      enabled: false
-                    honey:
-                      enabled: false
-                      blockedCells: []
       responses:
-        "200":
-          description: Move chosen successfully or an error occurred
+        '200':
+          description: Move chosen, or an application-level error payload.
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/MoveResponse'
                   - $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                move:
-                  summary: Move chosen successfully
-                  value:
-                    api_version: "v1"
-                    bot_id: "easy"
-                    coords:
-                      x: 1
-                      y: 2
-                      z: 0
-                bot_not_found:
-                  summary: Bot not found error
-                  value:
-                    message: "Bot not found: unknown_bot, available bots: [easy, medium, hard]"
-                    api_version: "v1"
-                    bot_id: "unknown_bot"
-                invalid_yen:
-                  summary: Invalid YEN format error
-                  value:
-                    message: "Invalid YEN format: unexpected character at position 4"
-                    api_version: "v1"
-                    bot_id: "easy"
-                no_valid_moves:
-                  summary: Bot has no valid moves
-                  value:
-                    message: "No valid moves available for the bot"
-                    api_version: "v1"
-                    bot_id: "easy"
 
   /{api_version}/ybot/play:
     post:
-      summary: Play a move on a board position
-      description: |
-        Given a YEN board state and an optional bot alias, the server plays one bot move
-        on the board and returns the updated board state in YEN format.
-        If no `bot_id` is provided, defaults to the `random` bot.
+      tags: [Bots]
+      summary: Play one bot move and return the updated board
       parameters:
         - name: api_version
           in: path
           required: true
-          description: API version (currently only "v1" is supported)
           schema:
             type: string
-            enum: [v1]
+          example: v1
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/PlayRequest'
-            examples:
-              play_example:
-                summary: Play request with board state
-                value:
-                  position:
-                    size: 3
-                    turn: 0
-                    players: ["B", "R"]
-                    layout: "./B./.RB"
-                    rules:
-                      pieRule:
-                        enabled: true
-                      honey:
-                        enabled: false
-                        blockedCells: []
-                  bot_id: easy
       responses:
-        "200":
-          description: Move played successfully or an error occurred
+        '200':
+          description: Move played, or an application-level error payload.
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/PlayResponse'
                   - $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                success:
-                  summary: Move played successfully
-                  value:
-                    api_version: "v1"
-                    bot_id: "easy"
-                    position:
-                      size: 3
-                      turn: 1
-                      players: ["B", "R"]
-                      layout: "B/B./.RB"
-                invalid_yen:
-                  summary: Invalid YEN format error
-                  value:
-                    message: "Invalid YEN format: unexpected character"
-                    api_version: "v1"
-                    bot_id: "easy"
-                no_moves:
-                  summary: No valid moves available
-                  value:
-                    message: "No valid moves available"
-                    api_version: "v1"
-                    bot_id: "easy"
+
+  /play:
+    get:
+      tags: [Competition]
+      summary: Competition-style play endpoint
+      description: |
+        Accepts the board position as a JSON-encoded `position` query parameter.
+        Returns either a coordinate move, `{ "action": "swap" }` when Pie rule applies, or
+        `{ "action": "resign" }` when the bot has no valid move.
+      parameters:
+        - name: position
+          in: query
+          required: true
+          description: URL-encoded JSON representation of a YEN board.
+          schema:
+            type: string
+        - name: bot_id
+          in: query
+          required: false
+          description: Bot id or alias. Defaults to `random`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Move or action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayCompetitionResponse'
+        '400':
+          description: Missing/invalid position or unknown bot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
     YEN:
       type: object
-      description: Y-game Exchange Notation board in JSON format
-      required:
-        - size
-        - turn
-        - players
-        - layout
+      description: Y-game Exchange Notation board serialized as JSON.
+      required: [size, turn, players, layout]
       properties:
         size:
           type: integer
-          description: Board size
+          minimum: 1
           example: 3
         turn:
           type: integer
-          description: Index of the player whose turn it is to move
-          enum: [ 0, 1 ]
+          enum: [0, 1]
           example: 0
         players:
           type: array
-          description: Symbols representing players
+          minItems: 2
+          maxItems: 2
           items:
             type: string
-            enum: [ B, R ]
-          example: [ "B", "R" ]
+            enum: [B, R]
+          example: [B, R]
         layout:
           type: string
-          description: |
-            Board layout encoded in YEN format.
-            
-            Rows are separated by `/` and each character represents a cell:
-            - `.` empty
-            - `B` player B
-            - `R` player R
-          example: "./B./.RB"
+          description: Rows separated by `/`; `.` is empty, `B` and `R` are player stones.
+          example: './../...'
         rules:
           $ref: '#/components/schemas/MatchRules'
 
     Coordinates:
       type: object
-      description: |
-        Barycentric coordinates (x, y, z) on the triangular board.
-        They satisfy the invariant:
-
-          x + y + z = size - 1
-          x, y, z >= 0
-
-        Each component represents the distance from one side of the triangle:
-        - x = distance from side A
-        - y = distance from side B
-        - z = distance from side C
-      required:
-        - x
-        - y
-        - z
+      required: [x, y, z]
       properties:
         x:
           type: integer
-          description: Barycentric coordinate (distance from side A)
-          example: 1
+          minimum: 0
         y:
           type: integer
-          description: Barycentric coordinate (distance from side B)
-          example: 1
+          minimum: 0
         z:
           type: integer
-          description: Barycentric coordinate (distance from side C)
-          example: 0
+          minimum: 0
 
     MoveResponse:
       type: object
-      description: Response when a bot chooses a move.
-      required:
-        - api_version
-        - bot_id
-        - coords
+      required: [api_version, bot_id, coords]
       properties:
         api_version:
           type: string
-          example: "v1"
-
+          example: v1
         bot_id:
           type: string
-          enum: [ easy, medium, hard, expert, expert_fast ]
-          example: "easy"
-
+          example: medium
         coords:
           $ref: '#/components/schemas/Coordinates'
 
     PlayRequest:
       type: object
-      required:
-        - position
+      required: [position]
       properties:
         position:
           $ref: '#/components/schemas/YEN'
         bot_id:
           type: string
-          description: Bot alias (defaults to "random" if omitted)
-          enum: [easy, medium, hard, expert, expert_fast]
+          description: Defaults to `random` when omitted.
           example: easy
 
     PlayResponse:
       type: object
-      required:
-        - api_version
-        - bot_id
-        - position
+      required: [api_version, bot_id, position]
       properties:
         api_version:
           type: string
-          example: "v1"
+          example: v1
         bot_id:
           type: string
-          enum: [easy, medium, hard, expert, expert_fast]
-          example: "easy"
+          example: easy
         position:
           $ref: '#/components/schemas/YEN'
 
+    PlayCompetitionResponse:
+      oneOf:
+        - type: object
+          required: [coords]
+          properties:
+            coords:
+              $ref: '#/components/schemas/Coordinates'
+        - type: object
+          required: [action]
+          properties:
+            action:
+              type: string
+              enum: [swap, resign]
+
     ErrorResponse:
       type: object
-      description: Error response (bot not found, invalid YEN, no valid moves)
-      required:
-        - message
+      required: [message]
       properties:
-        message:
-          type: string
-          example: "Bot not found: unknown_bot"
         api_version:
           type: string
           nullable: true
-          example: "v1"
         bot_id:
           type: string
           nullable: true
-          example: "unknown_bot"
+        message:
+          type: string
 
     MatchRules:
       type: object
-      required: [pieRule, honey]
       properties:
         pieRule:
           type: object
-          required: [enabled]
           properties:
             enabled:
               type: boolean
+              default: false
         honey:
           type: object
-          required: [enabled, blockedCells]
           properties:
             enabled:
               type: boolean
+              default: false
             blockedCells:
               type: array
+              default: []
               items:
                 $ref: '#/components/schemas/BlockedCell'
 

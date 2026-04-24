@@ -1,71 +1,74 @@
 # Users Service
 
-The user profile management service for YOVI, built with **Node.js**, **Express**, and **TypeScript**.
-
-Exposed internally on port `3000`, accessible externally only through the Nginx API Gateway under the path `/api/users/*`.
+Node.js + Express + TypeScript service that stores YOVI user profile data in SQLite.
 
 ## Responsibilities
 
-- Manages user profile data stored in `users.db` (SQLite).
-- Handles user creation and profile retrieval.
-- Exposes Prometheus metrics via `express-prom-bundle`.
-- Exposes a Swagger UI at `/api-docs` for API exploration.
+- Store profile records with username and optional avatar.
+- Create, fetch and update profiles.
+- Verify JWT access tokens by calling the Auth Service internally.
+- Export Prometheus metrics at `/metrics`.
+- Initialize the SQLite schema from `src/database/users.sql`.
 
-## Internal Structure
-```
-src/
-├── app.ts # Express app setup (CORS, middleware)
-├── index.ts # Entry point — initialises DB and starts the server
-├── controllers/
-│ └── users.controller.ts # Route handlers
-├── services/
-│ └── users.service.ts # Business logic
-├── repositories/
-│ └── users.repository.ts # Database access layer (users.db)
-└── database/
-└── database.ts # SQLite connection and schema initialisation
-```
+## Runtime
 
-## REST Endpoints
+- Default port: `3000`.
+- Main entry point: `src/index.ts`.
+- Express app setup: `src/app.ts`.
+- API routes are mounted under `/api/users`.
+- Data directory in Docker: `/app/data`, mounted from `users/data`.
+- OpenAPI contract: `openapi.yaml`.
+
+## Endpoints
+
+All profile endpoints require `Authorization: Bearer <access-token>`.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/createuser` | Create a new user by username |
-| `GET` | `/api-docs` | Swagger UI (OpenAPI spec) |
-| `GET` | `/metrics` | Prometheus metrics endpoint |
+| `POST` | `/api/users/profiles` | Create a profile from `{ "username": "...", "avatar": "..." }`. |
+| `GET` | `/api/users/profiles/by-username/:username` | Fetch a profile by username. |
+| `GET` | `/api/users/profiles/:id` | Fetch a profile by numeric id. |
+| `PUT` | `/api/users/profiles/:id` | Update profile fields currently limited to `avatar`. |
+| `GET` | `/metrics` | Prometheus metrics. |
+| `GET` | `/` | Plain health/info response. |
 
-The full OpenAPI contract is available in `openapi.yaml`.
+The current TypeScript service does not mount Swagger UI at runtime, although `openapi.yaml` is present in the package.
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|---|---|---|
-| `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:5173` |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DB_DATA_DIR` | No | Implementation default | Directory used for the SQLite database. Compose sets `/app/data`. |
+| `AUTH_SERVICE_URL` | Yes for protected routes | None | Base URL of Auth Service, for example `http://auth:3001` in Docker or `http://localhost:3001` locally. |
+| `ALLOWED_ORIGINS` | No | `http://localhost:5173` | Comma-separated CORS allowlist. |
 
-## Running
-
-### With Docker (recommended)
-
-From the project root:
-
-```bash
-docker-compose up --build
-```
-
-### Locally
+## Local Development
 
 ```bash
 npm install
-npm run dev
+npm run build
+npm start
 ```
 
-The service will be available at `http://localhost:3000`.
+For local authenticated requests, run Auth Service too and set:
 
-## Available Scripts
+```bash
+AUTH_SERVICE_URL=http://localhost:3001
+```
 
-- `npm run dev`: Development mode with hot reload (`ts-node-dev`).
-- `npm run build`: Compile TypeScript to `dist/`.
-- `npm start`: Run the compiled service.
-- `npm test`: Run tests with Vitest.
-- `npm run test:coverage`: Run tests with coverage report.
-- `npm run test:watch`: Run tests in watch mode.
+## Scripts
+
+- `npm run dev`: run `src/app.ts` with `ts-node-dev`; this initializes the Express app only and does not start the HTTP listener or mount `/api/users`.
+- `npm run build`: compile TypeScript.
+- `npm start`: run `dist/src/index.js`.
+- `npm test`: run Vitest.
+- `npm run test:coverage`: run tests with coverage.
+- `npm run test:watch`: run Vitest in watch mode.
+- `npm run db:init`: initialize the SQLite schema.
+
+## Tests
+
+```bash
+npm test
+npm run test:coverage
+```
