@@ -5,7 +5,7 @@ import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesFo
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
 import { onlineChatMessages, onlineMoveErrors, onlineMoves, onlineSessionEvents, reconnectEvents, turnTimeouts } from '../metrics';
-import { randomFillSync } from 'crypto';
+import { randomFillSync, randomUUID } from 'crypto';
 import { ChatFilter, ChatFilterError } from './ChatFilter';
 
 export type MoveErrorCode =
@@ -47,6 +47,15 @@ export class OnlineSessionError extends Error {
   }
 }
 
+// ─── Rematch request stored in Redis / memory ───────────────────────────────
+interface RematchRequest {
+  requesterId: number;
+  requesterName: string;
+  matchId: string;
+  /** ISO timestamp – used for TTL check in the in-memory fallback */
+  expiresAt: number;
+}
+
 export class OnlineSessionService {
   private readonly matchLocks = new Map<string, Promise<void>>();
   private readonly resolvedLock = Promise.resolve();
@@ -54,6 +63,10 @@ export class OnlineSessionService {
   private readonly dedupeTtlSec = Math.ceil(this.dedupeTtlMs / 1000);
   private readonly persistedSessions = new Set<string>();
   private readonly chatFilter: ChatFilter;
+
+  /** In-memory fallback when Redis is not available */
+  private readonly rematchRequests = new Map<string, RematchRequest>();
+  private readonly rematchTtlSec = 60;
 
   constructor(
       private readonly repository: OnlineSessionRepository,
@@ -357,6 +370,161 @@ export class OnlineSessionService {
     if (!active) return null;
     return { matchId: active.matchId, boardSize: active.size };
   }
+
+  // ─── Rematch ──────────────────────────────────────────────────────────────
+
+  /**
+   * Called by the player who wants a rematch.
+   * Stores the request and notifies the opponent.
+   */
+  async requestRematch(matchId: string, userId: number): Promise<void> {
+    const state = await this.getState(matchId);
+    if (!state) {
+      throw new OnlineSessionError('SESSION_NOT_FOUND', 'Session not found');
+    }
+
+    const requester = state.players.find((p) => p.userId === userId);
+    if (!requester) {
+      throw new OnlineSessionError('UNAUTHORIZED', 'User is not part of this session');
+    }
+
+    if (!this.isTerminal(state)) {
+      throw new OnlineSessionError('SESSION_TERMINAL', 'Session is not finished yet');
+    }
+
+    const opponent = state.players.find((p) => p.userId !== userId);
+    if (!opponent) return;
+
+    const request: RematchRequest = {
+      requesterId: userId,
+      requesterName: requester.username,
+      matchId,
+      expiresAt: Date.now() + this.rematchTtlSec * 1000,
+    };
+
+    await this.saveRematchRequest(matchId, request);
+
+    // Notify the opponent
+    this.deps.io?.to(`user:${opponent.userId}`).emit('rematch:requested', {
+      matchId,
+      requesterName: requester.username,
+    });
+  }
+
+  /**
+   * Called by the opponent who accepts the rematch.
+   * Creates a new session (same size/rules, players swap colours) and notifies both.
+   */
+  async acceptRematch(matchId: string, userId: number): Promise<string> {
+    const request = await this.readRematchRequest(matchId);
+    if (!request || request.expiresAt < Date.now()) {
+      throw new OnlineSessionError('SESSION_NOT_FOUND', 'Rematch request not found or expired');
+    }
+
+    const state = await this.getState(matchId);
+    if (!state) {
+      throw new OnlineSessionError('SESSION_NOT_FOUND', 'Original session not found');
+    }
+
+    // The acceptor must be the non-requester
+    if (request.requesterId === userId) {
+      throw new OnlineSessionError('UNAUTHORIZED', 'You cannot accept your own rematch request');
+    }
+    if (!state.players.some((p) => p.userId === userId)) {
+      throw new OnlineSessionError('UNAUTHORIZED', 'User is not part of this session');
+    }
+
+    await this.deleteRematchRequest(matchId);
+
+    // Build a fresh session: players swap B/R so the loser starts with B
+    const newMatchId = `online-${randomUUID()}`;
+    const [originalFirst, originalSecond] = state.players;
+
+    // Requester (who lost or simply asked) becomes second; acceptor becomes first
+    const playerA = { userId: userId, username: state.players.find((p) => p.userId === userId)!.username };
+    const playerB = { userId: request.requesterId, username: request.requesterName };
+
+    const newSession = await this.createSession(
+        newMatchId,
+        state.size,
+        [playerA, playerB],
+        'HUMAN',
+        state.rules,
+    );
+
+    // Notify both players with the new match id
+    const payload = {
+      newMatchId,
+      size: newSession.size,
+      rules: newSession.rules,
+      players: newSession.players,
+    };
+
+    this.deps.io?.to(`user:${request.requesterId}`).emit('rematch:ready', payload);
+    this.deps.io?.to(`user:${userId}`).emit('rematch:ready', payload);
+
+    // Suppress TS "unused variable" warning — keep ref for potential future use
+    void originalFirst;
+    void originalSecond;
+
+    return newMatchId;
+  }
+
+  /**
+   * Called by the opponent who declines the rematch.
+   * Cleans up the request and notifies the requester.
+   */
+  async declineRematch(matchId: string, userId: number): Promise<void> {
+    const request = await this.readRematchRequest(matchId);
+    if (!request) return; // already expired or never existed
+
+    const state = await this.getState(matchId);
+    if (state && !state.players.some((p) => p.userId === userId)) {
+      throw new OnlineSessionError('UNAUTHORIZED', 'User is not part of this session');
+    }
+
+    await this.deleteRematchRequest(matchId);
+
+    this.deps.io?.to(`user:${request.requesterId}`).emit('rematch:declined', { matchId });
+  }
+
+  // ─── Rematch storage helpers ───────────────────────────────────────────────
+
+  private rematchKey(matchId: string): string {
+    return `rematch:${matchId}`;
+  }
+
+  private async saveRematchRequest(matchId: string, request: RematchRequest): Promise<void> {
+    if (this.deps.redis) {
+      await this.deps.redis.set(this.rematchKey(matchId), JSON.stringify(request), { EX: this.rematchTtlSec });
+      return;
+    }
+    this.rematchRequests.set(matchId, request);
+  }
+
+  private async readRematchRequest(matchId: string): Promise<RematchRequest | null> {
+    if (this.deps.redis) {
+      const raw = await this.deps.redis.get(this.rematchKey(matchId));
+      if (!raw) return null;
+      return JSON.parse(raw) as RematchRequest;
+    }
+    const req = this.rematchRequests.get(matchId) ?? null;
+    if (req && req.expiresAt < Date.now()) {
+      this.rematchRequests.delete(matchId);
+      return null;
+    }
+    return req;
+  }
+
+  private async deleteRematchRequest(matchId: string): Promise<void> {
+    if (this.deps.redis) {
+      await this.deps.redis.del(this.rematchKey(matchId));
+      return;
+    }
+    this.rematchRequests.delete(matchId);
+  }
+
+  // ─── Internals (unchanged) ────────────────────────────────────────────────
 
   private async getState(matchId: string): Promise<OnlineSessionState | null> {
     if (this.deps.redis) {

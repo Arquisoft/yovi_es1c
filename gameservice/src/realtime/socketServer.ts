@@ -32,6 +32,10 @@ interface ChatMessagePayload {
     clientEventId?: string;
 }
 
+interface RematchPayload {
+    matchId: string;
+}
+
 interface SocketData {
     user?: AuthenticatedUser;
     activeMatchId?: string;
@@ -275,6 +279,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
                 );
             }),
         );
+
         socket.on(
             'pie:swap',
             safeAsync<PieSwapPayload | undefined>(socket, async (payload) => {
@@ -287,6 +292,7 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
                 );
             }),
         );
+
         socket.on(
             'turn:timeout',
             safeAsync<{ matchId: string; version: number } | undefined>(socket, async (payload) => {
@@ -321,6 +327,40 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
                 await sessionService.abandon(payload.matchId, user.userId);
             }),
         );
+
+        // ─── Rematch handlers ────────────────────────────────────────────────────
+
+        /** Player requests a rematch after the game ends */
+        socket.on(
+            'rematch:request',
+            safeAsync<RematchPayload | undefined>(socket, async (payload) => {
+                if (!payload) return;
+                await sessionService.requestRematch(payload.matchId, user.userId);
+            }),
+        );
+
+        /** Opponent accepts the rematch → creates a new session and notifies both */
+        socket.on(
+            'rematch:accept',
+            safeAsync<RematchPayload | undefined>(socket, async (payload) => {
+                if (!payload) return;
+                const newMatchId = await sessionService.acceptRematch(payload.matchId, user.userId);
+                // Join the new match room so this socket receives session:state updates
+                socket.join(newMatchId);
+                socket.data.activeMatchId = newMatchId;
+            }),
+        );
+
+        /** Opponent declines the rematch → requester is notified */
+        socket.on(
+            'rematch:decline',
+            safeAsync<RematchPayload | undefined>(socket, async (payload) => {
+                if (!payload) return;
+                await sessionService.declineRematch(payload.matchId, user.userId);
+            }),
+        );
+
+        // ─────────────────────────────────────────────────────────────────────────
 
         socket.on(
             'disconnect',

@@ -1,3 +1,4 @@
+import { useCallback, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Avatar,
@@ -13,7 +14,13 @@ import {
 import { Board } from './Board.tsx';
 import { useAuth } from '../../../auth';
 import { useGameController, type BotDifficulty } from '../../hooks/useGameController.ts';
-import { useOnlineSession } from '../../hooks/useOnlineSession';
+import {
+    useOnlineSession,
+    type RematchCallbacks,
+    type RematchRequestedPayload,
+    type RematchReadyPayload,
+    type RematchDeclinedPayload,
+} from '../../hooks/useOnlineSession';
 import { useChatSession } from '../../hooks/useChatSession';
 import type { MatchRulesDto, YenPositionDto } from '../../../../shared/contracts';
 import styles from '../css/GameUI.module.css';
@@ -21,8 +28,8 @@ import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
 import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
-import WinnerOverlay from './WinnerOverlay';
-import {useTranslation} from "react-i18next";
+import WinnerOverlay, { type RematchState } from './WinnerOverlay';
+import { useTranslation } from 'react-i18next';
 import type { GameMessage } from '../../hooks/useGameController';
 import { HelpButton } from '../../../../components/HelpButton';
 
@@ -59,58 +66,69 @@ function resolveGameMessage(
     t: (key: string, options?: Record<string, unknown>) => string
 ): string | null {
     if (!message) return null;
-
     switch (message.key) {
-        case 'clickACellToPlay':
-            return t('clickACellToPlay');
-
-        case 'botThinking':
-            return t('botThinking');
-
-        case 'errorCommunicatingWithBot':
-            return t('errorCommunicatingWithBot');
-
-        case 'onlineWaitingServer':
-            return t('onlineWaitingServer');
-
-        case 'invalidBotMove':
-            return t('invalidBotMove');
-
-        case 'winnerAnnouncement':
-            return t('winnerAnnouncement', {
-                label: message.params?.label,
-            });
-
-        default:
-            return null;
+        case 'clickACellToPlay':          return t('clickACellToPlay');
+        case 'botThinking':               return t('botThinking');
+        case 'errorCommunicatingWithBot': return t('errorCommunicatingWithBot');
+        case 'onlineWaitingServer':       return t('onlineWaitingServer');
+        case 'invalidBotMove':            return t('invalidBotMove');
+        case 'winnerAnnouncement':        return t('winnerAnnouncement', { label: message.params?.label });
+        default:                          return null;
     }
 }
 
 function NoConfigFallback({ onNavigate }: { readonly onNavigate: () => void }) {
-    const {t} = useTranslation();
-
+    const { t } = useTranslation();
     return (
         <Paper sx={{ p: 4, mt: 10, textAlign: 'center', maxWidth: 600, margin: '100px auto' }}>
-            <Typography variant="h5" color="primary" sx={{ mb: 2 }}>
-                {t('noConfigTitle')}
-            </Typography>
-            <Typography color="text.secondary" sx={{ mb: 2 }}>
-                {t('noConfigSubtitle')}
-            </Typography>
-            <Button variant="contained" onClick={onNavigate}>
-                {t('createMatch')}
-            </Button>
+            <Typography variant="h5" color="primary" sx={{ mb: 2 }}>{t('noConfigTitle')}</Typography>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>{t('noConfigSubtitle')}</Typography>
+            <Button variant="contained" onClick={onNavigate}>{t('createMatch')}</Button>
         </Paper>
     );
 }
 
 export default function GameUI() {
-    const {t} = useTranslation();
-
+    const { t } = useTranslation();
     const location = useLocation();
     const navigate = useNavigate();
     const { user } = useAuth();
     const config = location.state as GameConfig;
+
+    // ─── Rematch state ─────────────────────────────────────────────────────────
+    // Must be declared before any early return to satisfy Rules of Hooks.
+    const [rematchState, setRematchState] = useState<RematchState>('idle');
+    const [rematchRequesterName, setRematchRequesterName] = useState<string | undefined>(undefined);
+    const rematchHandled = useRef(false);
+
+    const rematchCallbacks: RematchCallbacks = {
+        onRequested: useCallback((payload: RematchRequestedPayload) => {
+            if (payload.matchId !== config?.matchId) return;
+            setRematchRequesterName(payload.requesterName);
+            setRematchState('incoming');
+        }, [config?.matchId]),
+
+        onReady: useCallback((payload: RematchReadyPayload) => {
+            if (rematchHandled.current) return;
+            rematchHandled.current = true;
+            navigate('/game', {
+                replace: true,
+                state: {
+                    matchId: payload.newMatchId,
+                    boardSize: payload.size,
+                    difficulty: config?.difficulty ?? 'easy',
+                    mode: 'ONLINE',
+                    rules: payload.rules,
+                },
+            });
+        }, [navigate, config?.difficulty]),
+
+        onDeclined: useCallback((payload: RematchDeclinedPayload) => {
+            if (payload.matchId !== config?.matchId) return;
+            setRematchState('idle');
+        }, [config?.matchId]),
+    };
+    // ──────────────────────────────────────────────────────────────────────────
 
     const localMode = config?.mode === 'ONLINE' ? 'LOCAL_2P' : config?.mode;
 
@@ -130,8 +148,12 @@ export default function GameUI() {
         playMove,
         applyPieSwapOnline,
         emitTurnTimeout,
+        requestRematch,
+        acceptRematch,
+        declineRematch,
     } = useOnlineSession(
         config?.mode === 'ONLINE' ? config.matchId : null,
+        rematchCallbacks,
     );
 
     const { messages, sendMessage } = useChatSession(
@@ -167,9 +189,8 @@ export default function GameUI() {
         };
 
     const { loading } = state;
-    const localGameOver = state.gameOver;
     const onlineGameOver = isOnline && Boolean(sessionState?.winner);
-    const gameOver = isOnline ? onlineGameOver : localGameOver;
+    const gameOver = isOnline ? onlineGameOver : state.gameOver;
 
     const errorMessage = isOnline
         ? (onlineError && !RECOVERABLE_ERROR_CODES.has(onlineError.code) ? onlineError.message : null)
@@ -189,28 +210,14 @@ export default function GameUI() {
 
     const winnerLabel = (() => {
         if (!gameOver) return null;
-
-        if (isOnline) {
-            return resolveWinnerLabel(displayState.winner, displayState.players, t);
-        }
-
+        if (isOnline) return resolveWinnerLabel(displayState.winner, displayState.players, t);
         const winnerIndex = displayState.turn === 0 ? 1 : 0;
-
-        const winnerName =
-            winnerIndex === 0
-                ? t('player1')
-                : (config.mode === 'BOT' ? 'Bot' : t('player2'));
-
-        return t('winnerAnnouncement', {
-            label: winnerName,
-        });
+        const winnerName = winnerIndex === 0 ? t('player1') : (config.mode === 'BOT' ? 'Bot' : t('player2'));
+        return t('winnerAnnouncement', { label: winnerName });
     })();
 
     const handleBoardClick = (row: number, col: number) => {
-        if (isOnline) {
-            void playMove(row, col);
-            return;
-        }
+        if (isOnline) { void playMove(row, col); return; }
         void actions.handleCellClick(row, col);
     };
 
@@ -218,29 +225,20 @@ export default function GameUI() {
     const stonesPlaced = displayState.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
 
     const canUsePieSwapLocal =
-        !isOnline
-        && config.mode === 'LOCAL_2P'
+        !isOnline && config.mode === 'LOCAL_2P'
         && displayState.rules?.pieRule?.enabled
-        && displayState.turn === 1
-        && stonesPlaced === 1
-        && !gameOver;
+        && displayState.turn === 1 && stonesPlaced === 1 && !gameOver;
 
     const canUsePieSwapOnline =
-        isOnline
-        && sessionState !== null
+        isOnline && sessionState !== null
         && displayState.rules?.pieRule?.enabled
-        && displayState.turn === 1
-        && stonesPlaced === 1
-        && !gameOver;
+        && displayState.turn === 1 && stonesPlaced === 1 && !gameOver;
 
     const canUsePieSwap = canUsePieSwapLocal || canUsePieSwapOnline;
 
     const handlePieSwap = () => {
-        if (canUsePieSwapOnline) {
-            applyPieSwapOnline();
-        } else {
-            actions.applyPieSwap();
-        }
+        if (canUsePieSwapOnline) { applyPieSwapOnline(); return; }
+        actions.applyPieSwap();
     };
 
     const gameMessageText = resolveGameMessage(state.message, t);
@@ -249,12 +247,7 @@ export default function GameUI() {
         <Box className={styles.container} sx={{ position: 'relative' }}>
             <HelpButton
                 titleKey="help.game.title"
-                contentKeys={[
-                    'help.game.objective',
-                    'help.game.turns',
-                    'help.game.pieRule',
-                    'help.game.honey',
-                ]}
+                contentKeys={['help.game.objective', 'help.game.turns', 'help.game.pieRule', 'help.game.honey']}
                 buttonSx={{ position: 'fixed', top: 74, right: 16, zIndex: 1400 }}
             />
             <Box className={styles.mainBox} sx={{
@@ -264,46 +257,34 @@ export default function GameUI() {
                 maxWidth: 1180,
                 minHeight: 'calc(100dvh - 140px)',
             }}>
+
+                {/* ── Sidebar ──────────────────────────────────────────────── */}
                 <Box className={styles.sidebar} sx={{ width: { xs: '100%', md: 300 } }}>
-                    <Typography variant="h5" className={styles.title}>
-                        {t('matchInfo')}
-                    </Typography>
+                    <Typography variant="h5" className={styles.title}>{t('matchInfo')}</Typography>
 
                     <Stack spacing={2} mt={2}>
                         <Card className={styles.cardStatic}>
                             <CardContent className={styles.cardContent}>
                                 <Avatar className={styles.avatarStatic} sx={{ bgcolor: avatarColor }} />
                                 <Box textAlign="center">
-                                    <Typography variant="subtitle1" color="primary">
-                                        {t('turn')}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        {currentTurnLabel}
-                                    </Typography>
+                                    <Typography variant="subtitle1" color="primary">{t('turn')}</Typography>
+                                    <Typography variant="body2" color="text.secondary">{currentTurnLabel}</Typography>
                                 </Box>
                             </CardContent>
                         </Card>
 
                         <Card className={styles.cardStatic}>
                             <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                <Typography variant="subtitle2" color="primary">
-                                    {t('mode')}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    {modeLabel[config.mode]}
-                                </Typography>
+                                <Typography variant="subtitle2" color="primary">{t('mode')}</Typography>
+                                <Typography variant="body2" color="text.secondary">{modeLabel[config.mode]}</Typography>
                             </CardContent>
                         </Card>
 
                         {config.mode === 'BOT' && (
                             <Card className={styles.cardStatic}>
                                 <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                    <Typography variant="subtitle2" color="primary">
-                                        {t('difficulty')}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        {difficultyLabels[config.difficulty]}
-                                    </Typography>
+                                    <Typography variant="subtitle2" color="primary">{t('difficulty')}</Typography>
+                                    <Typography variant="body2" color="text.secondary">{difficultyLabels[config.difficulty]}</Typography>
                                 </CardContent>
                             </Card>
                         )}
@@ -328,22 +309,17 @@ export default function GameUI() {
                             <>
                                 <Card className={styles.cardStatic}>
                                     <CardContent className={styles.cardContent}>
-                                        <Typography variant="subtitle2" color="primary">
-                                            {t('connection')}
-                                        </Typography>
+                                        <Typography variant="subtitle2" color="primary">{t('connection')}</Typography>
                                         <ConnectionBadge state={connectionStatus} />
                                     </CardContent>
                                 </Card>
 
                                 <Card className={styles.cardStatic}>
                                     <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                        <Box>
-                                            <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Tiempo de turno</Typography>
-                                            <TurnTimer
-                                                timerEndsAt={sessionState.timerEndsAt}
-                                                onExpire={emitTurnTimeout}
-                                            />
-                                        </Box>
+                                        <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
+                                            Tiempo de turno
+                                        </Typography>
+                                        <TurnTimer timerEndsAt={sessionState.timerEndsAt} onExpire={emitTurnTimeout} />
                                     </CardContent>
                                 </Card>
                             </>
@@ -351,18 +327,14 @@ export default function GameUI() {
                     </Stack>
 
                     <Stack spacing={2} sx={{ mt: 'auto', pt: 2 }}>
-                        <Button variant="outlined" onClick={() => navigate('/create-match')}>
-                            {t('back')}
-                        </Button>
-
+                        <Button variant="outlined" onClick={() => navigate('/create-match')}>{t('back')}</Button>
                         {!isOnline && (
-                            <Button variant="outlined" onClick={actions.newGame}>
-                                {t('restart')}
-                            </Button>
+                            <Button variant="outlined" onClick={actions.newGame}>{t('restart')}</Button>
                         )}
                     </Stack>
                 </Box>
 
+                {/* ── Board area ───────────────────────────────────────────── */}
                 <Box sx={{
                     flexGrow: 1,
                     display: 'flex',
@@ -371,18 +343,14 @@ export default function GameUI() {
                     justifyContent: 'center',
                     p: { xs: 2, md: 4 },
                 }}>
-                    <Typography variant="h3" className={styles.gameTitle} sx={{ mb: 2 }}>
-                        {t('title')}
-                    </Typography>
+                    <Typography variant="h3" className={styles.gameTitle} sx={{ mb: 2 }}>{t('title')}</Typography>
 
-                    {/* Error terminal o de juego: bloquea visualmente con color rojo */}
                     {errorMessage && (
                         <Paper sx={{ p: 2, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'error.main', color: 'error.main' }}>
                             {errorMessage}
                         </Paper>
                     )}
 
-                    {/* Aviso menor para errores recuperables (VERSION_CONFLICT, etc.) */}
                     {recoverableWarning && (
                         <Paper sx={{ p: 1.5, my: 1, width: { xs: '100%', md: '80%' }, textAlign: 'center', borderColor: 'warning.main', color: 'warning.main', border: '1px solid' }}>
                             <Typography variant="caption">{recoverableWarning}</Typography>
@@ -390,21 +358,17 @@ export default function GameUI() {
                     )}
 
                     {!isOnline && loading && (
-                        <Paper sx={{ p: 2, my: 1 }}>
-                            {gameMessageText}
-                        </Paper>
+                        <Paper sx={{ p: 2, my: 1 }}>{gameMessageText}</Paper>
                     )}
 
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flexGrow: 1,
-                            minHeight: 0,
-                            alignItems: 'center',
-                            width: '100%',
-                        }}
-                    >
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        flexGrow: 1,
+                        minHeight: 0,
+                        alignItems: 'center',
+                        width: '100%',
+                    }}>
                         <Paper className={styles.boardPanel} sx={{ mt: 3, p: { xs: 1, sm: 1.5, md: 2 }, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', maxWidth: '100%', overflow: 'visible' }}>
                             <Board
                                 layout={displayState.layout}
@@ -418,10 +382,20 @@ export default function GameUI() {
                         {gameOver && (
                             <WinnerOverlay
                                 winnerLabel={winnerLabel ?? 'Partida terminada'}
-                                onNewGame={() => {
-                                    actions.newGame();
-                                }}
+                                onNewGame={() => actions.newGame()}
                                 onNavigateHome={() => navigate('/create-match')}
+                                isOnline={isOnline}
+                                rematchState={rematchState}
+                                rematchRequesterName={rematchRequesterName}
+                                onRequestRematch={() => {
+                                    setRematchState('pending');
+                                    requestRematch(config.matchId);
+                                }}
+                                onAcceptRematch={() => acceptRematch(config.matchId)}
+                                onDeclineRematch={() => {
+                                    declineRematch(config.matchId);
+                                    setRematchState('idle');
+                                }}
                             />
                         )}
 
