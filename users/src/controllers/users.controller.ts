@@ -57,18 +57,22 @@ export class UsersController {
     }
 
     async getMyProfile(req: Request, res: Response): Promise<void> {
-        const userId = Number((req as any).userId);
+        const userId = Number(req.userId);
+        const username = req.username;
 
-        if (!userId) {
+        if (!userId || !username) {
             res.status(401).json({ error: 'Unauthorized' });
             return;
         }
 
-        const profile = await this.userRepository.getById(userId);
+        let profile = await this.userRepository.getById(userId);
 
         if (!profile) {
-            res.status(404).json({ error: 'Profile not found' });
-            return;
+            profile = await this.userRepository.createProfile(
+                userId,
+                username,
+                DEFAULT_AVATAR
+            );
         }
 
         res.json(profile);

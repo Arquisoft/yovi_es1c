@@ -4,5 +4,5 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     display_name TEXT,
     email TEXT,
     avatar TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -5,6 +5,9 @@ services:
     image: ghcr.io/arquisoft/yovi_es1c-users:${IMAGE_TAG:-latest}
     environment:
       - DB_DATA_DIR=/app/data
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_SERVICE_URL=http://auth:3001
+
     expose:
       - "3000"
     networks:
