@@ -9,7 +9,7 @@ export type Profile = {
   avatar: string | null
 }
 
-const PROFILE_STORAGE_KEY = 'mock_profile'
+/*const PROFILE_STORAGE_KEY = 'mock_profile'
 
 function getStoredMockProfile(): Profile | null {
   const raw = localStorage.getItem(PROFILE_STORAGE_KEY)
@@ -25,7 +25,7 @@ function getStoredMockProfile(): Profile | null {
 
 function saveStoredMockProfile(profile: Profile) {
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
-}
+}*/
 
 export async function getMyProfile(): Promise<Profile> {
   try {
@@ -44,8 +44,8 @@ export async function getMyProfile(): Promise<Profile> {
       email: data.email ?? '',
       avatar: data.avatar ?? null,
     }
-  } catch {
-    const authUserRaw = localStorage.getItem('auth_user')
+  } catch (err){
+    /*const authUserRaw = localStorage.getItem('auth_user')
     const authUser = authUserRaw ? JSON.parse(authUserRaw) as { id: number; username: string } : null
 
     const fallback =
@@ -59,7 +59,10 @@ export async function getMyProfile(): Promise<Profile> {
       }
 
     saveStoredMockProfile(fallback)
-    return fallback
+    return fallback*/
+
+    console.error('Backend error:', err)
+    throw err
   }
 }
 
@@ -90,8 +93,10 @@ export async function updateMyProfile(profile: Profile): Promise<Profile> {
       email: data.email ?? profile.email,
       avatar: data.avatar ?? profile.avatar,
     }
-  } catch {
-    saveStoredMockProfile(profile)
-    return profile
+  } catch (err){
+    /*saveStoredMockProfile(profile)
+    return profile*/
+    console.error('Backend error:', err)
+    throw err
   }
 }
