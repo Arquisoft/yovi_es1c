@@ -27,7 +27,7 @@ import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
-import { resolveCurrentTurnLabel } from './gameUIHelpers.ts';
+import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
 import WinnerOverlay, { type RematchState } from './WinnerOverlay';
 import { useTranslation } from 'react-i18next';
 import type { GameMessage } from '../../hooks/useGameController';
@@ -95,13 +95,17 @@ export default function GameUI() {
     const { user } = useAuth();
     const config = location.state as GameConfig;
 
+    // ─── Rematch state ─────────────────────────────────────────────────────────
+    // Must be declared before any early return to satisfy Rules of Hooks.
     const [rematchState, setRematchState] = useState<RematchState>('idle');
     const [rematchRequesterName, setRematchRequesterName] = useState<string | undefined>(undefined);
     const rematchHandled = useRef(false);
-
+    // Stable ref so the cleanup effect can always call the latest declineRematch
+    // without needing it as a dependency (which would cause infinite re-renders).
     const declineRematchRef = useRef<((matchId: string) => void) | null>(null);
     const rematchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Helper to clear the pending-rematch timeout.
     const clearRematchTimeout = useCallback(() => {
         if (rematchTimeoutRef.current !== null) {
             clearTimeout(rematchTimeoutRef.current);
@@ -109,6 +113,8 @@ export default function GameUI() {
         }
     }, []);
 
+    // Error 1 – requester leaves while pending: cancel so the opponent's
+    // "incoming" dialog disappears and the backend cleans the request.
     useEffect(() => {
         return () => {
             if (rematchState === 'pending' && config?.matchId) {
@@ -116,8 +122,11 @@ export default function GameUI() {
             }
             clearRematchTimeout();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Reset all rematch state when matchId changes (same-route navigation does
+    // NOT remount the component, so we reset manually).
     useEffect(() => {
         setRematchState('idle');
         setRematchRequesterName(undefined);
@@ -154,6 +163,7 @@ export default function GameUI() {
             setRematchState('idle');
         }, [config?.matchId, clearRematchTimeout]),
     };
+    // ──────────────────────────────────────────────────────────────────────────
 
     const localMode = config?.mode === 'ONLINE' ? 'LOCAL_2P' : config?.mode;
 
@@ -181,6 +191,8 @@ export default function GameUI() {
         rematchCallbacks,
     );
 
+    // Keep the ref in sync so the cleanup/timeout effects always have the latest
+    // declineRematch without needing it as an effect dependency.
     declineRematchRef.current = declineRematch;
 
     const { messages, sendMessage } = useChatSession(
@@ -237,14 +249,22 @@ export default function GameUI() {
 
     const winnerLabel = (() => {
         if (!gameOver) return null;
-        let winnerName: string;
-        if (isOnline) {
-            winnerName = displayState.players?.find((p) => p.symbol === displayState.winner)?.username
-                ?? t('opponent', 'Tu rival');
-        } else {
-            const winnerIndex = displayState.turn === 0 ? 1 : 0;
-            winnerName = winnerIndex === 0 ? t('player1') : (config.mode === 'BOT' ? 'Bot' : t('player2'));
+
+        // Online: show winner's username the same way for both players
+        if (isOnline) return resolveWinnerLabel(displayState.winner, displayState.players, t);
+
+        const winnerIndex = displayState.turn === 0 ? 1 : 0;
+        const botWon = config.mode === 'BOT' && winnerIndex === 1;
+
+        // Bot mode: different message depending on who won
+        if (config.mode === 'BOT') {
+            return botWon
+                ? t('botWins', 'Has perdido. El Bot gana.')
+                : t('userBeatsBot', '¡Felicidades, {{label}}! Has vencido al Bot.', { label: t('player1') });
         }
+
+        // Local 2P: keep the original message
+        const winnerName = winnerIndex === 0 ? t('player1') : t('player2');
         return t('winnerAnnouncement', { label: winnerName });
     })();
 
@@ -422,6 +442,8 @@ export default function GameUI() {
                                 onRequestRematch={() => {
                                     setRematchState('pending');
                                     requestRematch(config.matchId);
+                                    // Error 2 – opponent already left: auto-cancel after
+                                    // 30 s so the requester is not stuck waiting forever.
                                     clearRematchTimeout();
                                     rematchTimeoutRef.current = setTimeout(() => {
                                         declineRematchRef.current?.(config.matchId);
