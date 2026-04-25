@@ -12,6 +12,11 @@ export function createUsersRouter(controller: UsersController): Router {
     router.put('/profiles/:id', controller.updateProfile.bind(controller));
     router.get('/me', verifyJwtMiddleware, controller.getMyProfile.bind(controller));
     router.put('/me', verifyJwtMiddleware, controller.updateMyProfile.bind(controller));
+    router.get('/friends', verifyJwtMiddleware, controller.listMyFriends.bind(controller));
+    router.get('/friends/requests', verifyJwtMiddleware, controller.listMyFriendRequests.bind(controller));
+    router.post('/friends/requests', verifyJwtMiddleware, controller.sendFriendRequest.bind(controller));
+    router.post('/friends/requests/:requestId/accept', verifyJwtMiddleware, controller.acceptFriendRequest.bind(controller));
+    router.delete('/friends/requests/:requestId', verifyJwtMiddleware, controller.deleteFriendRequest.bind(controller));
 
     return router;
 }

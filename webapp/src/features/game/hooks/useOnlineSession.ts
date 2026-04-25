@@ -43,8 +43,8 @@ export interface OnlineSnapshotPayload {
   version: number;
   timerEndsAt: number;
   players: [
-    { userId: number; username: string; symbol: 'B' | 'R' },
-    { userId: number; username: string; symbol: 'B' | 'R' }
+{ userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' },
+{ userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' }
   ];
   winner?: 'B' | 'R' | null;
   connectionStatus?: ConnectionBadgeState;
@@ -73,8 +73,8 @@ interface SessionStateSocketPayload {
   version: number;
   timerEndsAt: number;
   players?: [
-    { userId: number; username: string; symbol: 'B' | 'R' },
-    { userId: number; username: string; symbol: 'B' | 'R' }
+    { userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' },
+    { userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' }
   ];
   winner?: 'B' | 'R' | null;
   connectionStatus?: ConnectionBadgeState;
@@ -252,8 +252,8 @@ export function useOnlineSession(matchId: string | null) {
                 version: payload.version,
                 timerEndsAt: payload.timerEndsAt,
                 players: payload.players ?? [
-                  { userId: 0, username: 'Player 1', symbol: 'B' },
-                  { userId: 0, username: 'Player 2', symbol: 'R' },
+                  { userId: 0, username: 'Player 1', avatar: null, symbol: 'B' },
+                  { userId: 0, username: 'Player 2', avatar: null, symbol: 'R' },
                 ],
                 winner: payload.winner ?? null,
                 connectionStatus: payload.connectionStatus ?? 'CONNECTED',

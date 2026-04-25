@@ -27,6 +27,7 @@ import { fetchWithAuth } from '../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../config/api.config';
 import { useTranslation } from 'react-i18next';
 import { ProfilePage } from '../features/profile'
+import { FriendsPage } from '../features/friends'
 
 
 function HomeScreen() {
@@ -139,6 +140,7 @@ function AppContent() {
           <Route path="/stats" element={<StatsUI />} />
           <Route path="/ranking" element={<LeaderboardUI />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/friends" element={<FriendsPage />} />
         </Routes>
       </div>
 

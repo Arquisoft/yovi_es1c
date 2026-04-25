@@ -74,6 +74,11 @@ export default function Nav() {
           <Link to="/ranking" className={linkClass('/ranking')}>Ranking</Link>
         </li>
         {user ? (
+          <li>
+            <Link to="/friends" className={linkClass('/friends')}>Amigos</Link>
+          </li>
+        ) : null}
+        {user ? (
           <>
             <li>
               <Link

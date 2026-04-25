@@ -432,6 +432,7 @@ export default function GameUI() {
                                 localUserId={user?.id ?? null}
                                 messages={messages}
                                 sendMessage={sendMessage}
+                                players={displayState.players}
                             />
                         )}
                     </Box>

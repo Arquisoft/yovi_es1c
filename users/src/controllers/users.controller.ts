@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { UsersService } from '../services/users.service.js';
 import { UserRepository } from '../repositories/users.repository.js';
 import { ALLOWED_AVATARS, DEFAULT_AVATAR } from '../config/avatar-options.js';
+import { HttpError } from '../errors/http-error.js';
 
 export class UsersController {
     constructor(
@@ -75,7 +76,13 @@ export class UsersController {
             );
         }
 
-        res.json(profile);
+        res.json({
+            id: profile.user_id,
+            username: profile.username,
+            displayName: profile.display_name,
+            email: profile.email,
+            avatar: profile.avatar,
+        });
     }
 
     async updateMyProfile(req: Request, res: Response): Promise<void> {
@@ -131,6 +138,136 @@ export class UsersController {
         res.json(updated);
     }
 
+    async listMyFriends(req: Request, res: Response): Promise<void> {
+        const userId = Number(req.userId);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const friends = await this.userRepository.listFriends(userId);
+        res.json(
+            friends.map(friend => ({
+                id: friend.user_id,
+                username: friend.username,
+                displayName: friend.display_name,
+                avatar: friend.avatar,
+                friendsSince: friend.friendship_created_at,
+            }))
+        );
+    }
+
+    async listMyFriendRequests(req: Request, res: Response): Promise<void> {
+        const userId = Number(req.userId);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const requests = await this.userRepository.listPendingFriendRequests(userId);
+        res.json(
+            requests.map(request => ({
+                id: request.id,
+                status: request.status,
+                createdAt: request.created_at,
+                direction: request.direction,
+                user: {
+                    id: request.user.user_id,
+                    username: request.user.username,
+                    displayName: request.user.display_name,
+                    avatar: request.user.avatar,
+                },
+            }))
+        );
+    }
+
+    async sendFriendRequest(req: Request, res: Response): Promise<void> {
+        const userId = Number(req.userId);
+        const recipientUsername = String(req.body?.username ?? '');
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        try {
+            const request = await this.userRepository.createFriendRequest(userId, recipientUsername);
+
+            res.status(201).json({
+                id: request.id,
+                status: request.status,
+                createdAt: request.created_at,
+                direction: request.direction,
+                user: {
+                    id: request.user.user_id,
+                    username: request.user.username,
+                    displayName: request.user.display_name,
+                    avatar: request.user.avatar,
+                },
+            });
+        } catch (error) {
+            this.handleHttpError(res, error);
+        }
+    }
+
+    async acceptFriendRequest(req: Request, res: Response): Promise<void> {
+        const userId = Number(req.userId);
+        const requestId = Number(req.params['requestId']);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        if (!requestId) {
+            res.status(400).json({ error: 'Invalid request id' });
+            return;
+        }
+
+        try {
+            const request = await this.userRepository.acceptFriendRequest(requestId, userId);
+
+            res.json({
+                id: request.id,
+                status: request.status,
+                createdAt: request.created_at,
+                direction: request.direction,
+                user: {
+                    id: request.user.user_id,
+                    username: request.user.username,
+                    displayName: request.user.display_name,
+                    avatar: request.user.avatar,
+                },
+            });
+        } catch (error) {
+            this.handleHttpError(res, error);
+        }
+    }
+
+    async deleteFriendRequest(req: Request, res: Response): Promise<void> {
+        const userId = Number(req.userId);
+        const requestId = Number(req.params['requestId']);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        if (!requestId) {
+            res.status(400).json({ error: 'Invalid request id' });
+            return;
+        }
+
+        try {
+            await this.userRepository.deleteFriendRequest(requestId, userId);
+            res.status(204).send();
+        } catch (error) {
+            this.handleHttpError(res, error);
+        }
+    }
+
     recordCreatedUser(): void {
         this.usersService.onUserCreated();
     }
@@ -141,5 +278,15 @@ export class UsersController {
 
     recordDeletedUser(): void {
         this.usersService.onUserDeleted();
+    }
+
+    private handleHttpError(res: Response, error: unknown): void {
+        if (error instanceof HttpError) {
+            res.status(error.statusCode).json({ error: error.error, message: error.message });
+            return;
+        }
+
+        console.error(error);
+        res.status(500).json({ error: 'internal_server_error', message: 'Internal server error' });
     }
 }

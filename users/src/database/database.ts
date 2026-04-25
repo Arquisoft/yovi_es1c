@@ -33,9 +33,7 @@ export async function initDB(): Promise<Database> {
   }
 
   const schema = fs.readFileSync(schemaPath, "utf-8");
-  if (!dbAlreadyExists) {
-    await db.exec(schema);
-  }
+  await db.exec(schema);
 
   console.log(`Database initialized at ${dbPath}`);
   return db;

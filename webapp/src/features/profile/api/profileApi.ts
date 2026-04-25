@@ -42,11 +42,11 @@ export async function getMyProfile(): Promise<Profile> {
     return {
       id: data.user_id ?? data.id ?? 0,
       username: data.username ?? '',
-      displayName: data.displayName ?? data.username ?? '',
+      displayName: data.displayName ?? data.display_name ?? data.username ?? '',
       email: data.email ?? '',
       avatar: data.avatar ?? DEFAULT_AVATAR,
     }
-  } catch (err){
+  } catch (err) {
     /*const authUserRaw = localStorage.getItem('auth_user')
     const authUser = authUserRaw ? JSON.parse(authUserRaw) as { id: number; username: string } : null
 
@@ -95,7 +95,7 @@ export async function updateMyProfile(profile: Profile): Promise<Profile> {
       email: data.email ?? profile.email,
       avatar: data.avatar ?? profile.avatar ?? DEFAULT_AVATAR,
     }
-  } catch (err){
+  } catch (err) {
     /*saveStoredMockProfile(profile)
     return profile*/
     console.error('Backend error:', err)
