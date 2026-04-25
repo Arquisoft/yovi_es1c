@@ -518,7 +518,19 @@ export class OnlineSessionService {
 
         await this.deleteRematchRequest(matchId);
 
-        this.deps.io?.to(`user:${request.requesterId}`).emit('rematch:declined', { matchId });
+        // Notify the OTHER party so their UI updates immediately:
+        //   - Requester cancels (e.g. navigates away)  → notify the opponent so
+        //     the "incoming rematch" dialog disappears and they cannot accept a
+        //     ghost request that would create an unplayable session.
+        //   - Opponent declines                         → notify the requester so
+        //     they stop waiting.
+        const notifyUserId = request.requesterId === userId
+            ? state?.players.find((p) => p.userId !== userId)?.userId ?? null
+            : request.requesterId;
+
+        if (notifyUserId !== null) {
+            this.deps.io?.to(`user:${notifyUserId}`).emit('rematch:declined', { matchId });
+        }
     }
 
     // ─── Rematch storage helpers ──────────────────────────────────────────────
