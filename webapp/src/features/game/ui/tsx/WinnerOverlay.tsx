@@ -7,7 +7,6 @@ interface Props {
     winnerLabel: string;
     onNewGame: () => void;
     onNavigateHome: () => void;
-    // Rematch (online only)
     isOnline?: boolean;
     rematchState?: RematchState;
     rematchRequesterName?: string;

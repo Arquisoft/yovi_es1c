@@ -120,7 +120,7 @@ describe('GameUI Component', () => {
         vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
             state: {
                 ...mockState,
-                message: { key: "clickACellToPlay" }, // ✅ FIX IMPORTANTE
+                message: { key: "clickACellToPlay" },
             },
             actions: mockActions,
         });
@@ -324,7 +324,6 @@ describe('GameUI Component', () => {
             </MemoryRouter>,
             { withRouter: false },
         );
-        // El componente NoConfigFallback renderiza un botón de navegación
         expect(screen.getByRole('button')).toBeInTheDocument();
         expect(screen.getByText(/No se encontró la configuración de la partida/i)).toBeInTheDocument();
     });
@@ -337,7 +336,6 @@ describe('GameUI Component', () => {
             { withRouter: false },
         );
         fireEvent.click(screen.getByRole('button'));
-        // navega hacia atrás / a /create-match
         expect(screen.queryByText(/No se encontró/i)).not.toBeInTheDocument();
     });
 
@@ -574,13 +572,10 @@ describe('GameUI Component', () => {
             vi.mocked(useOnlineSession).mockReturnValue(onlineSession('VERSION_CONFLICT', 'Version mismatch') as any);
             renderWithConfig(onlineConfig);
 
-            // El aviso recuperable sí aparece (como caption en el Paper warning)
             expect(screen.getByText('Version mismatch')).toBeInTheDocument();
 
-            // Pero NO aparece como error principal bloqueante (Paper con color error.main)
-            // Solo hay un elemento con ese texto, y es el Paper de warning (border warning)
             const warningEl = screen.getByText('Version mismatch');
-            expect(warningEl.tagName).toBe('SPAN'); // MUI Typography variant="caption"
+            expect(warningEl.tagName).toBe('SPAN');
         });
 
         it('NOT_YOUR_TURN: muestra aviso menor y NO navega fuera', async () => {
@@ -610,7 +605,6 @@ describe('GameUI Component', () => {
             renderWithConfig(onlineConfig);
 
             expect(screen.getByText('Movimiento inválido')).toBeInTheDocument();
-            // No aparece con variant="caption" (no es un aviso menor)
             expect(screen.getByText('Movimiento inválido').tagName).not.toBe('SPAN');
         });
 
@@ -618,7 +612,6 @@ describe('GameUI Component', () => {
             vi.mocked(useOnlineSession).mockReturnValue(onlineSession(null) as any);
             renderWithConfig(onlineConfig);
 
-            // No hay mensaje de error de ningún tipo
             expect(screen.queryByText('err msg')).not.toBeInTheDocument();
         });
 
