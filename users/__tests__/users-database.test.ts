@@ -46,6 +46,42 @@ describe('initDB integration', () => {
     await restarted.close();
   });
 
+  it('applies newly added schema objects to an existing database file', async () => {
+    const dataDir = path.join(tmpRoot, 'migration');
+    vi.stubEnv('DB_DATA_DIR', dataDir);
+    fs.mkdirSync(dataDir, { recursive: true });
+
+    const dbFile = path.join(dataDir, 'users.db');
+    const sqlite3 = await import('sqlite3');
+    const { open } = await import('sqlite');
+
+    const legacyDb = await open({
+      filename: dbFile,
+      driver: sqlite3.default.Database,
+    });
+
+    await legacyDb.exec(`
+      CREATE TABLE user_profiles (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        display_name TEXT,
+        email TEXT,
+        avatar TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await legacyDb.close();
+
+    const { initDB } = await import('../src/database/database.js');
+    const migratedDb = await initDB();
+    const table = await migratedDb.get(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'friend_requests'",
+    );
+
+    expect(table).toEqual({ name: 'friend_requests' });
+    await migratedDb.close();
+  });
+
   it('fails with a clear error when data directory is not writable', async () => {
     const dataDir = path.join(tmpRoot, 'readonly');
     vi.stubEnv('DB_DATA_DIR', dataDir);
