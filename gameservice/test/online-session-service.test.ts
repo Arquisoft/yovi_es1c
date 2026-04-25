@@ -788,7 +788,7 @@ describe('OnlineSessionService', () => {
     expect(newMatchId).toContain('online-');
 
     const snapshot = await service.getSnapshot(newMatchId);
-    expect(snapshot?.players[0].userId).toBe(2); // acceptor ahora es B
+    expect(snapshot?.players[0].userId).toBe(2);
     expect(snapshot?.players[1].userId).toBe(1);
 
     expect(io.to).toHaveBeenCalledWith('user:1');

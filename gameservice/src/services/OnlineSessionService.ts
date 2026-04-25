@@ -58,12 +58,10 @@ export class OnlineSessionError extends Error {
     }
 }
 
-// ─── Rematch request stored in Redis / memory ────────────────────────────────
 interface RematchRequest {
     requesterId: number;
     requesterName: string;
     matchId: string;
-    /** ISO timestamp – used for TTL check in the in-memory fallback */
     expiresAt: number;
 }
 
@@ -413,8 +411,6 @@ export class OnlineSessionService {
         return { matchId: active.matchId, boardSize: active.size };
     }
 
-    // ─── Rematch ──────────────────────────────────────────────────────────────
-
     /**
      * Called by the player who wants a rematch.
      * Stores the request and notifies the opponent.
@@ -533,8 +529,6 @@ export class OnlineSessionService {
         }
     }
 
-    // ─── Rematch storage helpers ──────────────────────────────────────────────
-
     private rematchKey(matchId: string): string {
         return `rematch:${matchId}`;
     }
@@ -568,8 +562,6 @@ export class OnlineSessionService {
         }
         this.rematchRequests.delete(matchId);
     }
-
-    // ─── Session maintenance ──────────────────────────────────────────────────
 
     async sweepExpiredSessions(now = Date.now()): Promise<number> {
         const sessions = await this.listKnownSessions();
@@ -621,8 +613,6 @@ export class OnlineSessionService {
         clearInterval(this.maintenanceTimer);
         this.maintenanceTimer = null;
     }
-
-    // ─── Internals ────────────────────────────────────────────────────────────
 
     private async getState(matchId: string): Promise<OnlineSessionState | null> {
         if (this.deps.redis) {
