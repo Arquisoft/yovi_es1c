@@ -273,7 +273,7 @@ export default function GameUI() {
         void actions.handleCellClick(row, col);
     };
 
-    const avatarColor = displayState.turn === 0 ? '#39ff14' : '#8cff68';
+    const avatarColor = displayState.turn === 0 ? '#03f303': '#dfff00';
     const stonesPlaced = displayState.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
 
     const canUsePieSwapLocal =
