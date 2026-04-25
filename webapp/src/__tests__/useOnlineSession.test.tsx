@@ -430,3 +430,107 @@ describe('useOnlineSession', () => {
     });
   });
 });
+
+describe('rematch socket events', () => {
+  it('calls onRequested callback when rematch:requested matches matchId', async () => {
+    const onRequested = vi.fn();
+    renderHook(() => useOnlineSession('m1', { onRequested }));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    await act(async () => {
+      handlers.get('rematch:requested')?.({ matchId: 'm1', requesterName: 'Alice' });
+    });
+
+    expect(onRequested).toHaveBeenCalledWith({ matchId: 'm1', requesterName: 'Alice' });
+  });
+
+  it('ignores rematch:requested from a different matchId', async () => {
+    const onRequested = vi.fn();
+    renderHook(() => useOnlineSession('m1', { onRequested }));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    await act(async () => {
+      handlers.get('rematch:requested')?.({ matchId: 'm2', requesterName: 'Alice' });
+    });
+
+    expect(onRequested).not.toHaveBeenCalled();
+  });
+
+  it('calls onReady callback when rematch:ready fires (no matchId filter)', async () => {
+    const onReady = vi.fn();
+    renderHook(() => useOnlineSession('m1', { onReady }));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    const payload = { newMatchId: 'new-m1', size: 8, rules: {}, players: [] };
+    await act(async () => {
+      handlers.get('rematch:ready')?.(payload);
+    });
+
+    expect(onReady).toHaveBeenCalledWith(payload);
+  });
+
+  it('calls onDeclined callback when rematch:declined matches matchId', async () => {
+    const onDeclined = vi.fn();
+    renderHook(() => useOnlineSession('m1', { onDeclined }));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    await act(async () => {
+      handlers.get('rematch:declined')?.({ matchId: 'm1' });
+    });
+
+    expect(onDeclined).toHaveBeenCalledWith({ matchId: 'm1' });
+  });
+
+  it('ignores rematch:declined from a different matchId', async () => {
+    const onDeclined = vi.fn();
+    renderHook(() => useOnlineSession('m1', { onDeclined }));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    await act(async () => {
+      handlers.get('rematch:declined')?.({ matchId: 'm2' });
+    });
+
+    expect(onDeclined).not.toHaveBeenCalled();
+  });
+
+  it('does not crash when rematch callbacks are not provided', async () => {
+    renderHook(() => useOnlineSession('m1'));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    await act(async () => {
+      handlers.get('rematch:requested')?.({ matchId: 'm1', requesterName: 'Alice' });
+      handlers.get('rematch:ready')?.({});
+      handlers.get('rematch:declined')?.({ matchId: 'm1' });
+    });
+  });
+});
+
+
+describe('rematch actions', () => {
+  it('requestRematch emits rematch:request with matchId', async () => {
+    const { result } = renderHook(() => useOnlineSession('m1'));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    act(() => { result.current.requestRematch('m1'); });
+
+    expect(socketMock.emit).toHaveBeenCalledWith('rematch:request', { matchId: 'm1' });
+  });
+
+  it('acceptRematch emits rematch:accept with matchId', async () => {
+    const { result } = renderHook(() => useOnlineSession('m1'));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    act(() => { result.current.acceptRematch('m1'); });
+
+    expect(socketMock.emit).toHaveBeenCalledWith('rematch:accept', { matchId: 'm1' });
+  });
+
+  it('declineRematch emits rematch:decline with matchId', async () => {
+    const { result } = renderHook(() => useOnlineSession('m1'));
+    await waitFor(() => expect(socketMock.on).toHaveBeenCalled());
+
+    act(() => { result.current.declineRematch('m1'); });
+
+    expect(socketMock.emit).toHaveBeenCalledWith('rematch:decline', { matchId: 'm1' });
+  });
+});
