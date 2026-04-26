@@ -143,7 +143,7 @@ describe('Game match flow integration tests', () => {
     });
 
     it('should handle matches with different difficulties', async () => {
-      const difficulties = ['easy', 'medium', 'hard'];
+      const difficulties = ['easy', 'medium', 'hard', 'impossible'];
 
       for (const difficulty of difficulties) {
         vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);
@@ -287,7 +287,7 @@ describe('Game match flow integration tests', () => {
           .post('/api/game/matches')
           .send({
             boardSize: 8,
-            difficulty: 'impossible',
+            difficulty: 'extreme',
           });
 
       expect(response.status).toBe(400);

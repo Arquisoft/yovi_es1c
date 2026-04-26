@@ -201,7 +201,7 @@ describe("useGameController", () => {
         expect(result.current.state.gameState.turn).toBe(0);
     });
 
-    it("falls back from expert to hard when expert returns 5xx", async () => {
+    it("falls back from easy to easy_fast when easy returns 5xx", async () => {
         fetchMock
             .mockResolvedValueOnce(new Response("gamey unavailable", { status: 503 }))
             .mockResolvedValueOnce(
@@ -211,7 +211,7 @@ describe("useGameController", () => {
                 })
             );
 
-        const { result } = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
+        const { result } = renderHook(() => useGameController(8, "BOT", undefined, undefined, "easy"));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -219,8 +219,8 @@ describe("useGameController", () => {
 
         await waitFor(() => expect(result.current.state.loading).toBe(false));
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/choose/expert");
-        expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/choose/expert_fast");
+        expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/choose/easy");
+        expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/choose/easy_fast");
     });
 
     it("returns timeout message when gamey call aborts", async () => {
@@ -228,7 +228,7 @@ describe("useGameController", () => {
         timeoutError.name = "AbortError";
         fetchMock.mockRejectedValue(timeoutError);
 
-        const { result } = renderHook(() => useGameController(8, "BOT", undefined, undefined, "expert"));
+        const { result } = renderHook(() => useGameController(8, "BOT", undefined, undefined, "easy"));
 
         await act(async () => {
             await result.current.actions.handleCellClick(0, 0);
@@ -661,7 +661,7 @@ describe("useGameController", () => {
         // El controlador no expone window.alert; la victoria se refleja solo en el estado.
     });
 
-    it("uses expert difficulty when selected", async () => {
+    it("uses impossible difficulty when selected", async () => {
         fetchMock.mockResolvedValueOnce(
             new Response(JSON.stringify({ coords: { x: 0, y: 0, z: 0 } }), {
                 status: 200,
@@ -670,7 +670,7 @@ describe("useGameController", () => {
         );
 
         const { result } = renderHook(() =>
-            useGameController(8, "BOT", undefined, undefined, "expert")
+            useGameController(8, "BOT", undefined, undefined, "impossible")
         );
 
         await act(async () => {
@@ -682,7 +682,7 @@ describe("useGameController", () => {
         });
 
         const [url] = fetchMock.mock.calls[0];
-        expect(String(url)).toContain("/v1/ybot/choose/expert");
+        expect(String(url)).toContain("/v1/ybot/choose/impossible");
     });
 
     it("online mode shows waiting message and skips bot fetch", async () => {

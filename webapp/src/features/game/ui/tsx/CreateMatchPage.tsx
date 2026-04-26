@@ -255,7 +255,7 @@ export default function CreateMatchPage() {
                                 <MenuItem value="easy">{t('easy')}</MenuItem>
                                 <MenuItem value="medium">{t('medium')}</MenuItem>
                                 <MenuItem value="hard">{t('difficult')}</MenuItem>
-                                <MenuItem value="expert">{t('imposible')}</MenuItem>
+                                <MenuItem value="impossible">{t('imposible')}</MenuItem>
                             </Select>
                         </FormControl>
                     )}

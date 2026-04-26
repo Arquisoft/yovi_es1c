@@ -85,7 +85,7 @@ describe('GameController integration tests', () => {
           .post('/api/game/matches')
           .send({
             boardSize: 8,
-            difficulty: 'impossible',
+            difficulty: 'extreme',
           });
 
       expect(response.status).toBe(400);
@@ -93,7 +93,7 @@ describe('GameController integration tests', () => {
     });
 
     it('should accept all valid difficulty levels', async () => {
-      const difficulties = ['easy', 'medium', 'hard'];
+      const difficulties = ['easy', 'medium', 'hard', 'impossible'];
 
       for (const difficulty of difficulties) {
         vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);

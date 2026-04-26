@@ -46,7 +46,7 @@ const difficultyLabelKeys: Record<BotDifficulty, string> = {
     easy: 'easy',
     medium: 'medium',
     hard: 'difficult',
-    expert: 'imposible',
+    impossible: 'imposible',
 };
 
 const modeLabelKeys: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {

@@ -56,11 +56,13 @@ The default server state registers aliases:
 
 | Alias | Bot |
 |---|---|
-| `easy` | Random bot. |
-| `medium` | Balanced minimax depth 2 with controlled variety. |
-| `hard` | Connectivity minimax depth 4. |
-| `expert_fast` | Neural MCTS with configurable fast simulation count. |
-| `expert` | Neural MCTS with configurable simulation count. |
+| `easy` | Neural MCTS with configurable simulation count. |
+| `easy_fast` | Neural MCTS with configurable fast simulation count. |
+| `medium` | Minimax using the opposing-set heuristic at depth 3. |
+| `hard` | Minimax using the connectivity heuristic at depth 4. |
+| `impossible` | Monte Carlo bot. |
+| `expert_fast` | Deprecated compatibility alias for `easy_fast`. |
+| `expert` | Deprecated compatibility alias for `easy`. |
 
 The neural bots require `models/yovi_model.onnx`. The repository currently includes the trained `.pt`, `.onnx` and `.onnx.data` model artifacts.
 
@@ -69,12 +71,12 @@ The neural bots require `models/yovi_model.onnx`. The repository currently inclu
 | Variable | Default in Compose | Description |
 |---|---|---|
 | `GAMEY_RAYON_THREADS` | `4` | Rayon worker threads for bot search. |
-| `GAMEY_EXPERT_FAST_SIMULATIONS` | `200` | Simulations for `expert_fast`. |
-| `GAMEY_EXPERT_FAST_EARLY_STOP_RATIO` | `0.68` | Early-stop visit ratio for `expert_fast`. |
-| `GAMEY_EXPERT_FAST_EARLY_STOP_MIN_VISITS` | `48` | Minimum visits before early stop for `expert_fast`. |
-| `GAMEY_EXPERT_SIMULATIONS` | `256` | Simulations for `expert`. |
-| `GAMEY_EXPERT_EARLY_STOP_RATIO` | `0.62` | Early-stop visit ratio for `expert`. |
-| `GAMEY_EXPERT_EARLY_STOP_MIN_VISITS` | `96` | Minimum visits before early stop for `expert`. |
+| `GAMEY_EXPERT_FAST_SIMULATIONS` | `200` | Simulations for `easy_fast` (legacy env name). |
+| `GAMEY_EXPERT_FAST_EARLY_STOP_RATIO` | `0.68` | Early-stop visit ratio for `easy_fast` (legacy env name). |
+| `GAMEY_EXPERT_FAST_EARLY_STOP_MIN_VISITS` | `48` | Minimum visits before early stop for `easy_fast` (legacy env name). |
+| `GAMEY_EXPERT_SIMULATIONS` | `256` | Simulations for `easy` (legacy env name). |
+| `GAMEY_EXPERT_EARLY_STOP_RATIO` | `0.62` | Early-stop visit ratio for `easy` (legacy env name). |
+| `GAMEY_EXPERT_EARLY_STOP_MIN_VISITS` | `96` | Minimum visits before early stop for `easy` (legacy env name). |
 
 ## Build and Test
 

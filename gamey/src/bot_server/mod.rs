@@ -112,9 +112,14 @@ pub fn create_default_state() -> AppState {
     }
 
     let mut aliases = HashMap::new();
-    aliases.insert("easy".to_string(), "random".to_string());
+    aliases.insert("easy".to_string(), runtime_config.expert.bot_id());
+    aliases.insert("easy_fast".to_string(), runtime_config.expert_fast.bot_id());
     aliases.insert("medium".to_string(), "minimax_opposing_set_d3".to_string());
-    aliases.insert("hard".to_string(), "montecarlo".to_string());
+    aliases.insert("hard".to_string(), "minimax_connectivity_d4".to_string());
+    aliases.insert("impossible".to_string(), "montecarlo".to_string());
+
+    // Backwards-compatible aliases: keep old IDs working for direct API users,
+    // but the public webapp contract now uses easy/easy_fast/impossible.
     aliases.insert("expert".to_string(), runtime_config.expert.bot_id());
     aliases.insert("expert_fast".to_string(), runtime_config.expert_fast.bot_id());
 
@@ -493,11 +498,11 @@ mod tests {
     }
 
     #[test]
-    fn test_default_state_exposes_expert_fast_alias() {
+    fn test_default_state_exposes_easy_fast_alias() {
         let _guard = ENV_GUARD.lock().unwrap();
         clear_gamey_env();
         let state = create_default_state();
-        let resolved = state.resolve_bot_id("expert_fast");
+        let resolved = state.resolve_bot_id("easy_fast");
         assert_eq!(resolved, "neural_mcts_s200");
         assert!(state.bots().find(resolved).is_some());
     }
@@ -526,6 +531,8 @@ mod tests {
 
         let state = create_default_state();
 
+        assert_eq!(state.resolve_bot_id("easy_fast"), "neural_mcts_s160");
+        assert_eq!(state.resolve_bot_id("easy"), "neural_mcts_s320");
         assert_eq!(state.resolve_bot_id("expert_fast"), "neural_mcts_s160");
         assert_eq!(state.resolve_bot_id("expert"), "neural_mcts_s320");
         assert!(state.bots().find("neural_mcts_s160").is_some());
@@ -538,6 +545,27 @@ mod tests {
             std::env::remove_var("GAMEY_EXPERT_FAST_EARLY_STOP_MIN_VISITS");
             std::env::remove_var("GAMEY_EXPERT_EARLY_STOP_RATIO");
             std::env::remove_var("GAMEY_EXPERT_EARLY_STOP_MIN_VISITS");
+        }
+    }
+
+    #[test]
+    fn test_default_state_maps_public_aliases_to_requested_bot_families() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        clear_gamey_env();
+        let state = create_default_state();
+
+        assert!(state.resolve_bot_id("easy").starts_with("neural_mcts_s"));
+        assert!(state.resolve_bot_id("easy_fast").starts_with("neural_mcts_s"));
+        assert_eq!(state.resolve_bot_id("medium"), "minimax_opposing_set_d3");
+        assert_eq!(state.resolve_bot_id("hard"), "minimax_connectivity_d4");
+        assert_eq!(state.resolve_bot_id("impossible"), "montecarlo");
+
+        for alias in ["easy", "easy_fast", "medium", "hard", "impossible"] {
+            let resolved = state.resolve_bot_id(alias);
+            assert!(
+                state.bots().find(resolved).is_some(),
+                "missing bot for alias {alias} -> {resolved}"
+            );
         }
     }
 

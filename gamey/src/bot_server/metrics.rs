@@ -102,7 +102,7 @@ mod tests {
     fn observe_bot_move_duration_records_endpoint_and_bot_labels() {
         let start = start_inference_timer();
         std::thread::sleep(Duration::from_millis(2));
-        observe_bot_move_duration("choose", "expert_fast", start);
+        observe_bot_move_duration("choose", "easy_fast", start);
 
         let families = prometheus::gather();
         let found = families

@@ -605,7 +605,7 @@ components:
           example: 11
         difficulty:
           type: string
-          enum: [easy, medium, hard, expert]
+          enum: [easy, medium, hard, impossible]
           example: medium
         mode:
           type: string

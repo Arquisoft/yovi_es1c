@@ -32,7 +32,7 @@ describe('Game validation schemas', () => {
         });
 
         it('should accept all difficulty levels in lowercase', () => {
-            const difficulties = ['easy', 'medium', 'hard'];
+            const difficulties = ['easy', 'medium', 'hard', 'impossible'];
 
             for (const difficulty of difficulties) {
                 const result = validateCreateMatch({
