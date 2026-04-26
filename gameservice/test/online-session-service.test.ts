@@ -977,4 +977,60 @@ describe('OnlineSessionService', () => {
       message: 'User is not part of this session',
     });
   });
+  it('persists online result when a normal move finishes the session', async () => {
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+
+    const matchService = {
+      createMatch: vi.fn()
+          .mockResolvedValueOnce(101)
+          .mockResolvedValueOnce(102),
+      finishMatch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+        matchService as any,
+    );
+
+    await service.createSession(
+        'm-winning-move',
+        3,
+        [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+        'HUMAN',
+    );
+
+    await service.playMove('m-winning-move', 1, 0, 0, 0);
+    await service.playMove('m-winning-move', 2, 1, 1, 1);
+    await service.playMove('m-winning-move', 1, 1, 0, 2);
+    await service.playMove('m-winning-move', 2, 2, 2, 3);
+
+    const finalState = await service.playMove('m-winning-move', 1, 2, 0, 4);
+
+    expect(finalState.winner).toBe('B');
+    expect(finalState.status).toBe('finished');
+    expect(finalState.closeReason).toBe('winner');
+
+    expect(matchService.createMatch).toHaveBeenCalledTimes(2);
+    expect(matchService.createMatch).toHaveBeenNthCalledWith(1, 1, 3, 'medium', 'ONLINE');
+    expect(matchService.createMatch).toHaveBeenNthCalledWith(2, 2, 3, 'medium', 'ONLINE');
+
+    expect(matchService.finishMatch).toHaveBeenCalledTimes(2);
+    expect(matchService.finishMatch).toHaveBeenNthCalledWith(1, 101, 'USER', 2, 'a');
+    expect(matchService.finishMatch).toHaveBeenNthCalledWith(2, 102, 'BOT', 1, 'b');
+
+    expect(emit).toHaveBeenCalledWith(
+        'session:state',
+        expect.objectContaining({
+          matchId: 'm-winning-move',
+          winner: 'B',
+          version: 5,
+        }),
+    );
+  });
 });
