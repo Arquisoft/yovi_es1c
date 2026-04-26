@@ -116,10 +116,7 @@ pub fn create_default_state() -> AppState {
     aliases.insert("medium".to_string(), "minimax_balanced_d2".to_string());
     aliases.insert("hard".to_string(), "minimax_connectivity_d4".to_string());
     aliases.insert("expert".to_string(), runtime_config.expert.bot_id());
-    aliases.insert(
-        "expert_fast".to_string(),
-        runtime_config.expert_fast.bot_id(),
-    );
+    aliases.insert("expert_fast".to_string(), runtime_config.expert_fast.bot_id());
 
     let resolver = BotAliasResolver::new(aliases);
     AppState::new(bots, resolver)

@@ -7,21 +7,23 @@ import { API_CONFIG } from "../../../config/api.config";
 // ── Tipos ──
 export type GameMode = "BOT" | "LOCAL_2P" | "ONLINE";
 export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
+type RuntimeBotDifficulty = BotDifficulty | "expert_fast";
 
 export type GameMessage =
-  | { key: "clickACellToPlay" }
-  | { key: "botThinking" }
-  | { key: "errorCommunicatingWithBot" }
-  | { key: "onlineWaitingServer" }
-  | { key: "invalidBotMove" }
-  | { key: "winnerAnnouncement"; params: { label: string } }
-  | { key: "turnMessage"; params: { label: string } }
-  | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
-  | { key: "pieRuleApplied" }
-  | { key: "custom"; text: string };
+    | { key: "clickACellToPlay" }
+    | { key: "botThinking" }
+    | { key: "errorCommunicatingWithBot" }
+    | { key: "onlineWaitingServer" }
+    | { key: "invalidBotMove" }
+    | { key: "winnerAnnouncement"; params: { label: string } }
+    | { key: "turnMessage"; params: { label: string } }
+    | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
+    | { key: "pieRuleApplied" }
+    | { key: "custom"; text: string };
 
 const DEFAULT_BOARD_SIZE = 8;
 const GAMEY_TIMEOUT_MS = 4000;
+const EXPERT_FALLBACK_PROBE_TIMEOUT_MS = 250;
 const CLASSIC_RULES: MatchRulesDto = {
     pieRule: { enabled: false },
     honey: { enabled: false, blockedCells: [] },
@@ -395,7 +397,7 @@ export const useGameController = (
     const applyBotMove = async (
         humanState: YenPositionDto,
         data: { coords: { x: number; y: number; z: number } },
-        usedDifficulty: BotDifficulty
+        usedDifficulty: RuntimeBotDifficulty
     ) => {
         const mapped = rowColFromCoords(data.coords, humanState.size);
 
@@ -533,26 +535,36 @@ export const useGameController = (
         state: YenPositionDto,
         difficulty: BotDifficulty,
         failureCount: number
-    ): Promise<{ response: Response; usedDifficulty: BotDifficulty }> => {
+    ): Promise<{ response: Response; usedDifficulty: RuntimeBotDifficulty }> => {
         const hasExpertDegraded =
             difficulty === "expert" && failureCount >= 3;
 
-        const primaryDifficulty: BotDifficulty = hasExpertDegraded
-            ? "hard"
+        const primaryDifficulty: RuntimeBotDifficulty = hasExpertDegraded
+            ? "expert_fast"
             : difficulty;
 
-        const candidates: BotDifficulty[] =
+        const candidates: RuntimeBotDifficulty[] =
             primaryDifficulty === "expert"
-                ? ["expert", "hard"]
+                ? ["expert", "expert_fast"]
                 : [primaryDifficulty];
 
         let lastError: unknown = null;
+        const requestDeadline = Date.now() + GAMEY_TIMEOUT_MS;
 
         for (const level of candidates) {
+            const remainingMs = requestDeadline - Date.now();
+            if (remainingMs <= 0) {
+                throw new Error("Timeout comunicando con gamey");
+            }
+
+            const timeoutMs =
+                level === "expert" && candidates.length > 1
+                    ? Math.min(remainingMs, EXPERT_FALLBACK_PROBE_TIMEOUT_MS)
+                    : remainingMs;
             const controller = new AbortController();
             const timeout = setTimeout(
                 () => controller.abort(),
-                GAMEY_TIMEOUT_MS
+                timeoutMs
             );
 
             try {
