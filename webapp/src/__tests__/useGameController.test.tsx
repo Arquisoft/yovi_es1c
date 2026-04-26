@@ -220,7 +220,7 @@ describe("useGameController", () => {
         await waitFor(() => expect(result.current.state.loading).toBe(false));
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/choose/expert");
-        expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/choose/hard");
+        expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/choose/expert_fast");
     });
 
     it("returns timeout message when gamey call aborts", async () => {

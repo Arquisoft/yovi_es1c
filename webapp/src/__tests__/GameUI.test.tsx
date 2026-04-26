@@ -488,7 +488,7 @@ describe('GameUI Component', () => {
 
         renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
 
-        expect(screen.getByText('¡Felicidades, Jugador 1! Has vencido al Bot.')).toBeInTheDocument();
+        expect(screen.getByText('¡Felicidades, testuser. Has ganado al bot!!!')).toBeInTheDocument();
     });
 
     it('renders BOT winner as bot when next turn is player 1', () => {
@@ -504,7 +504,7 @@ describe('GameUI Component', () => {
 
         renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
 
-        expect(screen.getByText('Has perdido. El Bot gana.')).toBeInTheDocument();
+        expect(screen.getByText('Bot ha ganado a testuser.')).toBeInTheDocument();
     });
 
     it('calls actions.newGame from WinnerOverlay', () => {

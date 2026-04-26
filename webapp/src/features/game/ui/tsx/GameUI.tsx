@@ -27,7 +27,7 @@ import styles from '../css/GameUI.module.css';
 import ConnectionBadge from './ConnectionBadge';
 import TurnTimer from './TurnTimer';
 import ChatBox from './ChatBox';
-import { resolveCurrentTurnLabel, resolveWinnerLabel } from './gameUIHelpers.ts';
+import { resolveCurrentTurnLabel, resolveWinnerMessage } from './gameUIHelpers.ts';
 import WinnerOverlay, { type RematchState } from './WinnerOverlay';
 import { useTranslation } from 'react-i18next';
 import type { GameMessage } from '../../hooks/useGameController';
@@ -42,17 +42,17 @@ type GameConfig = {
     rules?: MatchRulesDto;
 } | null;
 
-const difficultyLabels: Record<BotDifficulty, string> = {
-    easy: 'Fácil',
-    medium: 'Media',
-    hard: 'Difícil',
-    expert: 'Imposible',
+const difficultyLabelKeys: Record<BotDifficulty, string> = {
+    easy: 'easy',
+    medium: 'medium',
+    hard: 'difficult',
+    expert: 'imposible',
 };
 
-const modeLabel: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
-    BOT: 'VS Bot',
-    LOCAL_2P: '2 Jugadores',
-    ONLINE: 'Online',
+const modeLabelKeys: Record<'BOT' | 'LOCAL_2P' | 'ONLINE', string> = {
+    BOT: 'vsBot',
+    LOCAL_2P: '2players',
+    ONLINE: 'online',
 };
 
 const RECOVERABLE_ERROR_CODES = new Set([
@@ -72,7 +72,10 @@ function resolveGameMessage(
         case 'errorCommunicatingWithBot': return t('errorCommunicatingWithBot');
         case 'onlineWaitingServer':       return t('onlineWaitingServer');
         case 'invalidBotMove':            return t('invalidBotMove');
-        case 'winnerAnnouncement':        return t('winnerAnnouncement', { label: message.params?.label });
+        case 'winnerAnnouncement':        return t('winnerAnnouncement', { label: message.params?.labelKey ? t(message.params.labelKey) : message.params?.label });
+        case 'turnMessage':               return t('turnMessage', { label: message.params?.labelKey ? t(message.params.labelKey) : message.params?.label });
+        case 'botPlayed':                 return t('botPlayed', { ...message.params, fallback: message.params?.fallback ?? '' });
+        case 'pieRuleApplied':            return t('pieRuleApplied');
         default:                          return null;
     }
 }
@@ -193,6 +196,8 @@ export default function GameUI() {
 
     const isOnline = config.mode === 'ONLINE';
     const localState = state.gameState;
+    const humanPlayerName = user?.username?.trim() || t('player1');
+    const botPlayerName = t('botName');
 
     const displayState = isOnline && sessionState
         ? {
@@ -210,8 +215,8 @@ export default function GameUI() {
             winner: null,
             rules: localState.rules ?? config.rules ?? { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
             players: [
-                { userId: 0, username: t('player1'), symbol: 'B' as const },
-                { userId: 1, username: config.mode === 'BOT' ? 'Bot' : t('player2'), symbol: 'R' as const },
+                { userId: user?.id ?? 0, username: humanPlayerName, symbol: 'B' as const },
+                { userId: 1, username: config.mode === 'BOT' ? botPlayerName : t('player2'), symbol: 'R' as const },
             ],
         };
 
@@ -233,24 +238,19 @@ export default function GameUI() {
         displayState.players,
         config.mode,
         t,
+        humanPlayerName,
     );
 
     const winnerLabel = (() => {
         if (!gameOver) return null;
 
-        if (isOnline) return resolveWinnerLabel(displayState.winner, displayState.players, t);
-
-        const winnerIndex = displayState.turn === 0 ? 1 : 0;
-        const botWon = config.mode === 'BOT' && winnerIndex === 1;
-
-        if (config.mode === 'BOT') {
-            return botWon
-                ? t('botWins', 'Has perdido. El Bot gana.')
-                : t('userBeatsBot', '¡Felicidades, {{label}}! Has vencido al Bot.', { label: t('player1') });
+        if (isOnline) {
+            return resolveWinnerMessage(displayState.winner, displayState.players, 'ONLINE', t, humanPlayerName);
         }
 
-        const winnerName = winnerIndex === 0 ? t('player1') : t('player2');
-        return t('winnerAnnouncement', { label: winnerName });
+        const winnerIndex = displayState.turn === 0 ? 1 : 0;
+        const winnerSymbol = winnerIndex === 0 ? 'B' : 'R';
+        return resolveWinnerMessage(winnerSymbol, displayState.players, config.mode, t, humanPlayerName);
     })();
 
     const handleBoardClick = (row: number, col: number) => {
@@ -313,7 +313,7 @@ export default function GameUI() {
                         <Card className={styles.cardStatic}>
                             <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
                                 <Typography variant="subtitle2" color="primary">{t('mode')}</Typography>
-                                <Typography variant="body2" color="text.secondary">{modeLabel[config.mode]}</Typography>
+                                <Typography variant="body2" color="text.secondary">{t(modeLabelKeys[config.mode])}</Typography>
                             </CardContent>
                         </Card>
 
@@ -321,14 +321,14 @@ export default function GameUI() {
                             <Card className={styles.cardStatic}>
                                 <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
                                     <Typography variant="subtitle2" color="primary">{t('difficulty')}</Typography>
-                                    <Typography variant="body2" color="text.secondary">{difficultyLabels[config.difficulty]}</Typography>
+                                    <Typography variant="body2" color="text.secondary">{t(difficultyLabelKeys[config.difficulty])}</Typography>
                                 </CardContent>
                             </Card>
                         )}
 
                         <Card className={styles.cardStatic}>
                             <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
-                                <Typography variant="subtitle2" color="primary">Extras</Typography>
+                                <Typography variant="subtitle2" color="primary">{t('extras')}</Typography>
                                 <Typography variant="body2" color="text.secondary">
                                     {displayState.rules?.pieRule?.enabled ? 'Pie ON' : 'Pie OFF'} ·{' '}
                                     {displayState.rules?.honey?.enabled ? 'Honey ON' : 'Honey OFF'}
@@ -338,7 +338,7 @@ export default function GameUI() {
 
                         {canUsePieSwap && (
                             <Button variant="contained" color="warning" onClick={handlePieSwap}>
-                                Aplicar Pie Rule
+                                {t('applyPieRule')}
                             </Button>
                         )}
 
@@ -354,7 +354,7 @@ export default function GameUI() {
                                 <Card className={styles.cardStatic}>
                                     <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
                                         <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
-                                            Tiempo de turno
+                                            {t('turnTimer')}
                                         </Typography>
                                         <TurnTimer timerEndsAt={sessionState.timerEndsAt} onExpire={emitTurnTimeout} />
                                     </CardContent>
@@ -418,7 +418,7 @@ export default function GameUI() {
 
                         {gameOver && (
                             <WinnerOverlay
-                                winnerLabel={winnerLabel ?? 'Partida terminada'}
+                                winnerLabel={winnerLabel ?? t('gameOver')}
                                 onNewGame={() => actions.newGame()}
                                 onNavigateHome={() => navigate('/create-match')}
                                 isOnline={isOnline}

@@ -82,7 +82,11 @@ interface SessionStateSocketPayload {
 // ─── Rematch event payloads ───────────────────────────────────────────────────
 export interface RematchRequestedPayload {
   matchId: string;
+  requesterId?: number;
   requesterName: string;
+  size?: number;
+  rules?: MatchRulesDto;
+  expiresAt?: number;
 }
 
 export interface RematchReadyPayload {

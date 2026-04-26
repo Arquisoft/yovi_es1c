@@ -21,7 +21,7 @@ import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../../../../config/api.config';
 import type { BotDifficulty } from '../../hooks/useGameController';
 import type { MatchRulesDto } from '../../../../shared/contracts';
-import {useTranslation} from "react-i18next";
+import { useTranslation } from 'react-i18next';
 import { HelpButton } from '../../../../components/HelpButton';
 
 type CreateMatchMode = 'BOT' | 'LOCAL_2P' | 'ONLINE';
@@ -36,7 +36,7 @@ export default function CreateMatchPage() {
     const [error, setError] = useState<string | null>(null);
     const [pieRuleEnabled, setPieRuleEnabled] = useState(false);
     const [honeyEnabled, setHoneyEnabled] = useState(false);
-    const {t} = useTranslation();
+    const { t } = useTranslation();
 
     const buildRules = (): MatchRulesDto => ({
         pieRule: { enabled: pieRuleEnabled },
@@ -84,8 +84,10 @@ export default function CreateMatchPage() {
                 const stateRes = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/matches/${data.matchId}`, {
                     method: 'GET',
                 });
+
                 if (stateRes.ok) {
                     const statePayload = await stateRes.json() as { rules?: MatchRulesDto };
+
                     if (statePayload.rules) {
                         authoritativeRules = statePayload.rules;
                     }
@@ -148,6 +150,7 @@ export default function CreateMatchPage() {
                     'help.createMatch.extras',
                 ]}
             />
+
             <Paper sx={{ width: '100%', maxWidth: 540, p: 4 }} className="crt-panel">
                 <Box textAlign="center" mb={4}>
                     <Typography
@@ -157,6 +160,7 @@ export default function CreateMatchPage() {
                     >
                         {t('matchSetup')}
                     </Typography>
+
                     <Typography
                         variant="h4"
                         className="crt-heading"
@@ -165,12 +169,12 @@ export default function CreateMatchPage() {
                     >
                         {t('newGame')}
                     </Typography>
+
                     <Typography variant="subtitle1" color="text.secondary">
                         {t('systemConfig')}
                     </Typography>
                 </Box>
 
-                {}
                 {error && (
                     <Alert
                         severity="error"
@@ -188,8 +192,9 @@ export default function CreateMatchPage() {
                 <Stack spacing={3}>
                     <Box sx={{ px: 1 }}>
                         <Typography id="board-size-slider" gutterBottom color="primary" variant="subtitle2">
-                            {t('boardSize', {boardSize: boardSize})}
+                            {t('boardSize', { boardSize })}
                         </Typography>
+
                         <Slider
                             aria-labelledby="board-size-slider"
                             value={boardSize}
@@ -208,8 +213,8 @@ export default function CreateMatchPage() {
                                 mt: 1,
                                 '& .MuiSlider-markLabel': {
                                     color: 'text.secondary',
-                                    fontSize: '0.8rem'
-                                }
+                                    fontSize: '0.8rem',
+                                },
                             }}
                         />
                     </Box>
@@ -223,10 +228,17 @@ export default function CreateMatchPage() {
                             label="Modo de juego"
                             onChange={(e) => setMode(e.target.value as CreateMatchMode)}
                         >
-                            {}
-                            <MenuItem value="BOT">{t('VS BOT')}</MenuItem>
-                            <MenuItem value="LOCAL_2P">{t('2players')}</MenuItem>
-                            <MenuItem value="ONLINE">{t('online')}</MenuItem>
+                            <MenuItem value="BOT">
+                                {t('vsBot', { defaultValue: 'VS BOT' })}
+                            </MenuItem>
+
+                            <MenuItem value="LOCAL_2P">
+                                {t('local2pOption', { defaultValue: '2 JUGADORES (LOCAL)' })}
+                            </MenuItem>
+
+                            <MenuItem value="ONLINE">
+                                {t('onlineOption', { defaultValue: 'ONLINE' })}
+                            </MenuItem>
                         </Select>
                     </FormControl>
 
@@ -240,7 +252,6 @@ export default function CreateMatchPage() {
                                 label="Dificultad"
                                 onChange={(e) => setDifficulty(e.target.value as BotDifficulty)}
                             >
-                                {}
                                 <MenuItem value="easy">{t('easy')}</MenuItem>
                                 <MenuItem value="medium">{t('medium')}</MenuItem>
                                 <MenuItem value="hard">{t('difficult')}</MenuItem>
@@ -250,21 +261,33 @@ export default function CreateMatchPage() {
                     )}
 
                     <Divider />
+
                     <Box>
                         <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
                             {t('matchExtras')}
                         </Typography>
+
                         <FormControlLabel
-                            control={<Checkbox checked={pieRuleEnabled} onChange={(e) => setPieRuleEnabled(e.target.checked)} />}
+                            control={
+                                <Checkbox
+                                    checked={pieRuleEnabled}
+                                    onChange={(e) => setPieRuleEnabled(e.target.checked)}
+                                />
+                            }
                             label={t('pieRule')}
                         />
+
                         <FormControlLabel
-                            control={<Checkbox checked={honeyEnabled} onChange={(e) => setHoneyEnabled(e.target.checked)} />}
+                            control={
+                                <Checkbox
+                                    checked={honeyEnabled}
+                                    onChange={(e) => setHoneyEnabled(e.target.checked)}
+                                />
+                            }
                             label={t('honey')}
                         />
                     </Box>
 
-                    {}
                     <Button
                         variant="contained"
                         onClick={handleCreateMatch}

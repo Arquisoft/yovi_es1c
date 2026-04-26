@@ -15,8 +15,8 @@ export type GameMessage =
     | { key: "errorCommunicatingWithBot" }
     | { key: "onlineWaitingServer" }
     | { key: "invalidBotMove" }
-    | { key: "winnerAnnouncement"; params: { label: string } }
-    | { key: "turnMessage"; params: { label: string } }
+    | { key: "winnerAnnouncement"; params: { label?: string; labelKey?: string } }
+    | { key: "turnMessage"; params: { label?: string; labelKey?: string } }
     | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
     | { key: "pieRuleApplied" }
     | { key: "custom"; text: string };
@@ -199,11 +199,11 @@ export const useGameController = (
     );
 
     // ── UI helpers ──
-    const announceWinner = (label: string) => {
+    const announceWinner = (labelKey: string) => {
         setGameOver(true);
         setMessage({
             key: "winnerAnnouncement",
-            params: { label }
+            params: { labelKey }
         });
     };
 
@@ -344,18 +344,18 @@ export const useGameController = (
                 if (checkWinner(newLayout, prev.size, nextSymbol)) {
                     announceWinner(
                         nextSymbol === prev.players[0]
-                            ? "Jugador 1"
-                            : "Jugador 2"
+                            ? "player1"
+                            : "player2"
                     );
                     finishMatch(nextSymbol === prev.players[0] ? "USER" : "BOT");
                 } else {
                     setMessage({
                         key: "turnMessage",
                         params: {
-                            label:
+                            labelKey:
                                 nextTurn === 0
-                                    ? "Jugador 1 (Blue)"
-                                    : "Jugador 2 (Red)",
+                                    ? "player1"
+                                    : "player2",
                         },
                     });
                 }
@@ -383,7 +383,7 @@ export const useGameController = (
             persistMove(humanState, "USER");
 
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
-                announceWinner("Jugador 1");
+                announceWinner("player1");
                 persistFinish("USER");
                 return humanState;
             }
@@ -428,7 +428,7 @@ export const useGameController = (
         await persistMove(botState, "BOT");
 
         if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
-            announceWinner("Jugador 2 (Bot)");
+            announceWinner("botName");
             await persistFinish("BOT");
         } else {
             const fallbackInfo =

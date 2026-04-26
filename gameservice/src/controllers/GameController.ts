@@ -254,6 +254,28 @@ export function createGameController(
     }
   });
 
+  router.get('/online/rematches/pending', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!onlineSessionService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
+      }
+      if (!req.userId) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+      const pending = await onlineSessionService.getPendingRematchForUser(Number(req.userId));
+      if (!pending) {
+        return res.status(204).send();
+      }
+      return res.status(200).json(pending);
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
   router.get('/online/sessions/active', async (req: Request, res: Response, next: NextFunction) => {
     try {
       res.setHeader('Cache-Control', 'no-store');
