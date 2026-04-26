@@ -45,6 +45,8 @@ paths:
     post:
       tags: [Profiles]
       summary: Create a user profile
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:

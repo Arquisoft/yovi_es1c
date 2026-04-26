@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from 'uuid'
-import { API_CONFIG } from '../../../config/api.config'
 
 export interface AuthUser {
   id: number
@@ -22,7 +21,7 @@ export interface AuthErrorResponse {
   details?: { field: string; message: string }[]
 }
 
-const AUTH_BASE_URL = API_CONFIG.AUTH_API
+const AUTH_BASE_URL = '/api/auth'
 const DEVICE_ID_KEY = 'auth_device_id'
 
 function getOrCreateDeviceId(): string {

@@ -10,7 +10,7 @@ describe('users routes authentication', () => {
         process.env.AUTH_SERVICE_URL = 'http://auth.local';
     });
 
-    it('protects authenticated user routes with JWT verification', async () => {
+    it('protects profile, /me and friends routes with JWT verification', async () => {
         const controller = {
             createProfile: vi.fn(async (_req, res) => res.status(201).json({ ok: true })),
             getProfileByUsername: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
@@ -30,9 +30,32 @@ describe('users routes authentication', () => {
         app.use(express.json());
         app.use('/api/users', createUsersRouter(controller));
 
-        const response = await request(app).get('/api/users/me');
+        const responses = await Promise.all([
+            request(app).get('/api/users/profiles/1'),
+            request(app).post('/api/users/profiles').send({ userId: 1, username: 'alex' }),
+            request(app).get('/api/users/me'),
+            request(app).put('/api/users/me').send({ displayName: 'Alex' }),
+            request(app).get('/api/users/friends'),
+            request(app).get('/api/users/friends/requests'),
+            request(app).post('/api/users/friends/requests').send({ username: 'bea' }),
+            request(app).post('/api/users/friends/requests/1/accept'),
+            request(app).delete('/api/users/friends/requests/1'),
+            request(app).delete('/api/users/friends/2'),
+        ]);
 
-        expect(response.status).toBe(401);
+        for (const response of responses) {
+            expect(response.status).toBe(401);
+        }
+
+        expect(controller.getProfile).not.toHaveBeenCalled();
+        expect(controller.createProfile).not.toHaveBeenCalled();
         expect(controller.getMyProfile).not.toHaveBeenCalled();
+        expect(controller.updateMyProfile).not.toHaveBeenCalled();
+        expect(controller.listMyFriends).not.toHaveBeenCalled();
+        expect(controller.listMyFriendRequests).not.toHaveBeenCalled();
+        expect(controller.sendFriendRequest).not.toHaveBeenCalled();
+        expect(controller.acceptFriendRequest).not.toHaveBeenCalled();
+        expect(controller.deleteFriendRequest).not.toHaveBeenCalled();
+        expect(controller.unfriend).not.toHaveBeenCalled();
     });
 });

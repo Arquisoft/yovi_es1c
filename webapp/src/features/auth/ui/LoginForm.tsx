@@ -3,6 +3,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Box, Button, CircularProgress, Link, TextField, Typography, Alert } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { loginUser } from '../api/authApi';
+import { getMyProfile } from '../../profile/api/profileApi';
 import { useAuth } from '../context/useAuth';
 import AuthFormCard from './AuthFormCard';
 import {useTranslation} from "react-i18next";
@@ -34,6 +35,9 @@ const LoginForm: React.FC = () => {
     try {
       const session = await loginUser(username, password);
       login(session.accessToken, session.refreshToken, session.user);
+      await getMyProfile().catch((profileError) => {
+        console.warn('Could not initialize user profile:', profileError);
+      });
       navigate('/');
     } catch (err) {
       const key = err instanceof Error ? err.message : 'networkError';

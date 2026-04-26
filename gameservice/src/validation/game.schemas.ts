@@ -35,8 +35,8 @@ export function validateCreateMatch(data: unknown): CreateMatchRequest {
 
   const normalizedDifficulty = String(difficulty).toLowerCase();
 
-  if (!['easy', 'medium', 'hard', 'expert'].includes(normalizedDifficulty)) {
-    throw new ValidationError('difficulty must be easy, medium, hard or expert');
+  if (!['easy', 'medium', 'hard', 'impossible'].includes(normalizedDifficulty)) {
+    throw new ValidationError('difficulty must be easy, medium, hard or impossible');
   }
 
   if (mode !== undefined && typeof mode !== 'string') {

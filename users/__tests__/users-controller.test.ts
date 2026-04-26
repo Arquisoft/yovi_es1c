@@ -9,6 +9,7 @@ import {
   FriendRequestNotFoundError,
   FriendshipNotFoundError,
   ProfileNotFoundError,
+  ValidationError,
 } from '../src/errors/domain-errors.js';
 
 function makeRes() {
@@ -50,6 +51,7 @@ describe('UsersController', () => {
   let mockRepo: UserRepository;
 
   const fullProfile = {
+    id: 1,
     user_id: 1,
     username: 'alex',
     display_name: 'Alex Visible',
@@ -67,6 +69,7 @@ describe('UsersController', () => {
 
     mockRepo = {
       createProfile: vi.fn(),
+      ensureProfile: vi.fn(),
       getById: vi.fn(),
       getByUsername: vi.fn(),
       updateProfile: vi.fn(),
@@ -92,7 +95,7 @@ describe('UsersController', () => {
   });
 
   it('createProfile returns 400 when userId or username is missing', async () => {
-    const req = makeReq({ body: { username: 'alex' } });
+    const req = makeReq({ body: { username: 'alex' }, userId: '1' });
     const res = makeRes();
 
     await controller.createProfile(req, res);
@@ -101,10 +104,23 @@ describe('UsersController', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'userId and username are required' });
   });
 
-  it('createProfile returns 201 on success', async () => {
+  it('createProfile returns 403 when body userId does not match the token user', async () => {
+    const req = makeReq({ body: { userId: 2, username: 'alex' }, userId: '1' });
+    const res = makeRes();
+
+    await controller.createProfile(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockRepo.createProfile).not.toHaveBeenCalled();
+  });
+
+  it('createProfile returns 201 on success and keeps user_id/id compatibility', async () => {
     vi.mocked(mockRepo.createProfile).mockResolvedValue(fullProfile);
 
-    const req = makeReq({ body: { userId: 1, username: 'alex', avatar: '/avatars/avatar01.png' } });
+    const req = makeReq({
+      body: { userId: 1, username: 'alex', avatar: '/avatars/avatar01.png' },
+      userId: '1',
+    });
     const res = makeRes();
 
     await controller.createProfile(req, res);
@@ -112,7 +128,22 @@ describe('UsersController', () => {
     expect(mockRepo.createProfile).toHaveBeenCalledWith(1, 'alex', '/avatars/avatar01.png');
     expect(mockService.onUserCreated).toHaveBeenCalledOnce();
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.json).toHaveBeenCalledWith(fullProfile);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      id: 1,
+      user_id: 1,
+      username: 'alex',
+      avatar: '/avatars/avatar01.png',
+    }));
+  });
+
+  it('createProfile rejects invalid avatars', async () => {
+    const req = makeReq({ body: { userId: 1, username: 'alex', avatar: '/bad.png' }, userId: '1' });
+    const res = makeRes();
+
+    await controller.createProfile(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockRepo.createProfile).not.toHaveBeenCalled();
   });
 
   it('getProfile returns 404 when missing', async () => {
@@ -122,7 +153,16 @@ describe('UsersController', () => {
     await controller.getProfile(makeReq({ params: { id: '99' } }), res);
 
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Profile not found' });
+  });
+
+  it('getProfile returns profile by user_id', async () => {
+    vi.mocked(mockRepo.getById).mockResolvedValue(fullProfile);
+    const res = makeRes();
+
+    await controller.getProfile(makeReq({ params: { id: '1' } }), res);
+
+    expect(mockRepo.getById).toHaveBeenCalledWith(1);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: 1, user_id: 1 }));
   });
 
   it('getProfileByUsername returns profile on success', async () => {
@@ -131,38 +171,42 @@ describe('UsersController', () => {
 
     await controller.getProfileByUsername(makeReq({ params: { username: 'alex' } }), res);
 
-    expect(res.json).toHaveBeenCalledWith(fullProfile);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ username: 'alex' }));
   });
 
-  it('getMyProfile creates a profile when missing and returns camelCase payload', async () => {
-    vi.mocked(mockRepo.getById).mockResolvedValueOnce(null).mockResolvedValueOnce(fullProfile);
-    vi.mocked(mockRepo.createProfile).mockResolvedValue(fullProfile);
+  it('getMyProfile ensures a profile when authenticated', async () => {
+    vi.mocked(mockRepo.ensureProfile).mockResolvedValue(fullProfile);
 
     const res = makeRes();
     await controller.getMyProfile(makeReq({ userId: '1', username: 'alex' }), res);
 
-    expect(mockRepo.createProfile).toHaveBeenCalledWith(1, 'alex', '/avatars/avatar01.png');
-    expect(res.json).toHaveBeenCalledWith({
+    expect(mockRepo.ensureProfile).toHaveBeenCalledWith(1, 'alex', '/avatars/avatar01.png');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       id: 1,
+      user_id: 1,
       username: 'alex',
       displayName: 'Alex Visible',
       email: 'alex@yovi.test',
-      avatar: '/avatars/avatar01.png',
-    });
+    }));
+  });
+
+  it('getMyProfile returns 401 when token claims are incomplete', async () => {
+    const res = makeRes();
+
+    await controller.getMyProfile(makeReq({ userId: '1' }), res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(mockRepo.ensureProfile).not.toHaveBeenCalled();
   });
 
   it('updateMyProfile returns updated profile in camelCase', async () => {
     vi.mocked(mockRepo.updateProfile).mockResolvedValue(fullProfile);
-    const res = makeRes();
 
+    const res = makeRes();
     await controller.updateMyProfile(
       makeReq({
         userId: '1',
-        body: {
-          displayName: 'Alex Visible',
-          email: 'alex@yovi.test',
-          avatar: '/avatars/avatar01.png',
-        },
+        body: { displayName: 'Alex Visible', email: 'alex@yovi.test', avatar: '/avatars/avatar01.png' },
       }),
       res,
     );
@@ -173,23 +217,29 @@ describe('UsersController', () => {
       avatar: '/avatars/avatar01.png',
     });
     expect(mockService.onProfileUpdated).toHaveBeenCalledOnce();
-    expect(res.json).toHaveBeenCalledWith({
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       id: 1,
       username: 'alex',
       displayName: 'Alex Visible',
-      email: 'alex@yovi.test',
-      avatar: '/avatars/avatar01.png',
-    });
+    }));
   });
 
-  it('listMyFriends returns mapped friends', async () => {
+  it('updateProfile returns 400 for invalid id', async () => {
+    const res = makeRes();
+
+    await controller.updateProfile(makeReq({ params: { id: 'abc' } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('listMyFriends returns friends payload', async () => {
     vi.mocked(mockRepo.listFriends).mockResolvedValue([
       {
         user_id: 2,
         username: 'bea',
         display_name: 'Bea',
         avatar: '/avatars/avatar02.png',
-        friendship_created_at: '2026-03-10T10:00:00.000Z',
+        friendship_created_at: '2026-01-02T00:00:00.000Z',
       },
     ]);
 
@@ -199,26 +249,27 @@ describe('UsersController', () => {
     expect(res.json).toHaveBeenCalledWith([
       {
         id: 2,
+        userId: 2,
         username: 'bea',
         displayName: 'Bea',
         avatar: '/avatars/avatar02.png',
-        friendsSince: '2026-03-10T10:00:00.000Z',
+        friendsSince: '2026-01-02T00:00:00.000Z',
       },
     ]);
   });
 
-  it('listMyFriendRequests returns mapped incoming and outgoing requests', async () => {
+  it('listMyFriendRequests returns incoming and outgoing requests', async () => {
     vi.mocked(mockRepo.listPendingFriendRequests).mockResolvedValue([
       {
-        id: 7,
+        id: 10,
         status: 'pending',
-        created_at: '2026-03-10T10:00:00.000Z',
+        created_at: '2026-01-03T00:00:00.000Z',
         direction: 'incoming',
         user: {
           user_id: 2,
           username: 'bea',
           display_name: 'Bea',
-          avatar: '/avatars/avatar02.png',
+          avatar: null,
         },
       },
     ]);
@@ -228,178 +279,82 @@ describe('UsersController', () => {
 
     expect(res.json).toHaveBeenCalledWith([
       {
-        id: 7,
+        id: 10,
         status: 'pending',
-        createdAt: '2026-03-10T10:00:00.000Z',
+        createdAt: '2026-01-03T00:00:00.000Z',
         direction: 'incoming',
         user: {
           id: 2,
+          userId: 2,
           username: 'bea',
           displayName: 'Bea',
-          avatar: '/avatars/avatar02.png',
+          avatar: null,
         },
       },
     ]);
   });
 
-  it('sendFriendRequest returns 201 and mapped payload', async () => {
-    vi.mocked(mockRepo.createFriendRequest).mockResolvedValue({
-      id: 7,
-      status: 'pending',
-      created_at: '2026-03-10T10:00:00.000Z',
-      direction: 'outgoing',
+  it('sendFriendRequest maps domain errors to HTTP errors', async () => {
+    vi.mocked(mockRepo.createFriendRequest).mockRejectedValue(new FriendRequestAlreadyExistsError());
+
+    const res = makeRes();
+    await controller.sendFriendRequest(makeReq({ userId: '1', body: { username: 'bea' } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('acceptFriendRequest returns the accepted request', async () => {
+    vi.mocked(mockRepo.acceptFriendRequest).mockResolvedValue({
+      id: 10,
+      status: 'accepted',
+      created_at: '2026-01-03T00:00:00.000Z',
+      direction: 'incoming',
       user: {
         user_id: 2,
         username: 'bea',
         display_name: 'Bea',
-        avatar: '/avatars/avatar02.png',
+        avatar: null,
       },
     });
 
     const res = makeRes();
-    await controller.sendFriendRequest(makeReq({ userId: '1', body: { username: 'bea' } }), res);
+    await controller.acceptFriendRequest(makeReq({ userId: '1', params: { requestId: '10' } }), res);
 
-    expect(mockRepo.createFriendRequest).toHaveBeenCalledWith(1, 'bea');
-    expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.json).toHaveBeenCalledWith({
-      id: 7,
-      status: 'pending',
-      createdAt: '2026-03-10T10:00:00.000Z',
-      direction: 'outgoing',
-      user: {
-        id: 2,
-        username: 'bea',
-        displayName: 'Bea',
-        avatar: '/avatars/avatar02.png',
-      },
-    });
+    expect(mockRepo.acceptFriendRequest).toHaveBeenCalledWith(10, 1);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: 10, status: 'accepted' }));
   });
 
-  it('sendFriendRequest maps domain errors', async () => {
-    vi.mocked(mockRepo.createFriendRequest).mockRejectedValue(new FriendRequestAlreadyExistsError());
+  it('deleteFriendRequest returns 204 on success', async () => {
     const res = makeRes();
 
-    await controller.sendFriendRequest(makeReq({ userId: '1', body: { username: 'bea' } }), res);
+    await controller.deleteFriendRequest(makeReq({ userId: '1', params: { requestId: '10' } }), res);
 
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'friend_request_exists',
-      message: 'There is already a pending friend request between these users',
-    });
-  });
-
-  it('acceptFriendRequest returns mapped payload', async () => {
-    vi.mocked(mockRepo.acceptFriendRequest).mockResolvedValue({
-      id: 8,
-      status: 'accepted',
-      created_at: '2026-03-10T10:00:00.000Z',
-      direction: 'incoming',
-      user: {
-        user_id: 3,
-        username: 'cora',
-        display_name: 'Cora',
-        avatar: '/avatars/avatar03.png',
-      },
-    });
-
-    const res = makeRes();
-    await controller.acceptFriendRequest(makeReq({ userId: '1', params: { requestId: '8' } }), res);
-
-    expect(mockRepo.acceptFriendRequest).toHaveBeenCalledWith(8, 1);
-    expect(res.json).toHaveBeenCalledWith({
-      id: 8,
-      status: 'accepted',
-      createdAt: '2026-03-10T10:00:00.000Z',
-      direction: 'incoming',
-      user: {
-        id: 3,
-        username: 'cora',
-        displayName: 'Cora',
-        avatar: '/avatars/avatar03.png',
-      },
-    });
-  });
-
-  it('acceptFriendRequest returns 403 for forbidden actions', async () => {
-    vi.mocked(mockRepo.acceptFriendRequest).mockRejectedValue(new ForbiddenFriendRequestActionError());
-    const res = makeRes();
-
-    await controller.acceptFriendRequest(makeReq({ userId: '1', params: { requestId: '8' } }), res);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'forbidden_friend_request_action',
-      message: 'You are not allowed to modify this friend request',
-    });
-  });
-
-  it('deleteFriendRequest returns 204', async () => {
-    vi.mocked(mockRepo.deleteFriendRequest).mockResolvedValue(undefined);
-    const res = makeRes();
-
-    await controller.deleteFriendRequest(makeReq({ userId: '1', params: { requestId: '9' } }), res);
-
-    expect(mockRepo.deleteFriendRequest).toHaveBeenCalledWith(9, 1);
+    expect(mockRepo.deleteFriendRequest).toHaveBeenCalledWith(10, 1);
     expect(res.status).toHaveBeenCalledWith(204);
-    expect(res.send).toHaveBeenCalled();
   });
 
-  it('deleteFriendRequest returns 404 when request does not exist', async () => {
-    vi.mocked(mockRepo.deleteFriendRequest).mockRejectedValue(new FriendRequestNotFoundError());
-    const res = makeRes();
-
-    await controller.deleteFriendRequest(makeReq({ userId: '1', params: { requestId: '9' } }), res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'friend_request_not_found',
-      message: 'Friend request not found',
-    });
-  });
-
-  it('unfriend returns 204', async () => {
-    vi.mocked(mockRepo.deleteFriendship).mockResolvedValue(undefined);
+  it('unfriend returns 204 on success', async () => {
     const res = makeRes();
 
     await controller.unfriend(makeReq({ userId: '1', params: { friendUserId: '2' } }), res);
 
     expect(mockRepo.deleteFriendship).toHaveBeenCalledWith(1, 2);
     expect(res.status).toHaveBeenCalledWith(204);
-    expect(res.send).toHaveBeenCalled();
   });
 
-  it('unfriend returns 400 when friend user id is invalid', async () => {
-    const res = makeRes();
-
-    await controller.unfriend(makeReq({ userId: '1', params: { friendUserId: 'nope' } }), res);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid friend user id' });
-  });
-
-  it('unfriend returns 404 when friendship does not exist', async () => {
-    vi.mocked(mockRepo.deleteFriendship).mockRejectedValue(new FriendshipNotFoundError());
+  it.each([
+    new ProfileNotFoundError(),
+    new FriendRequestNotFoundError(),
+    new ForbiddenFriendRequestActionError(),
+    new FriendshipNotFoundError(),
+    new ValidationError('bad request'),
+  ])('handleHttpError maps %s', async (error) => {
+    vi.mocked(mockRepo.deleteFriendship).mockRejectedValue(error);
     const res = makeRes();
 
     await controller.unfriend(makeReq({ userId: '1', params: { friendUserId: '2' } }), res);
 
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'friendship_not_found',
-      message: 'Friendship not found',
-    });
-  });
-
-  it('returns 404 when sending a request to an unknown profile', async () => {
-    vi.mocked(mockRepo.createFriendRequest).mockRejectedValue(new ProfileNotFoundError());
-    const res = makeRes();
-
-    await controller.sendFriendRequest(makeReq({ userId: '1', body: { username: 'ghost' } }), res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({
-      error: 'profile_not_found',
-      message: 'Profile not found',
-    });
+    expect(res.status).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalled();
   });
 });

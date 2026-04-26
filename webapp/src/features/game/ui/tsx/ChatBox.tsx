@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Box, Button, IconButton, Paper, Stack, TextField, Typography } from '@mui/material';
 import type { ChatMessage } from '../../hooks/useChatSession';
-import { fetchWithAuth } from '../../../../shared/api/fetchWithAuth';
-import { API_CONFIG } from '../../../../config/api.config';
-import { DEFAULT_AVATAR } from '../../../profile/ui/avatarOptions';
 
 interface ChatBoxProps {
     readonly matchId: string | null;
@@ -11,27 +8,17 @@ interface ChatBoxProps {
     readonly localUserId: number | null;
     readonly messages: ChatMessage[];
     readonly sendMessage: (text: string) => void;
-    readonly players: { userId: number; username: string; displayName?: string | null; avatar?: string | null }[];
-
 }
 
-type PlayerProfile = {
-    id: number;
-    username: string;
-    displayName: string | null;
-    avatar: string | null;
-};
-
 const QUICK_EMOJIS = [
-    '😀', '😂', '😎', '😢', '😡', '👍', '👎', '🎉', '🔥', '❤️',
-    '😮', '🤔', '😅', '🙌', '💪', '🤝', '😴', '🤯', '😈', '👋',
-    '⭐', '🏆', '🎯', '💡', '🚀', '🌟', '💎', '🎲', '♟️', '🃏',
+    '😀','😂','😎','😢','😡','👍','👎','🎉','🔥','❤️',
+    '😮','🤔','😅','🙌','💪','🤝','😴','🤯','😈','👋',
+    '⭐','🏆','🎯','💡','🚀','🌟','💎','🎲','♟️','🃏',
 ];
 
-export default function ChatBox({ matchId, winner, localUserId, messages, sendMessage, players }: ChatBoxProps) {
+export default function ChatBox({ matchId, winner, localUserId, messages, sendMessage }: ChatBoxProps) {
     const [text, setText] = useState('');
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const [playerProfiles, setPlayerProfiles] = useState<Record<number, PlayerProfile>>({});
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -39,73 +26,6 @@ export default function ChatBox({ matchId, winner, localUserId, messages, sendMe
             bottomRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [messages]);
-
-    useEffect(() => {
-        let ignore = false;
-
-        const userIds = players
-            .map((player) => player.userId)
-            .filter((userId) => userId > 0);
-
-        if (userIds.length === 0) {
-            setPlayerProfiles({});
-            return () => {
-                ignore = true;
-            };
-        }
-
-        async function loadPlayerProfiles() {
-            try {
-                const responses = await Promise.all(
-                    userIds.map((userId) => fetchWithAuth(`${API_CONFIG.USERS_API}/profiles/${userId}`)),
-                );
-
-                const profiles = await Promise.all(
-                    responses
-                        .filter((response) => response.ok)
-                        .map(async (response) => response.json() as Promise<{
-                            user_id?: number;
-                            id?: number;
-                            username?: string;
-                            display_name?: string | null;
-                            displayName?: string | null;
-                            avatar?: string | null;
-                        }>),
-                );
-
-                if (ignore) {
-                    return;
-                }
-
-                const nextProfiles = profiles.reduce<Record<number, PlayerProfile>>((acc, profile) => {
-                    const id = profile.user_id ?? profile.id;
-                    if (!id) {
-                        return acc;
-                    }
-
-                    acc[id] = {
-                        id,
-                        username: profile.username ?? '',
-                        displayName: profile.displayName ?? profile.display_name ?? null,
-                        avatar: profile.avatar ?? DEFAULT_AVATAR,
-                    };
-                    return acc;
-                }, {});
-
-                setPlayerProfiles(nextProfiles);
-            } catch {
-                if (!ignore) {
-                    setPlayerProfiles({});
-                }
-            }
-        }
-
-        void loadPlayerProfiles();
-
-        return () => {
-            ignore = true;
-        };
-    }, [players]);
 
     const isDisabled = !matchId || winner !== null;
 
@@ -141,11 +61,6 @@ export default function ChatBox({ matchId, winner, localUserId, messages, sendMe
             <Stack spacing={1} sx={{ maxHeight: 220, overflowY: 'auto', pr: 1 }}>
                 {messages.map((message) => {
                     const isLocal = localUserId !== null && message.userId === localUserId;
-                    const player = players.find((p) => p.userId === message.userId);
-                    const profile = playerProfiles[message.userId];
-                    const avatar = profile?.avatar ?? player?.avatar ?? DEFAULT_AVATAR;
-                    const username = profile?.username ?? player?.username ?? message.username;
-                    const displayName = profile?.displayName ?? player?.displayName ?? username;
                     return (
                         <Box
                             key={`${message.timestamp}-${message.userId}-${message.text}`}
@@ -159,31 +74,9 @@ export default function ChatBox({ matchId, winner, localUserId, messages, sendMe
                                     border: '1px solid rgba(57, 255, 20, 0.22)',
                                 }}
                             >
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                                    <Box
-                                        component="img"
-                                        src={avatar}
-                                        alt={`Avatar de ${displayName}`}
-                                        sx={{
-                                            width: 22,
-                                            height: 22,
-                                            borderRadius: '50%',
-                                            objectFit: 'cover',
-                                            border: '1px solid rgba(57, 255, 20, 0.25)',
-                                        }}
-                                    />
-                                    <Box>
-                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontWeight: 700 }}>
-                                            {displayName}
-                                        </Typography>
-                                        {displayName !== username ? (
-                                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', opacity: 0.75 }}>
-                                                @{username}
-                                            </Typography>
-                                        ) : null}
-                                    </Box>
-                                </Box>
-    
+                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                                    {message.username}
+                                </Typography>
                                 <Typography variant="body2">{message.text}</Typography>
                             </Paper>
                         </Box>

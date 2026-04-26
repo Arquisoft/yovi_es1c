@@ -244,7 +244,7 @@ def train(
         simulations:        int   = 150,
         epochs_per_iter:    int   = 5,
         batch_size:         int   = 256,
-        lr:                 float = 3e-4,     # conservador para fine-tuning
+        lr:                 float = 3e-4,
         board_sizes:        list  = None,
         model_path:         str   = "../gamey/models/yovi_model.pt",
         onnx_path:          str   = "../gamey/models/yovi_model.onnx",
@@ -260,13 +260,22 @@ def train(
     if iterations < 1:
         raise ValueError("iterations must be >= 1")
 
+    # ── Detectar dispositivo ──────────────────────────────────────────
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    print(f"Dispositivo de entrenamiento: {device}")
+
     ensure_parent_dir(model_path)
     ensure_parent_dir(onnx_path)
     checkpoint_path = checkpoint_path or os.path.splitext(model_path)[0] + "_checkpoint.pt"
     metrics_path = metrics_path or os.path.splitext(model_path)[0] + "_metrics.jsonl"
 
     def make_model() -> PolicyValueNet:
-        return PolicyValueNet()
+        return PolicyValueNet().to(device)
 
     def make_optimizer(params: list[torch.nn.Parameter]) -> torch.optim.Optimizer:
         return torch.optim.Adam(params, lr=lr, weight_decay=1e-4)
@@ -278,6 +287,7 @@ def train(
     if os.path.exists(model_path):
         print(f"Cargando modelo existente desde {model_path} (warm-start)")
         model = PolicyValueNet.load(model_path)
+        model = model.to(device)
         optimizer = make_optimizer(list(model.parameters()))
         old_model = copy.deepcopy(model)
     else:
@@ -294,10 +304,11 @@ def train(
                 model_factory=make_model,
                 optimizer_factory=make_optimizer,
             )
+            model = model.to(device)
         except InvalidTrainingCheckpointError as error:
             quarantined_path = quarantine_checkpoint(checkpoint_path)
             print(
-                "Checkpoint inv\u00e1lido o incompleto; se ignorar\u00e1 para reanudar "
+                "Checkpoint inválido o incompleto; se ignorará para reanudar "
                 f"desde el warm-start. Copia movida a {quarantined_path}. Error: {error}"
             )
         else:
@@ -305,6 +316,7 @@ def train(
             start_iteration = checkpoint.get("metadata", {}).get("next_iteration", 1)
             old_model = make_model()
             old_model.load_state_dict(checkpoint.get("accepted_model_state_dict", model.state_dict()))
+            old_model = old_model.to(device)
 
     end_iteration = start_iteration + iterations - 1
     if start_iteration > 1:
@@ -322,7 +334,7 @@ def train(
         print(f"[1/3] Self-play ({games_per_iter} partidas)...")
         model.eval()
         new_examples = generate_self_play_data(
-            model       = model,   # siempre usamos el modelo (warm-start desde iter 1)
+            model       = model,
             num_games   = games_per_iter,
             board_sizes = board_sizes,
             simulations = simulations,
@@ -345,6 +357,11 @@ def train(
             total_loss = 0.0
             batch_count = 0
             for spatials, board_norms, policies, values in dataloader:
+                spatials    = spatials.to(device)
+                board_norms = board_norms.to(device)
+                policies    = policies.to(device)
+                values      = values.to(device)
+
                 optimizer.zero_grad()
                 pred_policy, pred_value = model(spatials, board_norms)
                 loss = loss_fn(pred_policy, pred_value, policies, values)

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Button, Menu, MenuItem, ListItemText } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useTranslation } from 'react-i18next';
-import styles from './LanguageSwitcher.module.css';
 
 const LANGUAGE_OPTIONS = [
   { code: 'en', label: 'English' },
@@ -28,7 +27,7 @@ export default function LanguageSwitcher() {
   return (
     <>
       <Button
-        className={styles.langButton}
+        color="inherit"
         onClick={(event) => setAnchorEl(event.currentTarget)}
         endIcon={<KeyboardArrowDownIcon />}
       >
@@ -39,13 +38,11 @@ export default function LanguageSwitcher() {
         anchorEl={anchorEl}
         open={open}
         onClose={() => setAnchorEl(null)}
-        className={styles.menu}
       >
         {LANGUAGE_OPTIONS
           .filter((item) => item.code !== currentLanguage.code)
           .map((item) => (
             <MenuItem
-              className={styles.item}
               key={item.code}
               onClick={() => {
                 void i18n.changeLanguage(item.code);

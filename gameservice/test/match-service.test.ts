@@ -100,7 +100,7 @@ describe('MatchService', () => {
     });
 
     it('should accept all difficulty levels', async () => {
-      const difficulties = ['easy', 'medium', 'hard'];
+      const difficulties = ['easy', 'medium', 'hard', 'impossible'];
 
       for (const difficulty of difficulties) {
         vi.spyOn(mockMatchRepository, 'createMatch').mockResolvedValue(1);

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderWithProviders, setupAuthenticatedUser, clearAuth, screen } from './test-utils';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { fireEvent, waitFor } from '@testing-library/react';
+import { fireEvent, waitFor, act } from '@testing-library/react';
 import GameUI from '../features/game/ui/tsx/GameUI';
 import * as useGameControllerModule from '../features/game/hooks/useGameController';
 import { resolveCurrentTurnLabel,  resolveWinnerLabel, resolveGameOverText} from '../features/game';
@@ -34,15 +34,38 @@ vi.mock('../features/game/ui/tsx/WinnerOverlay', () => ({
                   winnerLabel,
                   onNewGame,
                   onNavigateHome,
+                  isOnline,
+                  rematchState,
+                  rematchRequesterName,
+                  onRequestRematch,
+                  onAcceptRematch,
+                  onDeclineRematch,
               }: {
         winnerLabel: string;
         onNewGame: () => void;
         onNavigateHome: () => void;
+        isOnline?: boolean;
+        rematchState?: string;
+        rematchRequesterName?: string;
+        onRequestRematch?: () => void;
+        onAcceptRematch?: () => void;
+        onDeclineRematch?: () => void;
     }) => (
         <div>
             <span>{winnerLabel}</span>
+            <span data-testid="rematch-state">{rematchState ?? 'none'}</span>
+            {rematchRequesterName && <span>{rematchRequesterName}</span>}
+
             <button onClick={onNewGame}>WinnerOverlayNewGame</button>
             <button onClick={onNavigateHome}>WinnerOverlayHome</button>
+
+            {isOnline && (
+                <>
+                    <button onClick={onRequestRematch}>RequestRematch</button>
+                    <button onClick={onAcceptRematch}>AcceptRematch</button>
+                    <button onClick={onDeclineRematch}>DeclineRematch</button>
+                </>
+            )}
         </div>
     ),
 }));
@@ -135,6 +158,44 @@ describe('GameUI Component', () => {
             </MemoryRouter>,
             { withRouter: false },
         );
+    };
+    const buildFinishedOnlineSession = (matchId = 'online-rematch') => ({
+        matchId,
+        layout: 'B/R./B..',
+        size: 3,
+        rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+        turn: 0,
+        version: 5,
+        timerEndsAt: Date.now() + 10000,
+        players: [
+            { userId: 1, username: 'yo', symbol: 'B' as const },
+            { userId: 2, username: 'rival', symbol: 'R' as const },
+        ],
+        winner: 'B' as const,
+    });
+
+    const mockOnlineRematchSession = (matchId = 'online-rematch') => {
+        const requestRematch = vi.fn();
+        const acceptRematch = vi.fn();
+        const declineRematch = vi.fn();
+
+        vi.mocked(useOnlineSession).mockReturnValue({
+            sessionState: buildFinishedOnlineSession(matchId),
+            error: null,
+            connectionStatus: 'CONNECTED',
+            playMove: vi.fn(),
+            applyPieSwapOnline: vi.fn(),
+            emitTurnTimeout: vi.fn(),
+            requestRematch,
+            acceptRematch,
+            declineRematch,
+        } as any);
+
+        return {
+            requestRematch,
+            acceptRematch,
+            declineRematch,
+        };
     };
 
     it('shows fallback when no config is provided', () => {
@@ -488,7 +549,7 @@ describe('GameUI Component', () => {
 
         renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
 
-        expect(screen.getByText('¡Felicidades, Jugador 1! Has vencido al Bot.')).toBeInTheDocument();
+        expect(screen.getByText('¡Felicidades, testuser. Has ganado al bot!!!')).toBeInTheDocument();
     });
 
     it('renders BOT winner as bot when next turn is player 1', () => {
@@ -504,7 +565,7 @@ describe('GameUI Component', () => {
 
         renderWithConfigAndRoutes({ boardSize: 8, mode: 'BOT', difficulty: 'easy', matchId: 'm1' });
 
-        expect(screen.getByText('Has perdido. El Bot gana.')).toBeInTheDocument();
+        expect(screen.getByText('Bot ha ganado a testuser.')).toBeInTheDocument();
     });
 
     it('calls actions.newGame from WinnerOverlay', () => {
@@ -626,5 +687,364 @@ describe('GameUI Component', () => {
             alertSpy.mockRestore();
         });
     });
+    describe('resolveGameMessage coverage', () => {
+        const renderWithGameMessage = (message: GameMessage | null) => {
+            vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+                state: {
+                    ...mockState,
+                    loading: true,
+                    message,
+                },
+                actions: mockActions,
+            } as any);
 
+            renderWithConfig({
+                boardSize: 8,
+                mode: 'BOT',
+                difficulty: 'easy',
+                matchId: 'm-message',
+            });
+        };
+
+        it('renders simple game messages', () => {
+            const cases: Array<{ message: GameMessage; expected: string }> = [
+                { message: { key: 'clickACellToPlay' }, expected: 'Haz clic en una celda para jugar' },
+                { message: { key: 'botThinking' }, expected: 'El bot está pensando...' },
+                { message: { key: 'errorCommunicatingWithBot' }, expected: 'Error al comunicarse con el bot' },
+                { message: { key: 'onlineWaitingServer' }, expected: 'Esperando al servidor en línea...' },
+                { message: { key: 'invalidBotMove' }, expected: 'El bot sugirió un movimiento inválido, inténtalo de nuevo' },
+                { message: { key: 'pieRuleApplied' }, expected: 'Pie Rule aplicada' },
+            ];
+
+            for (const { message, expected } of cases) {
+                vi.mocked(useGameControllerModule.useGameController).mockReturnValue({
+                    state: {
+                        ...mockState,
+                        loading: true,
+                        message,
+                    },
+                    actions: mockActions,
+                } as any);
+
+                const { unmount } = renderWithConfig({
+                    boardSize: 8,
+                    mode: 'BOT',
+                    difficulty: 'easy',
+                    matchId: `m-${message.key}`,
+                });
+
+                expect(screen.getByText(expected)).toBeInTheDocument();
+                unmount();
+            }
+        });
+
+        it('renders winnerAnnouncement using labelKey', () => {
+            renderWithGameMessage({
+                key: 'winnerAnnouncement',
+                params: { labelKey: 'player1' },
+            });
+
+            expect(screen.getByText('¡Felicidades, Jugador 1 gana!')).toBeInTheDocument();
+        });
+
+        it('renders winnerAnnouncement using direct label fallback', () => {
+            renderWithGameMessage({
+                key: 'winnerAnnouncement',
+                params: { label: 'Alice' },
+            });
+
+            expect(screen.getByText('¡Felicidades, Alice gana!')).toBeInTheDocument();
+        });
+
+        it('renders turnMessage using labelKey', () => {
+            renderWithGameMessage({
+                key: 'turnMessage',
+                params: { labelKey: 'player2' },
+            });
+
+            expect(screen.getByText('Turno: Jugador 2')).toBeInTheDocument();
+        });
+
+        it('renders turnMessage using direct label fallback', () => {
+            renderWithGameMessage({
+                key: 'turnMessage',
+                params: { label: 'Alice' },
+            });
+
+            expect(screen.getByText('Turno: Alice')).toBeInTheDocument();
+        });
+
+        it('renders botPlayed with fallback text', () => {
+            renderWithGameMessage({
+                key: 'botPlayed',
+                params: {
+                    row: 1,
+                    col: 2,
+                    fallback: ' [fallback: easy_fast]',
+                },
+            });
+
+            expect(screen.getByText('El bot jugó en (1, 2) [fallback: easy_fast]')).toBeInTheDocument();
+        });
+
+        it('renders botPlayed without fallback text', () => {
+            renderWithGameMessage({
+                key: 'botPlayed',
+                params: {
+                    row: 1,
+                    col: 2,
+                },
+            });
+
+            expect(screen.getByText('El bot jugó en (1, 2)')).toBeInTheDocument();
+        });
+
+        it('handles null game message', () => {
+            renderWithGameMessage(null);
+
+            expect(screen.getByRole('button', { name: 'BoardMock' })).toBeInTheDocument();
+        });
+
+        it('handles unknown game message key through default branch', () => {
+            renderWithGameMessage({ key: 'unknown-message' } as any);
+
+            expect(screen.getByRole('button', { name: 'BoardMock' })).toBeInTheDocument();
+        });
+    });
+
+    describe('online rematch callbacks coverage', () => {
+        it('sets incoming rematch state only when requested payload belongs to current match', () => {
+            mockOnlineRematchSession('online-rematch');
+
+            renderWithConfig({
+                boardSize: 3,
+                mode: 'ONLINE',
+                difficulty: 'easy',
+                matchId: 'online-rematch',
+            });
+
+            const callbacks = vi.mocked(useOnlineSession).mock.calls.at(-1)?.[1];
+
+            act(() => {
+                callbacks?.onRequested?.({
+                    matchId: 'other-match',
+                    requesterName: 'Ignored player',
+                });
+            });
+
+            expect(screen.getByTestId('rematch-state')).toHaveTextContent('idle');
+            expect(screen.queryByText('Ignored player')).not.toBeInTheDocument();
+
+            act(() => {
+                callbacks?.onRequested?.({
+                    matchId: 'online-rematch',
+                    requesterName: 'Alice',
+                });
+            });
+
+            expect(screen.getByTestId('rematch-state')).toHaveTextContent('incoming');
+            expect(screen.getByText('Alice')).toBeInTheDocument();
+        });
+
+        it('navigates to the new online rematch when rematch is ready', async () => {
+            mockOnlineRematchSession('online-rematch');
+
+            renderWithConfigAndRoutes({
+                boardSize: 3,
+                mode: 'ONLINE',
+                difficulty: 'medium',
+                matchId: 'online-rematch',
+            });
+
+            const callbacks = vi.mocked(useOnlineSession).mock.calls.at(-1)?.[1];
+
+            act(() => {
+                callbacks?.onReady?.({
+                    newMatchId: 'online-new-match',
+                    size: 5,
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                    players: [
+                        { userId: 2, username: 'rival', symbol: 'B' },
+                        { userId: 1, username: 'yo', symbol: 'R' },
+                    ],
+                });
+            });
+
+            await waitFor(() => {
+                expect(useGameControllerModule.useGameController).toHaveBeenCalledWith(
+                    5,
+                    'LOCAL_2P',
+                    undefined,
+                    'online-new-match',
+                    'medium',
+                    {
+                        pieRule: { enabled: true },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                );
+            });
+        });
+
+        it('ignores duplicated rematch ready payloads emitted before the route state is reset', async () => {
+            mockOnlineRematchSession('online-rematch');
+
+            renderWithConfigAndRoutes({
+                boardSize: 3,
+                mode: 'ONLINE',
+                difficulty: 'easy',
+                matchId: 'online-rematch',
+            });
+
+            const callbacks = vi.mocked(useOnlineSession).mock.calls.at(-1)?.[1];
+
+            await act(async () => {
+                callbacks?.onReady?.({
+                    newMatchId: 'online-first-rematch',
+                    size: 4,
+                    rules: {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                    players: [
+                        { userId: 2, username: 'rival', symbol: 'B' },
+                        { userId: 1, username: 'yo', symbol: 'R' },
+                    ],
+                });
+
+                callbacks?.onReady?.({
+                    newMatchId: 'online-second-rematch',
+                    size: 6,
+                    rules: {
+                        pieRule: { enabled: true },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                    players: [
+                        { userId: 2, username: 'rival', symbol: 'B' },
+                        { userId: 1, username: 'yo', symbol: 'R' },
+                    ],
+                });
+            });
+
+            await waitFor(() => {
+                expect(useGameControllerModule.useGameController).toHaveBeenCalledWith(
+                    4,
+                    'LOCAL_2P',
+                    undefined,
+                    'online-first-rematch',
+                    'easy',
+                    {
+                        pieRule: { enabled: false },
+                        honey: { enabled: false, blockedCells: [] },
+                    },
+                );
+            });
+
+            expect(
+                vi.mocked(useGameControllerModule.useGameController).mock.calls.some(
+                    (call) => call[3] === 'online-second-rematch',
+                ),
+            ).toBe(false);
+        });
+
+        it('clears rematch state only when declined payload belongs to current match', () => {
+            mockOnlineRematchSession('online-rematch');
+
+            renderWithConfig({
+                boardSize: 3,
+                mode: 'ONLINE',
+                difficulty: 'easy',
+                matchId: 'online-rematch',
+            });
+
+            const callbacks = vi.mocked(useOnlineSession).mock.calls.at(-1)?.[1];
+
+            act(() => {
+                callbacks?.onRequested?.({
+                    matchId: 'online-rematch',
+                    requesterName: 'Alice',
+                });
+            });
+
+            expect(screen.getByTestId('rematch-state')).toHaveTextContent('incoming');
+
+            act(() => {
+                callbacks?.onDeclined?.({
+                    matchId: 'other-match',
+                });
+            });
+
+            expect(screen.getByTestId('rematch-state')).toHaveTextContent('incoming');
+
+            act(() => {
+                callbacks?.onDeclined?.({
+                    matchId: 'online-rematch',
+                });
+            });
+
+            expect(screen.getByTestId('rematch-state')).toHaveTextContent('idle');
+        });
+
+        it('request rematch sends request and auto-declines after timeout', async () => {
+            vi.useFakeTimers();
+
+            try {
+                const { requestRematch, declineRematch } = mockOnlineRematchSession('online-rematch');
+
+                renderWithConfig({
+                    boardSize: 3,
+                    mode: 'ONLINE',
+                    difficulty: 'easy',
+                    matchId: 'online-rematch',
+                });
+
+                fireEvent.click(screen.getByRole('button', { name: 'RequestRematch' }));
+
+                expect(requestRematch).toHaveBeenCalledWith('online-rematch');
+                expect(screen.getByTestId('rematch-state')).toHaveTextContent('pending');
+
+                await act(async () => {
+                    vi.advanceTimersByTime(30_000);
+                });
+
+                expect(declineRematch).toHaveBeenCalledWith('online-rematch');
+                expect(screen.getByTestId('rematch-state')).toHaveTextContent('idle');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('accept rematch sends accept event for current match', () => {
+            const { acceptRematch } = mockOnlineRematchSession('online-rematch');
+
+            renderWithConfig({
+                boardSize: 3,
+                mode: 'ONLINE',
+                difficulty: 'easy',
+                matchId: 'online-rematch',
+            });
+
+            fireEvent.click(screen.getByRole('button', { name: 'AcceptRematch' }));
+
+            expect(acceptRematch).toHaveBeenCalledWith('online-rematch');
+        });
+
+        it('decline rematch sends decline event and resets state', () => {
+            const { declineRematch } = mockOnlineRematchSession('online-rematch');
+
+            renderWithConfig({
+                boardSize: 3,
+                mode: 'ONLINE',
+                difficulty: 'easy',
+                matchId: 'online-rematch',
+            });
+
+            fireEvent.click(screen.getByRole('button', { name: 'DeclineRematch' }));
+
+            expect(declineRematch).toHaveBeenCalledWith('online-rematch');
+            expect(screen.getByTestId('rematch-state')).toHaveTextContent('idle');
+        });
+    });
 });

@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS user_profiles (
-    user_id INTEGER PRIMARY KEY ,
+    user_id INTEGER PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     display_name TEXT,
     email TEXT,
@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS friend_requests (
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (sender_user_id) REFERENCES user_profiles(user_id),
-    FOREIGN KEY (recipient_user_id) REFERENCES user_profiles(user_id),
+    FOREIGN KEY (sender_user_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (recipient_user_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE,
     CONSTRAINT different_users CHECK (sender_user_id <> recipient_user_id),
     CONSTRAINT unique_request_direction UNIQUE (sender_user_id, recipient_user_id)
 );
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
     user_high_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_low_id) REFERENCES user_profiles(user_id),
-    FOREIGN KEY (user_high_id) REFERENCES user_profiles(user_id),
+    FOREIGN KEY (user_low_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_high_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE,
     CONSTRAINT different_users CHECK (user_low_id <> user_high_id),
     CONSTRAINT ordered_users CHECK (user_low_id < user_high_id),
     CONSTRAINT unique_conversation UNIQUE (user_low_id, user_high_id)
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     text TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
-    FOREIGN KEY (sender_user_id) REFERENCES user_profiles(user_id),
+    FOREIGN KEY (sender_user_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE,
     CONSTRAINT non_empty_text CHECK (length(trim(text)) > 0),
     CONSTRAINT max_text_length CHECK (length(text) <= 2000)
 );

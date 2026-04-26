@@ -17,7 +17,7 @@ const BOT_RATING_BY_DIFFICULTY: Record<MatchDifficulty, number> = {
     easy: 1000,
     medium: 1300,
     hard: 1600,
-    expert: 1900,
+    impossible: 1900,
 };
 
 export class RankingService {

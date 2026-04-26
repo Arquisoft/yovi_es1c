@@ -22,7 +22,7 @@ describe('initDB integration', () => {
 
     const { initDB } = await import('../src/database/database.js');
     const firstDb = await initDB();
-    await firstDb.run("INSERT INTO user_profiles (username, avatar) VALUES ('alice', 'avatar-a')");
+    await firstDb.run("INSERT INTO user_profiles (user_id, username, avatar) VALUES (1, 'alice', 'avatar-a')");
     await firstDb.close();
 
     const secondDb = await initDB();
@@ -37,7 +37,7 @@ describe('initDB integration', () => {
 
     const { initDB } = await import('../src/database/database.js');
     const db = await initDB();
-    await db.run("INSERT INTO user_profiles (username, avatar) VALUES ('bob', 'avatar-b')");
+    await db.run("INSERT INTO user_profiles (user_id, username, avatar) VALUES (2, 'bob', 'avatar-b')");
     await db.close();
 
     const restarted = await initDB();
@@ -46,39 +46,39 @@ describe('initDB integration', () => {
     await restarted.close();
   });
 
-  it('applies newly added schema objects to an existing database file', async () => {
-    const dataDir = path.join(tmpRoot, 'migration');
+  it('migrates the legacy id primary key schema to user_id primary key', async () => {
+    const dataDir = path.join(tmpRoot, 'legacy');
     vi.stubEnv('DB_DATA_DIR', dataDir);
     fs.mkdirSync(dataDir, { recursive: true });
 
-    const dbFile = path.join(dataDir, 'users.db');
     const sqlite3 = await import('sqlite3');
     const { open } = await import('sqlite');
-
     const legacyDb = await open({
-      filename: dbFile,
+      filename: path.join(dataDir, 'users.db'),
       driver: sqlite3.default.Database,
     });
 
     await legacyDb.exec(`
       CREATE TABLE user_profiles (
-        user_id INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
-        display_name TEXT,
-        email TEXT,
         avatar TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      INSERT INTO user_profiles (username, avatar) VALUES ('carla', 'avatar-c');
     `);
     await legacyDb.close();
 
     const { initDB } = await import('../src/database/database.js');
     const migratedDb = await initDB();
-    const table = await migratedDb.get(
+    const carla = await migratedDb.get("SELECT user_id, username, avatar FROM user_profiles WHERE username = 'carla'");
+    const friendRequestsTable = await migratedDb.get(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'friend_requests'",
     );
 
-    expect(table).toEqual({ name: 'friend_requests' });
+    expect(carla).toEqual({ user_id: 1, username: 'carla', avatar: 'avatar-c' });
+    expect(friendRequestsTable).toEqual({ name: 'friend_requests' });
     await migratedDb.close();
   });
 

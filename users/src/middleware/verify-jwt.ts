@@ -10,13 +10,10 @@ declare global {
     }
 }
 
-
-
-
 export async function verifyJwtMiddleware(req: Request, res: Response, next: NextFunction) {
     try {
         const authHeader = req.headers.authorization;
-        
+
         if (!authHeader) {
             return res.status(401).json({ error: 'unauthorized', message: 'Missing authorization header' });
         }

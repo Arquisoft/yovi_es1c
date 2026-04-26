@@ -5,7 +5,7 @@ import logoDark from '../../assets/gamey-logo-white.png';
 import logoLight from '../../assets/gamey-logo-black.png';
 import { useAuth } from '../../features/auth';
 import { logoutSession } from '../../features/auth/api/authApi';
-import { useTranslation } from "react-i18next";
+import {useTranslation} from "react-i18next";
 import LanguageSwitcher from './LanguageSwitcher';
 
 
@@ -68,44 +68,39 @@ export default function Nav() {
           <Link to="/stats" className={linkClass('/stats')}>{t('stats')}</Link>
         </li>
         <li>
-          <LanguageSwitcher />
-        </li>
-        <li>
           <Link to="/ranking" className={linkClass('/ranking')}>Ranking</Link>
         </li>
-        {user ? (
-          <li>
-            <Link to="/friends" className={linkClass('/friends')}>Amigos</Link>
-          </li>
-        ) : null}
-        {user ? (
-          <>
-            <li>
-              <Link
-                to="/profile"
-                className={`${linkClass('/profile')} ${styles.username}`}
-              >
-                {user.username}
-              </Link>
-            </li>
-            <li>
-              <button type="button" onClick={handleLogout} className={`${styles.link} ${styles.logoutButton}`}>
-                {t('logout')}
-              </button>
-            </li>
 
-
-          </>
+        {user ? (
+            <>
+              <li>
+                <Link to="/friends" className={linkClass('/friends')}>{t('friends')}</Link>
+              </li>
+              <li>
+                <Link to="/profile" className={`${linkClass('/profile')} ${styles.username}`} title={t('profile')}>
+                  {user.username}
+                </Link>
+              </li>
+              <li>
+                <button type="button" onClick={handleLogout} className={`${styles.link} ${styles.logoutButton}`}>
+                  {t('logout')}
+                </button>
+              </li>
+            </>
         ) : (
-          <>
-            <li>
-              <Link to="/login" className={linkClass('/login')}>{t('login')}</Link>
-            </li>
-            <li>
-              <Link to="/register" className={linkClass('/register')}>{t('register')}</Link>
-            </li>
-          </>
+            <>
+              <li>
+                <Link to="/login" className={linkClass('/login')}>{t('login')}</Link>
+              </li>
+              <li>
+                <Link to="/register" className={linkClass('/register')}>{t('register')}</Link>
+              </li>
+            </>
         )}
+
+        <li className={styles.languageItem}>
+          <LanguageSwitcher />
+        </li>
       </ul>
     </nav>
   );

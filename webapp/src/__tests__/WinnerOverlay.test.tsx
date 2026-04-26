@@ -143,7 +143,6 @@ describe('WinnerOverlay – online / rematch states', () => {
                 onNavigateHome={onNavigateHome}
                 isOnline
                 rematchState="idle"
-                onNavigateHome={onNavigateHome}
             />,
         );
         const btn = screen.getByRole('button', { name: /Nueva configuración/i });

@@ -36,8 +36,8 @@ function scryptAsync(
     });
 }
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 } as const;
-const SALT_BYTES = 32;
-const KEY_LEN = 64;
+const SALT_BYTES    = 32;
+const KEY_LEN       = 64;
 
 async function hashPassword(password: string): Promise<string> {
     const salt = randomBytes(SALT_BYTES).toString('hex');
@@ -49,7 +49,7 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
     const [salt, hashHex] = stored.split(':');
     if (!salt || !hashHex) return false;
     const storedHash = Buffer.from(hashHex, 'hex');
-    const derived = (await scryptAsync(password, salt, KEY_LEN, SCRYPT_PARAMS)) as Buffer;
+    const derived    = (await scryptAsync(password, salt, KEY_LEN, SCRYPT_PARAMS)) as Buffer;
     return timingSafeEqual(derived, storedHash);
 }
 
@@ -60,7 +60,7 @@ function hasUniqueConstraintError(error: unknown): boolean {
         && (error as { code?: unknown }).code === '23505';
 }
 
-const ACCESS_TOKEN_TTL = '15m';
+const ACCESS_TOKEN_TTL    = '15m';
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type AuthResponse = {
@@ -77,7 +77,7 @@ type AuthResponse = {
 };
 
 export class AuthService {
-    constructor(private repo: CredentialsRepository) { }
+    constructor(private repo: CredentialsRepository) {}
 
     async register(username: string, password: string, deviceId = 'web', deviceName?: string): Promise<AuthResponse> {
         try {
@@ -92,7 +92,6 @@ export class AuthService {
             }
 
             const userId = await this.repo.createUser(username, passwordHash);
-            await this.createUserProfile(userId, username);
             const session = await this.issueSession(userId, username, deviceId, deviceName);
 
             recordRegisterAttempt('success');
@@ -182,7 +181,7 @@ export class AuthService {
                 throw new InvalidRefreshTokenError();
             }
 
-            const tokenHash = this.hashRefreshToken(refreshToken);
+            const tokenHash  = this.hashRefreshToken(refreshToken);
             const storedToken = await this.repo.findRefreshTokenByHash(tokenHash);
 
             if (!storedToken) {
@@ -221,8 +220,8 @@ export class AuthService {
                 decrementActiveRefreshTokens(revokedRotated);
             }
 
-            const nextRefreshToken = this.generateOpaqueToken();
-            const nextRefreshHash = this.hashRefreshToken(nextRefreshToken);
+            const nextRefreshToken   = this.generateOpaqueToken();
+            const nextRefreshHash    = this.hashRefreshToken(nextRefreshToken);
             const nextRefreshExpires = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
 
             await this.repo.storeRefreshToken(
@@ -236,9 +235,9 @@ export class AuthService {
             recordRefreshTokenIssued();
             incrementActiveRefreshTokens();
 
-            const user = await this.repo.findUserById(storedToken.user_id);
+            const user             = await this.repo.findUserById(storedToken.user_id);
             const usernameResolved = user?.username;
-            const accessToken = this.signAccessToken(storedToken.user_id, storedToken.session_id, usernameResolved);
+            const accessToken      = this.signAccessToken(storedToken.user_id, storedToken.session_id, usernameResolved);
 
             recordRefreshAttempt('success');
 
@@ -261,22 +260,30 @@ export class AuthService {
 
     async logout(sessionId?: string): Promise<void> {
         if (!sessionId) return;
-        await this.repo.revokeSessionById(sessionId);
+        const revoked = await this.repo.revokeSessionById(sessionId);
+        if (revoked > 0) {
+            recordRefreshTokenRevocation('logout', revoked);
+            decrementActiveRefreshTokens(revoked);
+        }
     }
 
     async logoutAll(userId: number): Promise<void> {
-        await this.repo.revokeAllUserSessions(userId);
+        const revoked = await this.repo.revokeAllUserSessions(userId);
+        if (revoked > 0) {
+            recordRefreshTokenRevocation('logout_all', revoked);
+            decrementActiveRefreshTokens(revoked);
+        }
     }
 
     private async issueSession(userId: number, username: string, deviceId: string, deviceName?: string) {
         const sessionId = crypto.randomUUID();
         await this.repo.createSession(sessionId, userId, deviceId, deviceName);
 
-        const accessToken = this.signAccessToken(userId, sessionId, username);
-        const refreshToken = this.generateOpaqueToken();
-        const refreshHash = this.hashRefreshToken(refreshToken);
+        const accessToken      = this.signAccessToken(userId, sessionId, username);
+        const refreshToken     = this.generateOpaqueToken();
+        const refreshHash      = this.hashRefreshToken(refreshToken);
         const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
-        const familyId = crypto.randomUUID();
+        const familyId         = crypto.randomUUID();
 
         await this.repo.storeRefreshToken(userId, sessionId, refreshHash, familyId, refreshExpiresAt);
 
@@ -324,27 +331,5 @@ export class AuthService {
 
     private hashRefreshToken(token: string): string {
         return crypto.createHash('sha256').update(token).digest('hex');
-    }
-
-    private async createUserProfile(userId: number, username: string): Promise<void> {
-        const usersServiceUrl = process.env.USERS_SERVICE_URL;
-
-        const response = await fetch(`${usersServiceUrl}/api/users/profiles`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                userId,
-                username,
-                avatar: '/avatars/avatar01.png'
-            })
-        });
-
-        if (!response.ok) {
-            const text = await response.text();
-            console.error("Users error:", text);
-            throw new Error(`Failed to create profile: ${text}`);
-        }
     }
 }

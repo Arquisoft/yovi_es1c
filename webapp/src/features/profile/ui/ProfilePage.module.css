@@ -1,8 +1,8 @@
 .page {
   min-height: calc(100vh - 100px);
   display: grid;
-  place-items: center;
-  padding: 2rem 1rem 4rem;
+  place-items: start center;
+  padding: 6rem 1rem 4rem;
 }
 
 .card {

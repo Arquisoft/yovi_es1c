@@ -10,6 +10,7 @@ import {
 } from "../errors/domain-errors.js";
 
 export type UserProfile = {
+  id: number;
   user_id: number;
   username: string;
   display_name: string | null;
@@ -39,6 +40,12 @@ export type FriendRequestSummary = {
   direction: "incoming" | "outgoing";
 };
 
+type ProfileUpdate = {
+  displayName?: string;
+  email?: string;
+  avatar?: string | null;
+};
+
 export class UserRepository {
   private readonly db: Database;
 
@@ -46,9 +53,9 @@ export class UserRepository {
     this.db = db;
   }
 
-  // Maps sql row to a TypeScript object
   private map(row: any): UserProfile {
     return {
+      id: row.user_id,
       user_id: row.user_id,
       username: row.username,
       display_name: row.display_name,
@@ -83,27 +90,29 @@ export class UserRepository {
     };
   }
 
-  async createProfile(
-      user_id: number,
-      username: string,
-      avatar?: string
-  ): Promise<UserProfile> {
-
+  async createProfile(userId: number, username: string, avatar?: string | null): Promise<UserProfile> {
     await this.db.run(
-        `INSERT INTO user_profiles (user_id, username, avatar)
-     VALUES (?, ?, ?)`,
-        [user_id, username, avatar ?? null]
+      `INSERT INTO user_profiles (user_id, username, avatar)
+       VALUES (?, ?, ?)`,
+      [userId, username, avatar ?? null],
     );
 
-    return (await this.getById(user_id))!;
+    return (await this.getById(userId))!;
   }
 
-  async getById(user_id: number): Promise<UserProfile | null> {
+  async ensureProfile(userId: number, username: string, avatar?: string | null): Promise<UserProfile> {
+    const existing = await this.getById(userId);
+    if (existing) return existing;
+
+    return this.createProfile(userId, username, avatar ?? null);
+  }
+
+  async getById(userId: number): Promise<UserProfile | null> {
     const row = await this.db.get(
-        `SELECT user_id, username, display_name, email, avatar, created_at
-     FROM user_profiles
-     WHERE user_id = ?`,
-        [user_id]
+      `SELECT user_id, username, display_name, email, avatar, created_at
+       FROM user_profiles
+       WHERE user_id = ?`,
+      [userId],
     );
 
     return row ? this.map(row) : null;
@@ -111,35 +120,34 @@ export class UserRepository {
 
   async getByUsername(username: string): Promise<UserProfile | null> {
     const row = await this.db.get(
-        `SELECT user_id, username, display_name, email, avatar, created_at
-     FROM user_profiles
-     WHERE username = ?`,
-        [username]
+      `SELECT user_id, username, display_name, email, avatar, created_at
+       FROM user_profiles
+       WHERE username = ?`,
+      [username],
     );
 
     return row ? this.map(row) : null;
   }
 
-  async updateProfile(
-      user_id: number,
-      data: {
-        displayName?: string;
-        email?: string;
-        avatar?: string;
-      }
-  ): Promise<UserProfile | null> {
-    const { displayName, email, avatar } = data;
+  async updateProfile(userId: number, data: ProfileUpdate): Promise<UserProfile | null> {
+    const current = await this.getById(userId);
+    if (!current) return null;
 
     await this.db.run(
-        `UPDATE user_profiles
-         SET display_name = COALESCE(?, display_name),
-             email = COALESCE(?, email),
-             avatar = COALESCE(?, avatar)
-         WHERE user_id = ?`,
-        [displayName, email, avatar, user_id]
+      `UPDATE user_profiles
+       SET display_name = ?,
+           email = ?,
+           avatar = ?
+       WHERE user_id = ?`,
+      [
+        data.displayName !== undefined ? data.displayName : current.display_name,
+        data.email !== undefined ? data.email : current.email,
+        data.avatar !== undefined ? data.avatar : current.avatar,
+        userId,
+      ],
     );
 
-    return this.getById(user_id);
+    return this.getById(userId);
   }
 
   async listFriends(userId: number): Promise<FriendSummary[]> {
@@ -158,7 +166,7 @@ export class UserRepository {
        WHERE (fr.sender_user_id = ? OR fr.recipient_user_id = ?)
          AND fr.status = 'accepted'
        ORDER BY COALESCE(up.display_name, up.username) COLLATE NOCASE ASC`,
-      [userId, userId, userId]
+      [userId, userId, userId],
     );
 
     return rows.map((row: any) => this.mapFriend(row));
@@ -174,7 +182,7 @@ export class UserRepository {
            OR (fr.sender_user_id = ? AND fr.recipient_user_id = ?)
          )
        LIMIT 1`,
-      [userId, otherUserId, otherUserId, userId]
+      [userId, otherUserId, otherUserId, userId],
     );
 
     return Boolean(row?.ok);
@@ -194,7 +202,7 @@ export class UserRepository {
        WHERE fr.recipient_user_id = ?
          AND fr.status = 'pending'
        ORDER BY fr.created_at DESC`,
-      [userId]
+      [userId],
     );
 
     const outgoingRows = await this.db.all(
@@ -210,7 +218,7 @@ export class UserRepository {
        WHERE fr.sender_user_id = ?
          AND fr.status = 'pending'
        ORDER BY fr.created_at DESC`,
-      [userId]
+      [userId],
     );
 
     return [
@@ -224,6 +232,11 @@ export class UserRepository {
 
     if (!normalizedUsername) {
       throw new ValidationError("Recipient username is required");
+    }
+
+    const sender = await this.getById(senderUserId);
+    if (!sender) {
+      throw new ProfileNotFoundError();
     }
 
     const recipient = await this.getByUsername(normalizedUsername);
@@ -240,7 +253,7 @@ export class UserRepository {
        FROM friend_requests
        WHERE (sender_user_id = ? AND recipient_user_id = ?)
           OR (sender_user_id = ? AND recipient_user_id = ?)`,
-      [senderUserId, recipient.user_id, recipient.user_id, senderUserId]
+      [senderUserId, recipient.user_id, recipient.user_id, senderUserId],
     );
 
     if (existing?.status === "accepted") {
@@ -254,7 +267,7 @@ export class UserRepository {
     const result = await this.db.run(
       `INSERT INTO friend_requests (sender_user_id, recipient_user_id)
        VALUES (?, ?)`,
-      [senderUserId, recipient.user_id]
+      [senderUserId, recipient.user_id],
     );
 
     const row = await this.db.get(
@@ -268,7 +281,7 @@ export class UserRepository {
        FROM friend_requests fr
        JOIN user_profiles up ON up.user_id = fr.recipient_user_id
        WHERE fr.id = ?`,
-      [result.lastID]
+      [result.lastID],
     );
 
     return this.mapFriendRequest(row, "outgoing");
@@ -279,7 +292,7 @@ export class UserRepository {
       `SELECT *
        FROM friend_requests
        WHERE id = ?`,
-      [requestId]
+      [requestId],
     );
 
     if (!existing) {
@@ -295,7 +308,7 @@ export class UserRepository {
        SET status = 'accepted',
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [requestId]
+      [requestId],
     );
 
     const row = await this.db.get(
@@ -309,7 +322,7 @@ export class UserRepository {
        FROM friend_requests fr
        JOIN user_profiles up ON up.user_id = fr.sender_user_id
        WHERE fr.id = ?`,
-      [requestId]
+      [requestId],
     );
 
     return this.mapFriendRequest(row, "incoming");
@@ -320,7 +333,7 @@ export class UserRepository {
       `SELECT *
        FROM friend_requests
        WHERE id = ?`,
-      [requestId]
+      [requestId],
     );
 
     if (!existing) {
@@ -334,7 +347,7 @@ export class UserRepository {
     await this.db.run(
       `DELETE FROM friend_requests
        WHERE id = ?`,
-      [requestId]
+      [requestId],
     );
   }
 
@@ -350,7 +363,7 @@ export class UserRepository {
            (sender_user_id = ? AND recipient_user_id = ?)
            OR (sender_user_id = ? AND recipient_user_id = ?)
          )`,
-      [userId, friendUserId, friendUserId, userId]
+      [userId, friendUserId, friendUserId, userId],
     );
 
     if (!result.changes) {

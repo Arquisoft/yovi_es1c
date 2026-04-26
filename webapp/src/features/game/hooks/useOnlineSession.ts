@@ -42,8 +42,8 @@ export interface OnlineSnapshotPayload {
   version: number;
   timerEndsAt: number;
   players: [
-{ userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' },
-{ userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' }
+    { userId: number; username: string; symbol: 'B' | 'R' },
+    { userId: number; username: string; symbol: 'B' | 'R' }
   ];
   winner?: 'B' | 'R' | null;
   connectionStatus?: ConnectionBadgeState;
@@ -72,8 +72,8 @@ interface SessionStateSocketPayload {
   version: number;
   timerEndsAt: number;
   players?: [
-    { userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' },
-    { userId: number; username: string; displayName?: string | null; avatar?: string | null; symbol: 'B' | 'R' }
+    { userId: number; username: string; symbol: 'B' | 'R' },
+    { userId: number; username: string; symbol: 'B' | 'R' }
   ];
   winner?: 'B' | 'R' | null;
   connectionStatus?: ConnectionBadgeState;
@@ -82,7 +82,11 @@ interface SessionStateSocketPayload {
 // ─── Rematch event payloads ───────────────────────────────────────────────────
 export interface RematchRequestedPayload {
   matchId: string;
+  requesterId?: number;
   requesterName: string;
+  size?: number;
+  rules?: MatchRulesDto;
+  expiresAt?: number;
 }
 
 export interface RematchReadyPayload {
@@ -214,8 +218,8 @@ export function useOnlineSession(matchId: string | null, rematchCallbacks?: Rema
                 version: payload.version,
                 timerEndsAt: payload.timerEndsAt,
                 players: payload.players ?? [
-                  { userId: 0, username: 'Player 1', avatar: null, symbol: 'B' },
-                  { userId: 0, username: 'Player 2', avatar: null, symbol: 'R' },
+                  { userId: 0, username: 'Player 1', symbol: 'B' },
+                  { userId: 0, username: 'Player 2', symbol: 'R' },
                 ],
                 winner: payload.winner ?? null,
                 connectionStatus: payload.connectionStatus ?? 'CONNECTED',

@@ -1,3 +1,10 @@
 export { default as GameUI } from "./ui/tsx/GameUI.tsx";
-export {resolveCurrentTurnLabel, resolveWinnerLabel, resolveGameOverText } from "./ui/tsx/gameUIHelpers.ts";
-export type { Player, GameMode } from "./ui/tsx/gameUIHelpers.ts";
+export {
+    resolveCurrentTurnLabel,
+    resolveGameOverText,
+    resolveLoserLabel,
+    resolvePlayerName,
+    resolveWinnerLabel,
+    resolveWinnerMessage,
+} from "./ui/tsx/gameUIHelpers.ts";
+export type { GameMode, Player, WinnerSymbol } from "./ui/tsx/gameUIHelpers.ts";

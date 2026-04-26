@@ -3,11 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import ChatBox from '../features/game/ui/tsx/ChatBox';
 
 describe('ChatBox', () => {
-  const players = [
-  { userId: 1, username: 'alice', avatar: '/avatars/avatar01.png' },
-  { userId: 2, username: 'bob', avatar: '/avatars/avatar02.png' },
-]
-
   it('renders messages correctly', () => {
     render(
         <ChatBox
@@ -19,7 +14,6 @@ describe('ChatBox', () => {
               { userId: 1, username: 'yo', text: 'hola', timestamp: 1 },
               { userId: 2, username: 'rival', text: 'que tal', timestamp: 2 },
             ]}
-            players={players}
         />,
     );
 
@@ -39,8 +33,6 @@ describe('ChatBox', () => {
             localUserId={1}
             sendMessage={sendMessage}
             messages={[]}
-            players={players}
-
         />,
     );
 
@@ -60,7 +52,6 @@ describe('ChatBox', () => {
             localUserId={1}
             sendMessage={sendMessage}
             messages={[]}
-            players={players}
         />,
     );
 
@@ -84,8 +75,6 @@ describe('ChatBox', () => {
             localUserId={1}
             sendMessage={vi.fn()}
             messages={[]}
-            players={players}
-
         />,
     );
 

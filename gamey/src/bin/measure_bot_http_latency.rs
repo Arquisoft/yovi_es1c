@@ -26,7 +26,7 @@ struct Args {
     #[arg(long, value_enum, default_value_t = Endpoint::Choose)]
     endpoint: Endpoint,
 
-    #[arg(long, default_value = "expert")]
+    #[arg(long, default_value = "easy")]
     bot: String,
 
     #[arg(long, default_value_t = 32)]

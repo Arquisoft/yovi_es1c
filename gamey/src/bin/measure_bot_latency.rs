@@ -7,7 +7,7 @@ use std::time::Instant;
 
 #[derive(Parser, Debug)]
 struct Args {
-    #[arg(long, default_value = "expert")]
+    #[arg(long, default_value = "easy")]
     bot: String,
 
     #[arg(long, default_value_t = 128)]

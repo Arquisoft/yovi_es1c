@@ -187,10 +187,11 @@ class PolicyValueNet(nn.Module):
         Devuelve (policy: list[float] de longitud total_cells(board_size), value: float).
         """
         self.eval()
+        device = next(self.parameters()).device
         with torch.no_grad():
             grid, bn = encode_board(board_state, board_size, current_player)
-            spatial    = grid.unsqueeze(0)                          # (1, 6, 32, 32)
-            board_norm = torch.tensor([[bn]], dtype=torch.float32)  # (1, 1)
+            spatial    = grid.unsqueeze(0).to(device)
+            board_norm = torch.tensor([[bn]], dtype=torch.float32).to(device)
 
             log_policy, val = self.forward(spatial, board_norm)
 
