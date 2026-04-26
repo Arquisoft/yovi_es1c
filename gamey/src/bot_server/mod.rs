@@ -45,6 +45,8 @@ use crate::bot_server::runtime_config::{BotServerRuntimeConfig, init_rayon_pool}
 use crate::minimax::MinimaxBot;
 use crate::set_connectivity_heuristic::SetConnectivityHeuristic;
 use crate::{BalancedHeuristic, GameYError, RandomBot, YBotRegistry, state::AppState};
+use crate::bot::montecarlo::MontecarloBot;
+use crate::both_players_set_distances_heuristic::BotPlayersSetDistancesHeuristic;
 
 /// Creates the Axum router with the given state.
 ///
@@ -87,10 +89,8 @@ pub fn create_default_state() -> AppState {
 
     let mut bots = YBotRegistry::new()
         .with_bot(Arc::new(RandomBot))
-        .with_bot(Arc::new(MinimaxBot::new(SetBasedHeuristic, 2)))
-        .with_bot(Arc::new(
-            MinimaxBot::new(BalancedHeuristic, 2).with_variety(3, 160),
-        ))
+        .with_bot(Arc::new(MinimaxBot::new(BotPlayersSetDistancesHeuristic, 3)))
+        .with_bot(Arc::new(MontecarloBot { simulations: 120 }))
         .with_bot(Arc::new(MinimaxBot::new(SetConnectivityHeuristic, 4)));
 
     let mut neural_ids = HashSet::new();
@@ -113,8 +113,8 @@ pub fn create_default_state() -> AppState {
 
     let mut aliases = HashMap::new();
     aliases.insert("easy".to_string(), "random".to_string());
-    aliases.insert("medium".to_string(), "minimax_balanced_d2".to_string());
-    aliases.insert("hard".to_string(), "minimax_connectivity_d4".to_string());
+    aliases.insert("medium".to_string(), "minimax_opposing_set_d3".to_string());
+    aliases.insert("hard".to_string(), "montecarlo".to_string());
     aliases.insert("expert".to_string(), runtime_config.expert.bot_id());
     aliases.insert("expert_fast".to_string(), runtime_config.expert_fast.bot_id());
 
@@ -192,11 +192,11 @@ mod tests {
 
     fn test_state_with_medium_alias() -> AppState {
         let bots = YBotRegistry::new().with_bot(Arc::new(
-            MinimaxBot::new(BalancedHeuristic, 2).with_variety(3, 160),
+            MinimaxBot::new(BotPlayersSetDistancesHeuristic, 3).with_variety(3, 160),
         ));
         let aliases = HashMap::from([(
             "medium".to_string(),
-            "minimax_balanced_d2".to_string(),
+            "minimax_opposing_set_d3".to_string(),
         )]);
         let resolver = BotAliasResolver::new(aliases);
         AppState::new(bots, resolver)
@@ -508,7 +508,7 @@ mod tests {
         clear_gamey_env();
         let state = create_default_state();
         let resolved = state.resolve_bot_id("medium");
-        assert_eq!(resolved, "minimax_balanced_d2");
+        assert_eq!(resolved, "minimax_opposing_set_d3");
         assert!(state.bots().find(resolved).is_some());
     }
 
