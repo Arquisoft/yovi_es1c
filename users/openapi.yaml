@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: Users Service API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Current HTTP surface exposed by the TypeScript users microservice.
-    Profile endpoints require JWT verification through the Auth Service.
+    Authenticated endpoints require JWT verification through the Auth Service.
 
 servers:
   - url: /api/users
@@ -14,7 +14,11 @@ servers:
 
 tags:
   - name: Profiles
-    description: Authenticated user profile operations
+    description: User profile operations
+  - name: Friends
+    description: Friends and friend requests
+  - name: Chat
+    description: 1:1 chat between friends (REST + persistent history)
   - name: Operations
     description: Health and metrics endpoints
 
@@ -41,8 +45,6 @@ paths:
     post:
       tags: [Profiles]
       summary: Create a user profile
-      security:
-        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -50,50 +52,37 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateProfileRequest'
             example:
+              userId: 1
               username: alice
-              avatar: knight
+              avatar: /avatars/avatar01.png
       responses:
         '201':
           description: Profile created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
+                $ref: '#/components/schemas/UserProfileRow'
         '400':
-          description: Missing or invalid username
+          description: Missing or invalid payload
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
               example:
-                error: username is required
-        '401':
-          description: Missing or invalid authorization header
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthError'
+                error: userId and username are required
         '409':
           description: Username already exists
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: Username already exists
-        '503':
-          description: Auth Service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthUnavailableError'
 
   /profiles/by-username/{username}:
     get:
       tags: [Profiles]
       summary: Get a profile by username
-      security:
-        - bearerAuth: []
       parameters:
         - name: username
           in: path
@@ -107,34 +96,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
-        '401':
-          description: Missing or invalid authorization header
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthError'
+                $ref: '#/components/schemas/UserProfileRow'
         '404':
           description: Profile not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: Profile not found
-        '503':
-          description: Auth Service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthUnavailableError'
 
   /profiles/{id}:
     get:
       tags: [Profiles]
       summary: Get a profile by id
-      security:
-        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -148,41 +123,27 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
+                $ref: '#/components/schemas/UserProfileRow'
         '400':
           description: Invalid id
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: Invalid id
-        '401':
-          description: Missing or invalid authorization header
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthError'
         '404':
           description: Profile not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: Profile not found
-        '503':
-          description: Auth Service unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthUnavailableError'
     put:
       tags: [Profiles]
       summary: Update a profile
       description: The current implementation only updates the `avatar` field.
-      security:
-        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -197,20 +158,315 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateProfileRequest'
             example:
-              avatar: mage
+              avatar: /avatars/avatar02.png
       responses:
         '200':
           description: Profile updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
+                $ref: '#/components/schemas/UserProfileRow'
         '400':
           description: Invalid id
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /me:
+    get:
+      tags: [Profiles]
+      summary: Get (or auto-create) my profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: My profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfile'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+    put:
+      tags: [Profiles]
+      summary: Update my profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMyProfileRequest'
+      responses:
+        '200':
+          description: My updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfile'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /friends:
+    get:
+      tags: [Friends]
+      summary: List my friends
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Friends list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Friend'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /friends/requests:
+    get:
+      tags: [Friends]
+      summary: List my pending friend requests (incoming and outgoing)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pending friend requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FriendRequest'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+    post:
+      tags: [Friends]
+      summary: Send a friend request
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendFriendRequestBody'
+            example:
+              username: bea
+      responses:
+        '201':
+          description: Friend request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequest'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '403':
+          description: Forbidden action (e.g. request not owned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Target profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Request or friendship already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /friends/requests/{requestId}/accept:
+    post:
+      tags: [Friends]
+      summary: Accept a friend request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Friend request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequest'
+        '400':
+          description: Invalid request id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '403':
+          description: Forbidden action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /friends/requests/{requestId}:
+    delete:
+      tags: [Friends]
+      summary: Cancel or reject a friend request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid request id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '403':
+          description: Forbidden action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /friends/{friendUserId}:
+    delete:
+      tags: [Friends]
+      summary: Remove a friend (unfriend)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '204':
+          description: Removed
+        '400':
+          description: Invalid friend user id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid authorization header
           content:
@@ -218,11 +474,149 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthError'
         '404':
-          description: Profile not found
+          description: Friendship not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BasicError'
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /chat/conversations:
+    get:
+      tags: [Chat]
+      summary: List my chat conversations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatConversation'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+
+  /chat/with/{friendUserId}/messages:
+    get:
+      tags: [Chat]
+      summary: List messages with a friend
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: beforeId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessagesResponse'
+        '400':
+          description: Invalid friend user id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '403':
+          description: Not friends
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Auth Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUnavailableError'
+    post:
+      tags: [Chat]
+      summary: Send a message to a friend
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendChatMessageBody'
+            example:
+              text: Hola!
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+        '400':
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthError'
+        '403':
+          description: Not friends
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           description: Auth Service unavailable
           content:
@@ -257,8 +651,11 @@ components:
   schemas:
     CreateProfileRequest:
       type: object
-      required: [username]
+      required: [userId, username]
       properties:
+        userId:
+          type: integer
+          minimum: 1
         username:
           type: string
           minLength: 1
@@ -273,14 +670,20 @@ components:
           type: string
           nullable: true
 
-    UserProfile:
+    UserProfileRow:
       type: object
-      required: [id, username, created_at]
+      required: [user_id, username, created_at]
       properties:
-        id:
+        user_id:
           type: integer
         username:
           type: string
+        display_name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
         avatar:
           type: string
           nullable: true
@@ -289,12 +692,180 @@ components:
           description: SQLite timestamp string generated by CURRENT_TIMESTAMP.
           example: '2026-04-24 10:30:00'
 
-    BasicError:
+    MyProfile:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+
+    UpdateMyProfileRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+
+    Friend:
+      type: object
+      required: [id, username, friendsSince]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+        friendsSince:
+          type: string
+
+    FriendRequestUser:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+
+    FriendRequest:
+      type: object
+      required: [id, status, createdAt, direction, user]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, accepted]
+        createdAt:
+          type: string
+        direction:
+          type: string
+          enum: [incoming, outgoing]
+        user:
+          $ref: '#/components/schemas/FriendRequestUser'
+
+    SendFriendRequestBody:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 1
+
+    ChatMessage:
+      type: object
+      required: [id, conversationId, senderUserId, text, createdAt]
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        senderUserId:
+          type: integer
+        text:
+          type: string
+        createdAt:
+          type: string
+
+    ChatConversationOtherUser:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+
+    ChatConversationLastMessage:
+      type: object
+      required: [id, senderUserId, text, createdAt]
+      properties:
+        id:
+          type: integer
+        senderUserId:
+          type: integer
+        text:
+          type: string
+        createdAt:
+          type: string
+
+    ChatConversation:
+      type: object
+      required: [id, updatedAt, otherUser]
+      properties:
+        id:
+          type: integer
+        updatedAt:
+          type: string
+        otherUser:
+          $ref: '#/components/schemas/ChatConversationOtherUser'
+        lastMessage:
+          allOf:
+            - $ref: '#/components/schemas/ChatConversationLastMessage'
+          nullable: true
+
+    ChatMessagesResponse:
+      type: object
+      required: [conversationId, messages]
+      properties:
+        conversationId:
+          type: integer
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+
+    SendChatMessageBody:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+
+    ErrorResponse:
       type: object
       required: [error]
       properties:
         error:
           type: string
+        message:
+          type: string
+          nullable: true
 
     AuthError:
       type: object
