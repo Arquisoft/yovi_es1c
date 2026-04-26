@@ -11,6 +11,7 @@ import {
   type Friend,
   type FriendRequest,
 } from '../api/friendsApi'
+import { getMessagesWithFriend, sendMessageToFriend, type ChatMessage } from '../api/chatApi'
 import styles from './FriendsPage.module.css'
 
 function formatDate(value: string): string {
@@ -35,6 +36,11 @@ export default function FriendsPage() {
   const [removingFriendId, setRemovingFriendId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [activeChatFriendId, setActiveChatFriendId] = useState<number | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatDraft, setChatDraft] = useState('')
+  const [isChatLoading, setIsChatLoading] = useState(false)
+  const [isChatSending, setIsChatSending] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -158,6 +164,51 @@ export default function FriendsPage() {
     }
   }
 
+  const activeChatFriend = activeChatFriendId
+    ? friends.find(friend => friend.id === activeChatFriendId) ?? null
+    : null
+
+  async function openChat(friend: Friend) {
+    try {
+      setActiveChatFriendId(friend.id)
+      setChatMessages([])
+      setChatDraft('')
+      setIsChatLoading(true)
+      setError(null)
+      setSuccessMessage(null)
+
+      const data = await getMessagesWithFriend(friend.id, { limit: 50 })
+      setChatMessages([...data.messages].reverse())
+    } catch (chatError) {
+      setError(chatError instanceof Error ? chatError.message : 'No se pudo cargar el chat')
+    } finally {
+      setIsChatLoading(false)
+    }
+  }
+
+  async function handleSendChat() {
+    if (!activeChatFriend) return
+
+    const trimmed = chatDraft.trim()
+    if (!trimmed) {
+      return
+    }
+
+    try {
+      setIsChatSending(true)
+      setError(null)
+      setSuccessMessage(null)
+
+      const sent = await sendMessageToFriend(activeChatFriend.id, trimmed)
+      setChatMessages(prev => [...prev, sent])
+      setChatDraft('')
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'No se pudo enviar el mensaje')
+    } finally {
+      setIsChatSending(false)
+    }
+  }
+
   return (
     <section className={styles.page}>
       <div className={`${styles.card} crt-panel`}>
@@ -244,6 +295,9 @@ export default function FriendsPage() {
                       <p className={styles.meta}>Amigos desde: {formatDate(friend.friendsSince)}</p>
                     </div>
                     <div className={styles.actions}>
+                      <button type="button" className={styles.primaryButton} onClick={() => void openChat(friend)}>
+                        Chat
+                      </button>
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -257,6 +311,51 @@ export default function FriendsPage() {
                 ))}
               </div>
             </section>
+
+            {activeChatFriend ? (
+              <section className={`${styles.panel} ${styles.fullWidth}`}>
+                <h2 className={styles.sectionTitle}>Chat con {activeChatFriend.displayName ?? activeChatFriend.username}</h2>
+                {isChatLoading ? <p className={styles.status}>Cargando chat...</p> : null}
+                {!isChatLoading ? (
+                  <div className={styles.chatBox}>
+                    <div className={styles.chatMessages}>
+                      {chatMessages.length === 0 ? <p className={styles.empty}>Todavia no hay mensajes.</p> : null}
+                      {chatMessages.map(message => (
+                        <div
+                          key={message.id}
+                          className={
+                            message.senderUserId === user.id ? `${styles.chatMessage} ${styles.chatMessageMine}` : styles.chatMessage
+                          }
+                        >
+                          <p className={styles.chatText}>{message.text}</p>
+                          <p className={styles.chatMeta}>{formatDate(message.createdAt)}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className={styles.chatComposer}>
+                      <input
+                        className={styles.input}
+                        value={chatDraft}
+                        onChange={event => setChatDraft(event.target.value)}
+                        placeholder="Escribe un mensaje"
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void handleSendChat()
+                          }
+                        }}
+                      />
+                      <button type="button" className={styles.primaryButton} onClick={() => void handleSendChat()} disabled={isChatSending}>
+                        {isChatSending ? 'Enviando...' : 'Enviar'}
+                      </button>
+                      <button type="button" className={styles.secondaryButton} onClick={() => setActiveChatFriendId(null)} disabled={isChatSending}>
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         ) : null}
       </div>

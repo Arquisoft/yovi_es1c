@@ -48,6 +48,12 @@ export class ForbiddenFriendRequestActionError extends HttpError {
     }
 }
 
+export class NotFriendsError extends HttpError {
+    constructor() {
+        super(403, 'not_friends', 'You can only chat with friends');
+    }
+}
+
 export class UnexpectedError extends HttpError {
     constructor() {
         super(500, 'unexpected_error', 'Unexpected server error');

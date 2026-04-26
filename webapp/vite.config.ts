@@ -3,6 +3,36 @@ import react from '@vitejs/plugin-react'
 import '@testing-library/jest-dom/vitest';
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      '/api/game/socket.io': {
+        target: process.env.VITE_DEV_GAMESERVICE_TARGET ?? 'http://localhost:3002',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/api/game': {
+        target: process.env.VITE_DEV_GAMESERVICE_TARGET ?? 'http://localhost:3002',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/api/users': {
+        target: process.env.VITE_DEV_USERS_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api/auth': {
+        target: process.env.VITE_DEV_AUTH_TARGET ?? 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/gamey': {
+        target: process.env.VITE_DEV_GAMEY_TARGET ?? 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/play': {
+        target: process.env.VITE_DEV_GAMEY_TARGET ?? 'http://localhost:4000',
+        changeOrigin: true,
+      },
+    },
+  },
   test: {
     pool: 'threads',
     globals: true,

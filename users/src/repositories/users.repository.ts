@@ -164,6 +164,22 @@ export class UserRepository {
     return rows.map((row: any) => this.mapFriend(row));
   }
 
+  async hasFriendship(userId: number, otherUserId: number): Promise<boolean> {
+    const row = await this.db.get(
+      `SELECT 1 AS ok
+       FROM friend_requests fr
+       WHERE fr.status = 'accepted'
+         AND (
+           (fr.sender_user_id = ? AND fr.recipient_user_id = ?)
+           OR (fr.sender_user_id = ? AND fr.recipient_user_id = ?)
+         )
+       LIMIT 1`,
+      [userId, otherUserId, otherUserId, userId]
+    );
+
+    return Boolean(row?.ok);
+  }
+
   async listPendingFriendRequests(userId: number): Promise<FriendRequestSummary[]> {
     const incomingRows = await this.db.all(
       `SELECT fr.id,

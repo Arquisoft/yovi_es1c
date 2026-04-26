@@ -23,6 +23,7 @@ describe('users routes authentication', () => {
             sendFriendRequest: vi.fn(async (_req, res) => res.status(201).json({ ok: true })),
             acceptFriendRequest: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
             deleteFriendRequest: vi.fn(async (_req, res) => res.status(204).send()),
+            unfriend: vi.fn(async (_req, res) => res.status(204).send()),
         } as unknown as UsersController;
 
         const app = express();
