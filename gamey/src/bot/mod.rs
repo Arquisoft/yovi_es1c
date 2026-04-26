@@ -18,6 +18,7 @@ pub(crate) mod set_based_heuristic;
 pub mod set_connectivity_heuristic;
 pub mod ybot;
 pub mod ybot_registry;
+pub(crate) mod montecarlo;
 
 pub use balanced_heuristic::*;
 pub use neural_mcts::*;
