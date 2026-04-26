@@ -812,4 +812,169 @@ describe('OnlineSessionService', () => {
         service.acceptRematch('m1', 1),
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
+  it('addChatMessage logs Perspective toxicity score when provided by chat filter', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+
+    const chatFilter = {
+      filter: vi.fn().mockResolvedValue({
+        sanitized: 'mensaje limpio',
+        wasFiltered: false,
+        toxicityScore: 0.42,
+      }),
+    } as unknown as ChatFilter;
+
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+        undefined,
+        chatFilter,
+    );
+
+    await service.createSession(
+        'm-score',
+        3,
+        [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+        'HUMAN',
+    );
+
+    const message = await service.addChatMessage('m-score', 1, 'a', 'mensaje limpio');
+
+    expect(message.text).toBe('mensaje limpio');
+    expect(chatFilter.filter).toHaveBeenCalledWith('mensaje limpio');
+    expect(infoSpy).toHaveBeenCalledWith(
+        '[ChatFilter] Perspective score 0.42 for user 1 in match m-score',
+    );
+
+    infoSpy.mockRestore();
+  });
+
+  it('playMove rejects with SESSION_NOT_FOUND when session does not exist', async () => {
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+        25,
+        60,
+        { io },
+    );
+
+    await expect(
+        service.playMove('missing-session', 1, 0, 0, 0),
+    ).rejects.toMatchObject({
+      code: 'SESSION_NOT_FOUND',
+      message: 'Session not found',
+    });
+
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(emit).toHaveBeenCalledWith('session:error', {
+      matchId: 'missing-session',
+      code: 'SESSION_NOT_FOUND',
+      message: 'Session not found',
+    });
+  });
+
+  it('playMove rejects with SESSION_TERMINAL when session is already finished', async () => {
+    const { service, io } = await setup();
+
+    await service.abandon('m1', 1);
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+
+    await expect(
+        service.playMove('m1', 2, 0, 0, 1),
+    ).rejects.toMatchObject({
+      code: 'SESSION_TERMINAL',
+      message: 'Session already finished',
+    });
+
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(emit).toHaveBeenCalledWith('session:error', {
+      matchId: 'm1',
+      code: 'SESSION_TERMINAL',
+      message: 'Session already finished',
+    });
+  });
+
+  it('acceptRematch rejects when rematch request does not exist', async () => {
+    const service = new OnlineSessionService(
+        new OnlineSessionRepository(),
+        new TurnTimerService(),
+    );
+
+    await expect(
+        service.acceptRematch('missing-rematch', 2),
+    ).rejects.toMatchObject({
+      code: 'SESSION_NOT_FOUND',
+      message: 'Rematch request not found or expired',
+    });
+  });
+
+  it('acceptRematch rejects when rematch request is expired', async () => {
+    const { service } = await setup();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+    await service.abandon('m1', 1);
+    await service.requestRematch('m1', 1);
+
+    nowSpy.mockReturnValue(71_001);
+
+    await expect(
+        service.acceptRematch('m1', 2),
+    ).rejects.toMatchObject({
+      code: 'SESSION_NOT_FOUND',
+      message: 'Rematch request not found or expired',
+    });
+
+    nowSpy.mockRestore();
+  });
+
+  it('acceptRematch rejects when original session no longer exists', async () => {
+    const repository = new OnlineSessionRepository();
+    const service = new OnlineSessionService(
+        repository,
+        new TurnTimerService(),
+    );
+
+    await service.createSession(
+        'm-original-deleted',
+        3,
+        [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+        'HUMAN',
+    );
+
+    await service.abandon('m-original-deleted', 1);
+    await service.requestRematch('m-original-deleted', 1);
+    await repository.delete('m-original-deleted');
+
+    await expect(
+        service.acceptRematch('m-original-deleted', 2),
+    ).rejects.toMatchObject({
+      code: 'SESSION_NOT_FOUND',
+      message: 'Original session not found',
+    });
+  });
+
+  it('acceptRematch rejects when accepting user is not part of the original session', async () => {
+    const { service } = await setup();
+
+    await service.abandon('m1', 1);
+    await service.requestRematch('m1', 1);
+
+    await expect(
+        service.acceptRematch('m1', 999),
+    ).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+      message: 'User is not part of this session',
+    });
+  });
 });
