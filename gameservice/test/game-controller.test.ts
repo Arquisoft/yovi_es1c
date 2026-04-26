@@ -85,7 +85,7 @@ describe('GameController integration tests', () => {
           .post('/api/game/matches')
           .send({
             boardSize: 8,
-            difficulty: 'impossible',
+            difficulty: 'extreme',
           });
 
       expect(response.status).toBe(400);
@@ -93,7 +93,7 @@ describe('GameController integration tests', () => {
     });
 
     it('should accept all valid difficulty levels', async () => {
-      const difficulties = ['easy', 'medium', 'hard'];
+      const difficulties = ['easy', 'medium', 'hard', 'impossible'];
 
       for (const difficulty of difficulties) {
         vi.spyOn(mockMatchService, 'createMatch').mockResolvedValue(1);
@@ -1033,5 +1033,162 @@ describe('GameController move/reconnect remaining branches', () => {
     const response = await request(app).post('/api/game/online/sessions/m-1/reconnect').send({});
 
     expect(response.status).toBe(503);
+  });
+  describe('GET /api/game/online/rematches/pending', () => {
+    it('returns 503 when online session service is unavailable', async () => {
+      const app = express();
+
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        (req as any).userId = 1;
+        next();
+      });
+
+      app.use('/api/game', createGameController({} as MatchService, {} as StatsService));
+      app.use(errorHandler);
+
+      const response = await request(app).get('/api/game/online/rematches/pending');
+
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Online sessions not available',
+      });
+    });
+
+    it('returns 401 when user is not authenticated', async () => {
+      const app = express();
+
+      const onlineSessionService = {
+        getPendingRematchForUser: vi.fn(),
+      } as any;
+
+      app.use(express.json());
+      app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+      app.use(errorHandler);
+
+      const response = await request(app).get('/api/game/online/rematches/pending');
+
+      expect(response.status).toBe(401);
+      expect(response.body).toEqual({
+        code: 'UNAUTHORIZED',
+        message: 'Unauthorized',
+      });
+      expect(onlineSessionService.getPendingRematchForUser).not.toHaveBeenCalled();
+    });
+
+    it('returns 204 when authenticated user has no pending rematch', async () => {
+      const app = express();
+
+      const onlineSessionService = {
+        getPendingRematchForUser: vi.fn().mockResolvedValue(null),
+      } as any;
+
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        (req as any).userId = '7';
+        next();
+      });
+
+      app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+      app.use(errorHandler);
+
+      const response = await request(app).get('/api/game/online/rematches/pending');
+
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(onlineSessionService.getPendingRematchForUser).toHaveBeenCalledWith(7);
+    });
+
+    it('returns 200 with pending rematch for authenticated user', async () => {
+      const app = express();
+
+      const pendingRematch = {
+        matchId: 'rematch-1',
+        boardSize: 8,
+        opponent: {
+          userId: 2,
+          username: 'bob',
+        },
+        rules: {
+          pieRule: { enabled: false },
+          honey: { enabled: false, blockedCells: [] },
+        },
+      };
+
+      const onlineSessionService = {
+        getPendingRematchForUser: vi.fn().mockResolvedValue(pendingRematch),
+      } as any;
+
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        (req as any).userId = '7';
+        next();
+      });
+
+      app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+      app.use(errorHandler);
+
+      const response = await request(app).get('/api/game/online/rematches/pending');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(pendingRematch);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(onlineSessionService.getPendingRematchForUser).toHaveBeenCalledWith(7);
+    });
+
+    it('maps OnlineSessionError through online error handler', async () => {
+      const app = express();
+
+      const onlineSessionService = {
+        getPendingRematchForUser: vi.fn().mockRejectedValue(
+            new OnlineSessionError('VERSION_CONFLICT', 'Version mismatch'),
+        ),
+      } as any;
+
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        (req as any).userId = 1;
+        next();
+      });
+
+      app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+      app.use(errorHandler);
+
+      const response = await request(app).get('/api/game/online/rematches/pending');
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        code: 'VERSION_CONFLICT',
+        message: 'Version mismatch',
+      });
+    });
+
+    it('propagates unknown errors to the global error handler', async () => {
+      const app = express();
+
+      const onlineSessionService = {
+        getPendingRematchForUser: vi.fn().mockRejectedValue(new Error('boom')),
+      } as any;
+
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        (req as any).userId = 1;
+        next();
+      });
+
+      app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
+      app.use(errorHandler);
+
+      const response = await request(app).get('/api/game/online/rematches/pending');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({
+        code: 'INTERNAL_ERROR',
+        error: 'unexpected_error',
+        message: 'Unexpected server error',
+      });
+    });
   });
 });

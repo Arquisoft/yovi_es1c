@@ -66,7 +66,7 @@ describe('RankingService', () => {
             expect(service.getOpponentRatingForBot('easy')).toBe(1000);
             expect(service.getOpponentRatingForBot('medium')).toBe(1300);
             expect(service.getOpponentRatingForBot('hard')).toBe(1600);
-            expect(service.getOpponentRatingForBot('expert')).toBe(1900);
+            expect(service.getOpponentRatingForBot('impossible')).toBe(1900);
         });
     });
 
@@ -158,11 +158,11 @@ describe('RankingService', () => {
             const easyWin = await service.applyRatingUpdate({
                 userId: 1, matchId: 1, mode: 'BOT', difficulty: 'easy', result: 'WIN',
             });
-            const expertWin = await service.applyRatingUpdate({
-                userId: 1, matchId: 2, mode: 'BOT', difficulty: 'expert', result: 'WIN',
+            const impossibleWin = await service.applyRatingUpdate({
+                userId: 1, matchId: 2, mode: 'BOT', difficulty: 'impossible', result: 'WIN',
             });
 
-            expect(expertWin!.delta).toBeGreaterThan(easyWin!.delta);
+            expect(impossibleWin!.delta).toBeGreaterThan(easyWin!.delta);
         });
 
         it('uses the real opponent rating for ONLINE matches', async () => {
@@ -193,7 +193,7 @@ describe('RankingService', () => {
                 userId: 1,
                 matchId: 10,
                 mode: 'BOT',
-                difficulty: 'expert',
+                difficulty: 'impossible',
                 result: 'WIN',
             });
 

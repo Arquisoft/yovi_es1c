@@ -6,22 +6,25 @@ import { API_CONFIG } from "../../../config/api.config";
 
 // ── Tipos ──
 export type GameMode = "BOT" | "LOCAL_2P" | "ONLINE";
-export type BotDifficulty = "easy" | "medium" | "hard" | "expert";
+export type BotDifficulty = "easy" | "medium" | "hard" | "impossible";
+type RuntimeBotDifficulty = BotDifficulty | "easy_fast";
 
 export type GameMessage =
-  | { key: "clickACellToPlay" }
-  | { key: "botThinking" }
-  | { key: "errorCommunicatingWithBot" }
-  | { key: "onlineWaitingServer" }
-  | { key: "invalidBotMove" }
-  | { key: "winnerAnnouncement"; params: { label: string } }
-  | { key: "turnMessage"; params: { label: string } }
-  | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
-  | { key: "pieRuleApplied" }
-  | { key: "custom"; text: string };
+    | { key: "clickACellToPlay" }
+    | { key: "botThinking" }
+    | { key: "errorCommunicatingWithBot" }
+    | { key: "onlineWaitingServer" }
+    | { key: "invalidBotMove" }
+    | { key: "winnerAnnouncement"; params: { label?: string; labelKey?: string } }
+    | { key: "turnMessage"; params: { label?: string; labelKey?: string } }
+    | { key: "botPlayed"; params: { row: number; col: number; fallback?: string } }
+    | { key: "pieRuleApplied" }
+    | { key: "custom"; text: string };
 
 const DEFAULT_BOARD_SIZE = 8;
 const GAMEY_TIMEOUT_MS = 4000;
+const EASY_FALLBACK_PROBE_TIMEOUT_MS = 250;
+
 const CLASSIC_RULES: MatchRulesDto = {
     pieRule: { enabled: false },
     honey: { enabled: false, blockedCells: [] },
@@ -43,7 +46,14 @@ export const createEmptyYEN = (size: number, rules: MatchRulesDto = CLASSIC_RULE
     const layout = Array.from({ length: size }, (_, rowIndex) =>
         ".".repeat(rowIndex + 1)
     ).join("/");
-    return { size, turn: 0, players: ["B", "R"], layout, rules: normalizeRules(rules) };
+
+    return {
+        size,
+        turn: 0,
+        players: ["B", "R"],
+        layout,
+        rules: normalizeRules(rules),
+    };
 };
 
 export const updateLayout = (
@@ -75,9 +85,11 @@ export const rowColFromCoords = (
 ) => {
     const row = size - 1 - coords.x;
     const col = coords.y;
+
     if (row < 0 || row >= size) return null;
     if (col < 0 || col > row) return null;
     if (row - col !== coords.z) return null;
+
     return { row, col };
 };
 
@@ -159,11 +171,7 @@ function revertBotState(
     setBotFailureCount: (fn: (n: number) => number) => void
 ): void {
     setError(errorKey);
-
-    setMessage({
-        key: "errorCommunicatingWithBot"
-    });
-
+    setMessage({ key: "errorCommunicatingWithBot" });
     setGameState({ ...humanState, turn: 0 });
     setBotFailureCount((prev) => prev + 1);
 }
@@ -178,14 +186,17 @@ export const useGameController = (
     initialRules: MatchRulesDto = CLASSIC_RULES,
 ) => {
     const resolvedInitialRules = normalizeRules(initialYEN?.rules ?? initialRules);
+
     const [gameMode, setGameMode] = useState<GameMode>(initialMode);
     const [gameState, setGameState] = useState<YenPositionDto>(
-        () => initialYEN ? { ...initialYEN, rules: normalizeRules(initialYEN.rules ?? initialRules) } : createEmptyYEN(initialSize, resolvedInitialRules)
+        () =>
+            initialYEN
+                ? { ...initialYEN, rules: normalizeRules(initialYEN.rules ?? initialRules) }
+                : createEmptyYEN(initialSize, resolvedInitialRules)
     );
+
     const [loading, setLoading] = useState(false);
-
     const [error, setError] = useState<string | null>(null);
-
     const [matchId, setMatchId] = useState<string | null>(initialMatchId ?? null);
     const [botFailureCount, setBotFailureCount] = useState(0);
     const [message, setMessage] = useState<GameMessage>({ key: "clickACellToPlay" });
@@ -197,11 +208,11 @@ export const useGameController = (
     );
 
     // ── UI helpers ──
-    const announceWinner = (label: string) => {
+    const announceWinner = (labelKey: string) => {
         setGameOver(true);
         setMessage({
             key: "winnerAnnouncement",
-            params: { label }
+            params: { labelKey },
         });
     };
 
@@ -217,14 +228,20 @@ export const useGameController = (
                     rules: resolvedInitialRules,
                 }),
             });
+
             if (!res.ok) {
                 console.error("Reset match: backend rejected match creation", res.status);
                 return;
             }
+
             const data = await res.json();
             setMatchId(data.matchId ?? null);
+
             if (data.initialYEN) {
-                setGameState({ ...data.initialYEN, rules: normalizeRules(data.initialYEN.rules ?? resolvedInitialRules) });
+                setGameState({
+                    ...data.initialYEN,
+                    rules: normalizeRules(data.initialYEN.rules ?? resolvedInitialRules),
+                });
             }
         } catch (err) {
             console.error("Reset match error:", err);
@@ -247,17 +264,23 @@ export const useGameController = (
 
     const changeSize = (newSize: number) => {
         const emptyLayout = Array.from({ length: newSize }, (_, i) => ".".repeat(i + 1)).join("/");
-        setGameState({ ...gameState, size: newSize, layout: emptyLayout, turn: 0, rules: normalizeRules(gameState.rules ?? resolvedInitialRules) });
+
+        setGameState({
+            ...gameState,
+            size: newSize,
+            layout: emptyLayout,
+            turn: 0,
+            rules: normalizeRules(gameState.rules ?? resolvedInitialRules),
+        });
+
         setGameOver(false);
         setError(null);
-
-        setMessage({
-            key: "clickACellToPlay"
-        });
+        setMessage({ key: "clickACellToPlay" });
     };
 
     const finishMatch = async (winner: "USER" | "BOT") => {
         if (!matchId) return;
+
         try {
             await fetchWithAuth(
                 `${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`,
@@ -277,6 +300,7 @@ export const useGameController = (
         player: "USER" | "BOT"
     ) => {
         if (!matchId) return;
+
         try {
             await fetchWithAuth(
                 `${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/moves`,
@@ -297,6 +321,7 @@ export const useGameController = (
 
     const persistFinish = async (winner: "USER" | "BOT") => {
         if (!matchId) return;
+
         try {
             await fetchWithAuth(
                 `${API_CONFIG.GAME_SERVICE_API}/matches/${matchId}/finish`,
@@ -342,18 +367,19 @@ export const useGameController = (
                 if (checkWinner(newLayout, prev.size, nextSymbol)) {
                     announceWinner(
                         nextSymbol === prev.players[0]
-                            ? "Jugador 1"
-                            : "Jugador 2"
+                            ? "player1"
+                            : "player2"
                     );
+
                     finishMatch(nextSymbol === prev.players[0] ? "USER" : "BOT");
                 } else {
                     setMessage({
                         key: "turnMessage",
                         params: {
-                            label:
+                            labelKey:
                                 nextTurn === 0
-                                    ? "Jugador 1 (Blue)"
-                                    : "Jugador 2 (Red)",
+                                    ? "player1"
+                                    : "player2",
                         },
                     });
                 }
@@ -381,7 +407,7 @@ export const useGameController = (
             persistMove(humanState, "USER");
 
             if (checkWinner(humanLayout, prev.size, prev.players[0])) {
-                announceWinner("Jugador 1");
+                announceWinner("player1");
                 persistFinish("USER");
                 return humanState;
             }
@@ -395,15 +421,12 @@ export const useGameController = (
     const applyBotMove = async (
         humanState: YenPositionDto,
         data: { coords: { x: number; y: number; z: number } },
-        usedDifficulty: BotDifficulty
+        usedDifficulty: RuntimeBotDifficulty
     ) => {
         const mapped = rowColFromCoords(data.coords, humanState.size);
 
         if (!mapped || getCellSymbol(humanState.layout, mapped.row, mapped.col) !== ".") {
-            setMessage({
-                key: "invalidBotMove"
-            });
-
+            setMessage({ key: "invalidBotMove" });
             setGameState({ ...humanState, turn: 0 });
             setBotFailureCount((prev) => prev + 1);
             return;
@@ -426,7 +449,7 @@ export const useGameController = (
         await persistMove(botState, "BOT");
 
         if (checkWinner(botLayout, humanState.size, humanState.players[1])) {
-            announceWinner("Jugador 2 (Bot)");
+            announceWinner("botName");
             await persistFinish("BOT");
         } else {
             const fallbackInfo =
@@ -452,10 +475,7 @@ export const useGameController = (
 
         setLoading(true);
         setError(null);
-
-        setMessage({
-            key: "botThinking"
-        });
+        setMessage({ key: "botThinking" });
 
         try {
             const { response: res, usedDifficulty } =
@@ -533,43 +553,67 @@ export const useGameController = (
         state: YenPositionDto,
         difficulty: BotDifficulty,
         failureCount: number
-    ): Promise<{ response: Response; usedDifficulty: BotDifficulty }> => {
-        const hasExpertDegraded =
-            difficulty === "expert" && failureCount >= 3;
+    ): Promise<{ response: Response; usedDifficulty: RuntimeBotDifficulty }> => {
+        const hasEasyDegraded =
+            difficulty === "easy" && failureCount >= 3;
 
-        const primaryDifficulty: BotDifficulty = hasExpertDegraded
-            ? "hard"
+        const primaryDifficulty: RuntimeBotDifficulty = hasEasyDegraded
+            ? "easy_fast"
             : difficulty;
 
-        const candidates: BotDifficulty[] =
-            primaryDifficulty === "expert"
-                ? ["expert", "hard"]
+        const candidates: RuntimeBotDifficulty[] =
+            primaryDifficulty === "easy"
+                ? ["easy", "easy_fast"]
                 : [primaryDifficulty];
 
         let lastError: unknown = null;
+        const requestDeadline = Date.now() + GAMEY_TIMEOUT_MS;
 
         for (const level of candidates) {
+            const remainingMs = requestDeadline - Date.now();
+
+            if (remainingMs <= 0) {
+                throw new Error("Timeout comunicando con gamey");
+            }
+
+            const timeoutMs =
+                level === "easy" && candidates.length > 1
+                    ? Math.min(remainingMs, EASY_FALLBACK_PROBE_TIMEOUT_MS)
+                    : remainingMs;
+
             const controller = new AbortController();
             const timeout = setTimeout(
                 () => controller.abort(),
-                GAMEY_TIMEOUT_MS
+                timeoutMs
             );
 
             try {
-                const response = await fetchWithAuth(`${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${level}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        ...state,
-                        rules: normalizeRules(state.rules ?? resolvedInitialRules),
-                    }),
-                    signal: controller.signal,
-                });
+                const response = await fetchWithAuth(
+                    `${API_CONFIG.GAME_ENGINE_API}/v1/ybot/choose/${level}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            ...state,
+                            rules: normalizeRules(state.rules ?? resolvedInitialRules),
+                        }),
+                        signal: controller.signal,
+                    }
+                );
 
+                /*
+                 * Solo hacemos fallback automático desde easy a easy_fast cuando
+                 * el motor no está disponible o agota tiempo de gateway.
+                 *
+                 * Importante:
+                 * - Un 500 normal debe llegar al estado como botHTTPError.
+                 * - Un rechazo de red normal debe conservar su mensaje original.
+                 * - Así evitamos una segunda llamada no mockeada en los tests.
+                 */
                 if (
                     !response.ok &&
-                    level === "expert" &&
-                    (response.status >= 500 || response.status === 504)
+                    level === "easy" &&
+                    (response.status === 503 || response.status === 504)
                 ) {
                     continue;
                 }
@@ -581,12 +625,21 @@ export const useGameController = (
                 if (
                     error instanceof Error &&
                     error.name === "AbortError" &&
-                    level !== "expert"
+                    level !== "easy"
                 ) {
                     throw new Error("Timeout comunicando con gamey");
                 }
 
-                if (level !== "expert") throw error;
+                if (
+                    error instanceof Error &&
+                    error.name === "AbortError" &&
+                    level === "easy" &&
+                    candidates.length > 1
+                ) {
+                    continue;
+                }
+
+                throw error;
             } finally {
                 clearTimeout(timeout);
             }
@@ -619,18 +672,34 @@ export const useGameController = (
             applyPieSwap: () => {
                 setGameState((prev) => {
                     const rules = normalizeRules(prev.rules ?? resolvedInitialRules);
-                    const stoneCount = prev.layout.split('/').join('').split('').filter((c) => c === 'B' || c === 'R').length;
-                    if (gameMode !== "LOCAL_2P" || !rules.pieRule.enabled || prev.turn !== 1 || stoneCount !== 1) {
+                    const stoneCount = prev.layout
+                        .split("/")
+                        .join("")
+                        .split("")
+                        .filter((c) => c === "B" || c === "R").length;
+
+                    if (
+                        gameMode !== "LOCAL_2P" ||
+                        !rules.pieRule.enabled ||
+                        prev.turn !== 1 ||
+                        stoneCount !== 1
+                    ) {
                         return prev;
                     }
+
                     const swappedLayout = prev.layout
-                        .split('')
-                        .map((ch) => (ch === 'B' ? 'R' : ch === 'R' ? 'B' : ch))
-                        .join('');
-                    setMessage({
-                        key: "pieRuleApplied"
-                    });
-                    return { ...prev, layout: swappedLayout, turn: 0, rules };
+                        .split("")
+                        .map((ch) => (ch === "B" ? "R" : ch === "R" ? "B" : ch))
+                        .join("");
+
+                    setMessage({ key: "pieRuleApplied" });
+
+                    return {
+                        ...prev,
+                        layout: swappedLayout,
+                        turn: 0,
+                        rules,
+                    };
                 });
             },
         },

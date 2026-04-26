@@ -61,7 +61,17 @@ export class OnlineSessionError extends Error {
 interface RematchRequest {
     requesterId: number;
     requesterName: string;
+    opponentId: number;
     matchId: string;
+    expiresAt: number;
+}
+
+export interface PendingRematch {
+    matchId: string;
+    requesterId: number;
+    requesterName: string;
+    size: number;
+    rules: MatchRules;
     expiresAt: number;
 }
 
@@ -77,6 +87,7 @@ export class OnlineSessionService {
 
     /** In-memory fallback when Redis is not available */
     private readonly rematchRequests = new Map<string, RematchRequest>();
+    private readonly rematchRequestsByUser = new Map<number, string>();
     private readonly rematchTtlSec = 60;
 
     constructor(
@@ -436,6 +447,7 @@ export class OnlineSessionService {
         const request: RematchRequest = {
             requesterId: userId,
             requesterName: requester.username,
+            opponentId: opponent.userId,
             matchId,
             expiresAt: Date.now() + this.rematchTtlSec * 1000,
         };
@@ -529,16 +541,48 @@ export class OnlineSessionService {
         }
     }
 
+    async getPendingRematchForUser(userId: number): Promise<PendingRematch | null> {
+        const matchId = await this.readPendingRematchMatchId(userId);
+        if (!matchId) return null;
+
+        const request = await this.readRematchRequest(matchId);
+        if (!request || request.expiresAt < Date.now() || request.opponentId !== userId) {
+            await this.deletePendingRematchForUser(userId);
+            return null;
+        }
+
+        const state = await this.getState(matchId);
+        if (!state || !this.isTerminal(state) || !state.players.some((player) => player.userId === userId)) {
+            await this.deleteRematchRequest(matchId);
+            return null;
+        }
+
+        return {
+            matchId,
+            requesterId: request.requesterId,
+            requesterName: request.requesterName,
+            size: state.size,
+            rules: state.rules,
+            expiresAt: request.expiresAt,
+        };
+    }
+
     private rematchKey(matchId: string): string {
         return `rematch:${matchId}`;
+    }
+
+    private pendingRematchUserKey(userId: number): string {
+        return `rematch:pending:user:${userId}`;
     }
 
     private async saveRematchRequest(matchId: string, request: RematchRequest): Promise<void> {
         if (this.deps.redis) {
             await this.deps.redis.set(this.rematchKey(matchId), JSON.stringify(request), { EX: this.rematchTtlSec });
+            await this.deps.redis.set(this.pendingRematchUserKey(request.opponentId), matchId, { EX: this.rematchTtlSec });
             return;
         }
         this.rematchRequests.set(matchId, request);
+        this.rematchRequestsByUser.set(request.opponentId, matchId);
     }
 
     private async readRematchRequest(matchId: string): Promise<RematchRequest | null> {
@@ -550,19 +594,41 @@ export class OnlineSessionService {
         const req = this.rematchRequests.get(matchId) ?? null;
         if (req && req.expiresAt < Date.now()) {
             this.rematchRequests.delete(matchId);
+            this.rematchRequestsByUser.delete(req.opponentId);
             return null;
         }
         return req;
     }
 
+    private async readPendingRematchMatchId(userId: number): Promise<string | null> {
+        if (this.deps.redis) {
+            return this.deps.redis.get(this.pendingRematchUserKey(userId));
+        }
+        return this.rematchRequestsByUser.get(userId) ?? null;
+    }
+
+    private async deletePendingRematchForUser(userId: number): Promise<void> {
+        if (this.deps.redis) {
+            await this.deps.redis.del(this.pendingRematchUserKey(userId));
+            return;
+        }
+        this.rematchRequestsByUser.delete(userId);
+    }
+
     private async deleteRematchRequest(matchId: string): Promise<void> {
+        const request = await this.readRematchRequest(matchId);
         if (this.deps.redis) {
             await this.deps.redis.del(this.rematchKey(matchId));
+            if (request) {
+                await this.deps.redis.del(this.pendingRematchUserKey(request.opponentId));
+            }
             return;
         }
         this.rematchRequests.delete(matchId);
+        if (request) {
+            this.rematchRequestsByUser.delete(request.opponentId);
+        }
     }
-
     async sweepExpiredSessions(now = Date.now()): Promise<number> {
         const sessions = await this.listKnownSessions();
         let swept = 0;

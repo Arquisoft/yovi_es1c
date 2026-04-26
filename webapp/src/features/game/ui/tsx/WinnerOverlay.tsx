@@ -25,7 +25,7 @@ export default function WinnerOverlay({
                                           onRequestRematch,
                                           onAcceptRematch,
                                           onDeclineRematch,
-                                      }: Props) {
+                                      }: Readonly<Props>) {
     const { t } = useTranslation();
 
     return (

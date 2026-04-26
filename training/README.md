@@ -56,6 +56,11 @@ Useful options include:
 - `--checkpoint-path <path>`
 - `--metrics-path <path>`
 
+Command we used to train our model:
+```bash
+python train.py --iterations 50 --games-per-iter 50 --simulations 200 --epochs 10 --batch-size 256 --lr 3e-4 --board-sizes 5 7 9 11 --eval-games 40 --eval-simulations 100 --win-threshold 0.52 --buffer-size 100000 --model-path ../gamey/models/yovi_model.pt --onnx-path ../gamey/models/yovi_model.onnx
+```  
+
 ## Export Existing Weights
 
 ```bash
@@ -69,3 +74,4 @@ python training/pre_train.py --dataset path/to/dataset.jsonl --model gamey/model
 ```
 
 Additional options include `--epochs`, `--lr`, `--batch-size`, `--value-coef`, `--patience`, `--train-ratio`, `--resume`, `--channels` and `--num-res-blocks`.
+

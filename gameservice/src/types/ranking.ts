@@ -1,5 +1,5 @@
 export type MatchMode = 'BOT' | 'ONLINE' | 'LOCAL_2P';
-export type MatchDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
+export type MatchDifficulty = 'easy' | 'medium' | 'hard' | 'impossible';
 export type MatchResult = 'WIN' | 'LOSS';
 
 export interface PlayerRanking {
