@@ -33,7 +33,6 @@ const RECOVERABLE_ERROR_CODES = new Set([
   'DUPLICATE_EVENT',
 ]);
 
-
 export interface OnlineSnapshotPayload {
   matchId: string;
   layout: string;
@@ -80,61 +79,43 @@ interface SessionStateSocketPayload {
   connectionStatus?: ConnectionBadgeState;
 }
 
-/**
- * UI / i18n error codes (camelCase)
- */
-// type SessionErrorCode =
-//     | 'sessionNotFound'
-//     | 'sessionTerminal'
-//     | 'notAuthenticated'
-//     | 'socketError'
-//     | 'versionConflict'
-//     | 'notYourTurn'
-//     | 'invalidMove'
-//     | 'sessionError';
+// ─── Rematch event payloads ───────────────────────────────────────────────────
+export interface RematchRequestedPayload {
+  matchId: string;
+  requesterName: string;
+}
 
-/**
- * Backend error codes (UPPER_CASE contract)
- */
-// type BackendSessionErrorCode =
-//     | 'VERSION_CONFLICT'
-//     | 'NOT_YOUR_TURN'
-//     | 'INVALID_MOVE'
-//     | 'SESSION_NOT_FOUND'
-//     | 'RECONNECT_EXPIRED'
-//     | 'SESSION_TERMINAL'
-//     | 'UNAUTHORIZED'
-//     | 'DUPLICATE_EVENT';
+export interface RematchReadyPayload {
+  newMatchId: string;
+  size: number;
+  rules: MatchRulesDto;
+  players: Array<{ userId: number; username: string; symbol: string }>;
+}
 
-// function mapSessionError(code?: BackendSessionErrorCode | string): SessionErrorCode {
-//   switch (code) {
-//     case 'SESSION_NOT_FOUND':
-//       return 'sessionNotFound';
-//     case 'SESSION_TERMINAL':
-//       return 'sessionTerminal';
-//     case 'UNAUTHORIZED':
-//       return 'notAuthenticated';
-//     case 'VERSION_CONFLICT':
-//       return 'versionConflict';
-//     case 'NOT_YOUR_TURN':
-//       return 'notYourTurn';
-//     case 'INVALID_MOVE':
-//       return 'invalidMove';
-//     default:
-//       return 'sessionError';
-//   }
-// }
+export interface RematchDeclinedPayload {
+  matchId: string;
+}
 
-export function useOnlineSession(matchId: string | null) {
+export interface RematchCallbacks {
+  onRequested?: (payload: RematchRequestedPayload) => void;
+  onReady?: (payload: RematchReadyPayload) => void;
+  onDeclined?: (payload: RematchDeclinedPayload) => void;
+}
+
+export function useOnlineSession(matchId: string | null, rematchCallbacks?: RematchCallbacks) {
   const [sessionState, setSessionState] = useState<OnlineSnapshotPayload | null>(null);
-  const [error, setError] = useState<SessionErrorPayload  | null>(null);
+  const [error, setError] = useState<SessionErrorPayload | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   // Ref que siempre tiene el último estado conocido de forma síncrona.
-  // Se actualiza ANTES de setSessionState en cada handler de socket,
-  // garantizando que playMove y emitTurnTimeout nunca lean una versión stale.
-  // NUNCA actualizar dentro de un setState updater (viola pureza en StrictMode).
   const latestStateRef = useRef<OnlineSnapshotPayload | null>(null);
+
+  // Stable ref for rematch callbacks so the effect does not re-run when the
+  // parent re-renders with new inline arrow functions.
+  const rematchCallbacksRef = useRef<RematchCallbacks | undefined>(rematchCallbacks);
+  useEffect(() => {
+    rematchCallbacksRef.current = rematchCallbacks;
+  }, [rematchCallbacks]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -143,10 +124,7 @@ export function useOnlineSession(matchId: string | null) {
     const token = localStorage.getItem(AUTH_STORAGE_KEYS.ACCESS_TOKEN);
 
     if (!token) {
-      setError({
-        code: 'UNAUTHORIZED',
-        message: 'Missing auth token',
-      });
+      setError({ code: 'UNAUTHORIZED', message: 'Missing auth token' });
       return;
     }
 
@@ -157,9 +135,8 @@ export function useOnlineSession(matchId: string | null) {
       );
 
       if (!response.ok) {
-        if (preserveCurrentStateOnError) {
-          return;
-        }
+        if (preserveCurrentStateOnError) return;
+
         let payload: Partial<SessionErrorPayload> | null = null;
         try {
           payload = (await response.json()) as Partial<SessionErrorPayload>;
@@ -171,11 +148,7 @@ export function useOnlineSession(matchId: string | null) {
         if (code) {
           latestStateRef.current = null;
           setSessionState(null);
-          setError({
-            code,
-            message: payload?.message ?? 'Online session request failed',
-            details: payload?.details,
-          });
+          setError({ code, message: payload?.message ?? 'Online session request failed', details: payload?.details });
           return;
         }
 
@@ -194,12 +167,7 @@ export function useOnlineSession(matchId: string | null) {
       const payload = (await response.json()) as OnlineSnapshotPayload;
       if (!isMounted) return;
 
-      const normalized: OnlineSnapshotPayload = {
-        ...payload,
-        rules: normalizeRules(payload.rules),
-      };
-      // Actualizar ref ANTES que el state — así si el socket emite
-      // session:state justo después, el ref ya tiene la versión HTTP
+      const normalized: OnlineSnapshotPayload = { ...payload, rules: normalizeRules(payload.rules) };
       latestStateRef.current = normalized;
       setSessionState(normalized);
       setError(null);
@@ -211,10 +179,7 @@ export function useOnlineSession(matchId: string | null) {
 
     const handleConnect = () => {
       setIsConnected(true);
-      onlineSocketClient.emit('match:join', {
-        matchId,
-        clientEventId: uuidv4(),
-      });
+      onlineSocketClient.emit('match:join', { matchId, clientEventId: uuidv4() });
     };
 
     const handleDisconnect = () => {
@@ -226,8 +191,6 @@ export function useOnlineSession(matchId: string | null) {
         (payload) => {
           if (payload.matchId !== matchId) return;
 
-          // Construir el estado siguiente de forma síncrona usando el ref,
-          // sin depender del ciclo de renders de React
           const prev = latestStateRef.current;
           const next: OnlineSnapshotPayload = prev
               ? {
@@ -240,8 +203,7 @@ export function useOnlineSession(matchId: string | null) {
                 timerEndsAt: payload.timerEndsAt,
                 players: payload.players ?? prev.players,
                 winner: payload.winner ?? prev.winner ?? null,
-                connectionStatus:
-                    payload.connectionStatus ?? prev.connectionStatus ?? 'CONNECTED',
+                connectionStatus: payload.connectionStatus ?? prev.connectionStatus ?? 'CONNECTED',
               }
               : {
                 matchId: payload.matchId,
@@ -268,7 +230,6 @@ export function useOnlineSession(matchId: string | null) {
     const unsubscribeError = onlineSocketClient.on<SessionErrorPayload>(
         'session:error',
         (payload) => {
-
           setError(payload);
 
           if (payload.code === 'VERSION_CONFLICT') {
@@ -284,6 +245,31 @@ export function useOnlineSession(matchId: string | null) {
         },
     );
 
+    // ─── Rematch event listeners ────────────────────────────────────────────
+    const unsubscribeRematchRequested = onlineSocketClient.on<RematchRequestedPayload>(
+        'rematch:requested',
+        (payload) => {
+          if (payload.matchId !== matchId) return;
+          rematchCallbacksRef.current?.onRequested?.(payload);
+        },
+    );
+
+    const unsubscribeRematchReady = onlineSocketClient.on<RematchReadyPayload>(
+        'rematch:ready',
+        (payload) => {
+          rematchCallbacksRef.current?.onReady?.(payload);
+        },
+    );
+
+    const unsubscribeRematchDeclined = onlineSocketClient.on<RematchDeclinedPayload>(
+        'rematch:declined',
+        (payload) => {
+          if (payload.matchId !== matchId) return;
+          rematchCallbacksRef.current?.onDeclined?.(payload);
+        },
+    );
+    // ───────────────────────────────────────────────────────────────────────
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
 
@@ -295,6 +281,9 @@ export function useOnlineSession(matchId: string | null) {
       isMounted = false;
       unsubscribeState();
       unsubscribeError();
+      unsubscribeRematchRequested();
+      unsubscribeRematchReady();
+      unsubscribeRematchDeclined();
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       onlineSocketClient.disconnect();
@@ -334,6 +323,20 @@ export function useOnlineSession(matchId: string | null) {
     });
   }, []);
 
+  // ─── Rematch actions ──────────────────────────────────────────────────────
+  const requestRematch = useCallback((currentMatchId: string) => {
+    onlineSocketClient.emit('rematch:request', { matchId: currentMatchId });
+  }, []);
+
+  const acceptRematch = useCallback((currentMatchId: string) => {
+    onlineSocketClient.emit('rematch:accept', { matchId: currentMatchId });
+  }, []);
+
+  const declineRematch = useCallback((currentMatchId: string) => {
+    onlineSocketClient.emit('rematch:decline', { matchId: currentMatchId });
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const connectionStatus = useMemo<ConnectionBadgeState>(() => {
     if (!sessionState?.connectionStatus) {
       return isConnected ? 'CONNECTED' : 'RECONNECTING';
@@ -350,5 +353,9 @@ export function useOnlineSession(matchId: string | null) {
     applyPieSwapOnline,
     emitTurnTimeout,
     isTerminalError: error !== null && TERMINAL_ERROR_CODES.has(error.code),
+    // Rematch
+    requestRematch,
+    acceptRematch,
+    declineRematch,
   };
 }
