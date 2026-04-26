@@ -44,7 +44,7 @@ export default function Nav() {
   }, [lastScrollY]);
 
   const linkClass = (path: string) => {
-    const active = location.pathname === path ? styles.active : '';
+    const active = location.pathname === path || (path !== '/' && location.pathname.startsWith(`${path}/`)) ? styles.active : '';
     return `${styles.link} ${active}`.trim();
   };
 
@@ -75,6 +75,12 @@ export default function Nav() {
             <>
               <li>
                 <Link to="/friends" className={linkClass('/friends')}>{t('friends')}</Link>
+              </li>
+              <li>
+                <Link to="/messages" className={linkClass('/messages')} aria-label={t('messages')}>
+                  <span className={styles.messageIcon} aria-hidden="true">💬</span>
+                  {t('messages')}
+                </Link>
               </li>
               <li>
                 <Link to="/profile" className={`${linkClass('/profile')} ${styles.username}`} title={t('profile')}>

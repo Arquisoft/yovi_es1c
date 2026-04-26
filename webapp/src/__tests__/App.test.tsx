@@ -11,6 +11,7 @@ vi.mock('../components/layout/Nav', async () => {
                 <actual.Link to="/">Home</actual.Link>
                 <actual.Link to="/gamey">Play</actual.Link>
                 <actual.Link to="/stats">Stats</actual.Link>
+                <actual.Link to="/messages">Messages</actual.Link>
             </nav>
         ),
     };
@@ -26,6 +27,30 @@ vi.mock('../features/auth/ui/RegisterForm.tsx', () => ({
 
 vi.mock('../features/game/ui/tsx/GameUI.tsx', () => ({
     default: () => <div>GameUI Mock</div>,
+}));
+
+vi.mock('../features/messages', () => ({
+    MessagesPage: () => <div>MessagesPage Mock</div>,
+}));
+
+vi.mock('../features/game/ui/tsx/CreateMatchPage.tsx', () => ({
+    default: () => <div>CreateMatchPage Mock</div>,
+}));
+
+vi.mock('../features/game/ui/tsx/OnlineMatchmakingPage.tsx', () => ({
+    default: () => <div>OnlineMatchmakingPage Mock</div>,
+}));
+
+vi.mock('../features/ranking/ui/LeaderboardUI.tsx', () => ({
+    default: () => <div>LeaderboardUI Mock</div>,
+}));
+
+vi.mock('../features/profile', () => ({
+    ProfilePage: () => <div>ProfilePage Mock</div>,
+}));
+
+vi.mock('../features/friends', () => ({
+    FriendsPage: () => <div>FriendsPage Mock</div>,
 }));
 
 vi.mock('../features/stats/hooks/useStatsController', () => ({
@@ -75,6 +100,15 @@ describe('App', () => {
                 expect(screen.getByText(/Partidas jugadas/i)).toBeInTheDocument();
             expect(screen.getByText(/Victorias/i)).toBeInTheDocument();
             expect(screen.getByText(/Derrotas/i)).toBeInTheDocument();
+        });
+    });
+
+    it('navigates to /messages when clicking Messages', async () => {
+        render(<App />);
+        fireEvent.click(screen.getByRole('link', { name: 'Messages' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('MessagesPage Mock')).toBeInTheDocument();
         });
     });
 

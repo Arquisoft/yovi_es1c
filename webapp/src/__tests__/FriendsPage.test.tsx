@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import FriendsPage from '../features/friends/ui/FriendsPage'
 import { useAuth } from '../features/auth'
@@ -10,7 +10,6 @@ import {
   getFriendsOverview,
   sendFriendRequest,
 } from '../features/friends/api/friendsApi'
-import { getMessagesWithFriend, sendMessageToFriend } from '../features/friends/api/chatApi'
 
 vi.mock('../features/auth', () => ({
   useAuth: vi.fn(),
@@ -24,24 +23,21 @@ vi.mock('../features/friends/api/friendsApi', () => ({
   sendFriendRequest: vi.fn(),
 }))
 
-vi.mock('../features/friends/api/chatApi', () => ({
-  getMessagesWithFriend: vi.fn(),
-  sendMessageToFriend: vi.fn(),
-}))
-
 const useAuthMock = vi.mocked(useAuth)
 const getFriendsOverviewMock = vi.mocked(getFriendsOverview)
 const sendFriendRequestMock = vi.mocked(sendFriendRequest)
 const acceptFriendRequestMock = vi.mocked(acceptFriendRequest)
 const deleteFriendRequestMock = vi.mocked(deleteFriendRequest)
 const deleteFriendMock = vi.mocked(deleteFriend)
-const getMessagesWithFriendMock = vi.mocked(getMessagesWithFriend)
-const sendMessageToFriendMock = vi.mocked(sendMessageToFriend)
 
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/friends']}>
-      <FriendsPage />
+      <Routes>
+        <Route path="/friends" element={<FriendsPage />} />
+        <Route path="/messages/:friendId" element={<div>Messages route</div>} />
+        <Route path="/login" element={<div>Login route</div>} />
+      </Routes>
     </MemoryRouter>,
   )
 }
@@ -88,12 +84,12 @@ describe('FriendsPage', () => {
 
     renderPage()
 
-    await screen.findByText('Todavia no tienes amigos agregados.')
+    await screen.findByText('Todavía no tienes amigos agregados.')
     fireEvent.change(screen.getByLabelText(/Nombre de usuario/i), { target: { value: 'eva' } })
-    fireEvent.click(screen.getByRole('button', { name: /Enviar invitacion/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Enviar invitación/i }))
 
     await waitFor(() => expect(sendFriendRequestMock).toHaveBeenCalledWith('eva'))
-    expect(await screen.findByText('Invitacion enviada a eva')).toBeInTheDocument()
+    expect(await screen.findByText('Invitación enviada a eva')).toBeInTheDocument()
     expect(screen.getByText('@eva')).toBeInTheDocument()
   })
 
@@ -126,36 +122,18 @@ describe('FriendsPage', () => {
     await waitFor(() => expect(deleteFriendRequestMock).toHaveBeenCalledWith(21))
   })
 
-  it('opens chat and sends a message to a friend', async () => {
+  it('opens the messages page for a friend', async () => {
     getFriendsOverviewMock.mockResolvedValueOnce({
       friends: [{ id: 2, username: 'bea', displayName: 'Bea', avatar: null, friendsSince: '2026-01-01T00:00:00.000Z' }],
       requests: [],
-    })
-    getMessagesWithFriendMock.mockResolvedValueOnce({
-      conversationId: 99,
-      messages: [{ id: 1, conversationId: 99, senderUserId: 2, text: 'hola', createdAt: '2026-01-01T00:00:00.000Z' }],
-    })
-    sendMessageToFriendMock.mockResolvedValueOnce({
-      id: 2,
-      conversationId: 99,
-      senderUserId: 1,
-      text: 'vamos?',
-      createdAt: '2026-01-01T00:01:00.000Z',
     })
 
     renderPage()
 
     await screen.findByText('Bea')
-    fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
+    fireEvent.click(screen.getByRole('button', { name: /Mensaje/i }))
 
-    expect(await screen.findByText('Chat con Bea')).toBeInTheDocument()
-    expect(screen.getByText('hola')).toBeInTheDocument()
-
-    fireEvent.change(screen.getByPlaceholderText('Escribe un mensaje'), { target: { value: 'vamos?' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Enviar$/i }))
-
-    await waitFor(() => expect(sendMessageToFriendMock).toHaveBeenCalledWith(2, 'vamos?'))
-    expect(await screen.findByText('vamos?')).toBeInTheDocument()
+    expect(await screen.findByText('Messages route')).toBeInTheDocument()
   })
 
   it('removes a friend when the user confirms', async () => {
