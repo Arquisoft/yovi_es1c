@@ -4,6 +4,7 @@ import {
   FriendRequestAlreadyExistsError,
   FriendRequestNotFoundError,
   FriendshipAlreadyExistsError,
+  FriendshipNotFoundError,
   ProfileNotFoundError,
   ValidationError,
 } from "../errors/domain-errors.js";
@@ -319,5 +320,25 @@ export class UserRepository {
        WHERE id = ?`,
       [requestId]
     );
+  }
+
+  async deleteFriendship(userId: number, friendUserId: number): Promise<void> {
+    if (userId === friendUserId) {
+      throw new ValidationError("You cannot remove yourself as a friend");
+    }
+
+    const result = await this.db.run(
+      `DELETE FROM friend_requests
+       WHERE status = 'accepted'
+         AND (
+           (sender_user_id = ? AND recipient_user_id = ?)
+           OR (sender_user_id = ? AND recipient_user_id = ?)
+         )`,
+      [userId, friendUserId, friendUserId, userId]
+    );
+
+    if (!result.changes) {
+      throw new FriendshipNotFoundError();
+    }
   }
 }

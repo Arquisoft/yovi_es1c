@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../auth'
 import {
   acceptFriendRequest,
+  deleteFriend,
   deleteFriendRequest,
   getFriendsOverview,
   sendFriendRequest,
@@ -31,6 +32,7 @@ export default function FriendsPage() {
   const [username, setUsername] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const [removingFriendId, setRemovingFriendId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -134,6 +136,28 @@ export default function FriendsPage() {
     }
   }
 
+  async function handleUnfriend(friend: Friend) {
+    const label = friend.displayName ?? friend.username
+    const confirmed = window.confirm(`Eliminar a ${label} de tus amigos?`)
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setRemovingFriendId(friend.id)
+      setError(null)
+      setSuccessMessage(null)
+
+      await deleteFriend(friend.id)
+      setFriends(prev => prev.filter(item => item.id !== friend.id))
+      setSuccessMessage(`${label} eliminado de tus amigos`)
+    } catch (unfriendError) {
+      setError(unfriendError instanceof Error ? unfriendError.message : 'No se pudo eliminar el amigo')
+    } finally {
+      setRemovingFriendId(null)
+    }
+  }
+
   return (
     <section className={styles.page}>
       <div className={`${styles.card} crt-panel`}>
@@ -218,6 +242,16 @@ export default function FriendsPage() {
                       <strong>{friend.displayName ?? friend.username}</strong>
                       <p className={styles.meta}>@{friend.username}</p>
                       <p className={styles.meta}>Amigos desde: {formatDate(friend.friendsSince)}</p>
+                    </div>
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => handleUnfriend(friend)}
+                        disabled={removingFriendId === friend.id}
+                      >
+                        {removingFriendId === friend.id ? 'Eliminando...' : 'Eliminar'}
+                      </button>
                     </div>
                   </article>
                 ))}

@@ -93,3 +93,13 @@ export async function deleteFriendRequest(requestId: number): Promise<void> {
     throw await parseError(response, 'No se pudo cancelar la invitacion')
   }
 }
+
+export async function deleteFriend(friendUserId: number): Promise<void> {
+  const response = await fetchWithAuth(`${API_CONFIG.USERS_API}/friends/${friendUserId}`, {
+    method: 'DELETE',
+  })
+
+  if (!response.ok) {
+    throw await parseError(response, 'No se pudo eliminar el amigo')
+  }
+}

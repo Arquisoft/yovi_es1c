@@ -268,6 +268,28 @@ export class UsersController {
         }
     }
 
+    async unfriend(req: Request, res: Response): Promise<void> {
+        const userId = Number(req.userId);
+        const friendUserId = Number(req.params['friendUserId']);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        if (!friendUserId) {
+            res.status(400).json({ error: 'Invalid friend user id' });
+            return;
+        }
+
+        try {
+            await this.userRepository.deleteFriendship(userId, friendUserId);
+            res.status(204).send();
+        } catch (error) {
+            this.handleHttpError(res, error);
+        }
+    }
+
     recordCreatedUser(): void {
         this.usersService.onUserCreated();
     }

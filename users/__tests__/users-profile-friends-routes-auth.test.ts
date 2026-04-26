@@ -23,6 +23,7 @@ describe('users routes auth for profile and friends', () => {
       sendFriendRequest: vi.fn(async (_req, res) => res.status(201).json({ ok: true })),
       acceptFriendRequest: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
       deleteFriendRequest: vi.fn(async (_req, res) => res.status(204).send()),
+      unfriend: vi.fn(async (_req, res) => res.status(204).send()),
     } as unknown as UsersController;
 
     const app = express();
@@ -37,6 +38,7 @@ describe('users routes auth for profile and friends', () => {
       request(app).post('/api/users/friends/requests').send({ username: 'bea' }),
       request(app).post('/api/users/friends/requests/1/accept'),
       request(app).delete('/api/users/friends/requests/1'),
+      request(app).delete('/api/users/friends/2'),
     ]);
 
     for (const response of responses) {
@@ -50,5 +52,6 @@ describe('users routes auth for profile and friends', () => {
     expect(controller.sendFriendRequest).not.toHaveBeenCalled();
     expect(controller.acceptFriendRequest).not.toHaveBeenCalled();
     expect(controller.deleteFriendRequest).not.toHaveBeenCalled();
+    expect(controller.unfriend).not.toHaveBeenCalled();
   });
 });

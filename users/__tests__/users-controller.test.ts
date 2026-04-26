@@ -7,6 +7,7 @@ import {
   ForbiddenFriendRequestActionError,
   FriendRequestAlreadyExistsError,
   FriendRequestNotFoundError,
+  FriendshipNotFoundError,
   ProfileNotFoundError,
 } from '../src/errors/domain-errors.js';
 
@@ -74,6 +75,7 @@ describe('UsersController', () => {
       createFriendRequest: vi.fn(),
       acceptFriendRequest: vi.fn(),
       deleteFriendRequest: vi.fn(),
+      deleteFriendship: vi.fn(),
     } as unknown as UserRepository;
 
     controller = new UsersController(mockService, mockRepo);
@@ -352,6 +354,39 @@ describe('UsersController', () => {
     expect(res.json).toHaveBeenCalledWith({
       error: 'friend_request_not_found',
       message: 'Friend request not found',
+    });
+  });
+
+  it('unfriend returns 204', async () => {
+    vi.mocked(mockRepo.deleteFriendship).mockResolvedValue(undefined);
+    const res = makeRes();
+
+    await controller.unfriend(makeReq({ userId: '1', params: { friendUserId: '2' } }), res);
+
+    expect(mockRepo.deleteFriendship).toHaveBeenCalledWith(1, 2);
+    expect(res.status).toHaveBeenCalledWith(204);
+    expect(res.send).toHaveBeenCalled();
+  });
+
+  it('unfriend returns 400 when friend user id is invalid', async () => {
+    const res = makeRes();
+
+    await controller.unfriend(makeReq({ userId: '1', params: { friendUserId: 'nope' } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid friend user id' });
+  });
+
+  it('unfriend returns 404 when friendship does not exist', async () => {
+    vi.mocked(mockRepo.deleteFriendship).mockRejectedValue(new FriendshipNotFoundError());
+    const res = makeRes();
+
+    await controller.unfriend(makeReq({ userId: '1', params: { friendUserId: '2' } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'friendship_not_found',
+      message: 'Friendship not found',
     });
   });
 

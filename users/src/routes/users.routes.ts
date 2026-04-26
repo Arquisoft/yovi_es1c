@@ -17,6 +17,7 @@ export function createUsersRouter(controller: UsersController): Router {
     router.post('/friends/requests', verifyJwtMiddleware, controller.sendFriendRequest.bind(controller));
     router.post('/friends/requests/:requestId/accept', verifyJwtMiddleware, controller.acceptFriendRequest.bind(controller));
     router.delete('/friends/requests/:requestId', verifyJwtMiddleware, controller.deleteFriendRequest.bind(controller));
+    router.delete('/friends/:friendUserId', verifyJwtMiddleware, controller.unfriend.bind(controller));
 
     return router;
 }

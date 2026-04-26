@@ -30,6 +30,12 @@ export class FriendshipAlreadyExistsError extends HttpError {
     }
 }
 
+export class FriendshipNotFoundError extends HttpError {
+    constructor() {
+        super(404, 'friendship_not_found', 'Friendship not found');
+    }
+}
+
 export class FriendRequestNotFoundError extends HttpError {
     constructor() {
         super(404, 'friend_request_not_found', 'Friend request not found');
