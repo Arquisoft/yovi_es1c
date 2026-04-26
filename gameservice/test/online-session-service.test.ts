@@ -1033,4 +1033,521 @@ describe('OnlineSessionService', () => {
         }),
     );
   });
+
+  describe('rematch and persistence extra coverage', () => {
+    const createFakeRedis = () => {
+      const store = new Map<string, string>();
+
+      const redis = {
+        get: vi.fn(async (key: string) => store.get(key) ?? null),
+        set: vi.fn(async (key: string, value: string) => {
+          store.set(key, value);
+          return 'OK';
+        }),
+        del: vi.fn(async (key: string) => {
+          const existed = store.delete(key);
+          return existed ? 1 : 0;
+        }),
+      };
+
+      return { redis, store };
+    };
+
+    it('handleMove persists online result when a normal move wins the session', async () => {
+      const io = {
+        to: vi.fn(() => ({ emit })),
+      };
+
+      const matchService = {
+        createMatch: vi.fn()
+            .mockResolvedValueOnce(101)
+            .mockResolvedValueOnce(102),
+        finishMatch: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          { io },
+          matchService as any,
+      );
+
+      await service.createSession(
+          'm-winning-move',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.playMove('m-winning-move', 1, 0, 0, 0);
+      await service.playMove('m-winning-move', 2, 1, 1, 1);
+      await service.playMove('m-winning-move', 1, 1, 0, 2);
+      await service.playMove('m-winning-move', 2, 2, 2, 3);
+
+      const finalState = await service.playMove('m-winning-move', 1, 2, 0, 4);
+
+      expect(finalState.winner).toBe('B');
+      expect(finalState.status).toBe('finished');
+      expect(finalState.closeReason).toBe('winner');
+
+      expect(matchService.createMatch).toHaveBeenCalledTimes(2);
+      expect(matchService.createMatch).toHaveBeenCalledWith(1, 3, 'medium', 'ONLINE');
+      expect(matchService.createMatch).toHaveBeenCalledWith(2, 3, 'medium', 'ONLINE');
+
+      expect(matchService.finishMatch).toHaveBeenCalledTimes(2);
+      expect(matchService.finishMatch).toHaveBeenCalledWith(101, 'USER', 2, 'a');
+      expect(matchService.finishMatch).toHaveBeenCalledWith(102, 'BOT', 1, 'b');
+
+      expect(emit).toHaveBeenCalledWith(
+          'session:state',
+          expect.objectContaining({
+            matchId: 'm-winning-move',
+            winner: 'B',
+            version: 5,
+          }),
+      );
+    });
+
+    it('handleTurnTimeout persists online result when timeout move wins the session', async () => {
+      const matchService = {
+        createMatch: vi.fn()
+            .mockResolvedValueOnce(201)
+            .mockResolvedValueOnce(202),
+        finishMatch: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          {},
+          matchService as any,
+      );
+
+      await service.createSession(
+          'm-timeout-winning-move',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.playMove('m-timeout-winning-move', 1, 0, 0, 0);
+      await service.playMove('m-timeout-winning-move', 2, 1, 1, 1);
+      await service.playMove('m-timeout-winning-move', 1, 1, 0, 2);
+      await service.playMove('m-timeout-winning-move', 2, 2, 2, 3);
+
+      (service as any).secureRandomInt = vi.fn(() => 0);
+
+      await service.handleTurnTimeout('m-timeout-winning-move', 1, 4);
+
+      const snapshot = await service.getSnapshot('m-timeout-winning-move');
+
+      expect(snapshot?.winner).toBe('B');
+      expect(snapshot?.status).toBe('finished');
+      expect(snapshot?.closeReason).toBe('winner');
+
+      expect(matchService.createMatch).toHaveBeenCalledTimes(2);
+      expect(matchService.finishMatch).toHaveBeenCalledTimes(2);
+    });
+
+    it('persistOnlineResult ignores null match ids returned by MatchService', async () => {
+      const matchService = {
+        createMatch: vi.fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(302),
+        finishMatch: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          {},
+          matchService as any,
+      );
+
+      await service.createSession(
+          'm-null-persist-id',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.abandon('m-null-persist-id', 1);
+
+      expect(matchService.createMatch).toHaveBeenCalledTimes(2);
+      expect(matchService.finishMatch).toHaveBeenCalledTimes(1);
+      expect(matchService.finishMatch).toHaveBeenCalledWith(302, 'USER', 1, 'b');
+    });
+
+    it('persistOnlineResult logs and continues when MatchService persistence fails', async () => {
+      const persistError = new Error('persist failed');
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const matchService = {
+        createMatch: vi.fn()
+            .mockResolvedValueOnce(401)
+            .mockRejectedValueOnce(persistError),
+        finishMatch: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          {},
+          matchService as any,
+      );
+
+      await service.createSession(
+          'm-persist-error',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.abandon('m-persist-error', 1);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+          '[OnlineSessionService] Failed to persist result for user',
+          2,
+          persistError,
+      );
+
+      errorSpy.mockRestore();
+    });
+
+    it('declineRematch is a no-op when request does not exist', async () => {
+      const io = {
+        to: vi.fn(() => ({ emit })),
+      };
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          { io },
+      );
+
+      await expect(
+          service.declineRematch('missing-rematch', 1),
+      ).resolves.toBeUndefined();
+
+      expect(io.to).not.toHaveBeenCalled();
+    });
+
+    it('declineRematch rejects when user is not part of the session', async () => {
+      const { service } = await setup();
+
+      await service.abandon('m1', 1);
+      await service.requestRematch('m1', 1);
+
+      await expect(
+          service.declineRematch('m1', 999),
+      ).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+        message: 'User is not part of this session',
+      });
+    });
+
+    it('declineRematch notifies opponent when requester cancels the rematch', async () => {
+      const { service, io } = await setup();
+
+      await service.abandon('m1', 1);
+      await service.requestRematch('m1', 1);
+
+      emit.mockClear();
+      vi.mocked(io.to).mockClear();
+
+      await service.declineRematch('m1', 1);
+
+      expect(io.to).toHaveBeenCalledWith('user:2');
+      expect(emit).toHaveBeenCalledWith('rematch:declined', { matchId: 'm1' });
+    });
+
+    it('declineRematch notifies requester when opponent declines the rematch', async () => {
+      const { service, io } = await setup();
+
+      await service.abandon('m1', 1);
+      await service.requestRematch('m1', 1);
+
+      emit.mockClear();
+      vi.mocked(io.to).mockClear();
+
+      await service.declineRematch('m1', 2);
+
+      expect(io.to).toHaveBeenCalledWith('user:1');
+      expect(emit).toHaveBeenCalledWith('rematch:declined', { matchId: 'm1' });
+    });
+
+    it('declineRematch deletes request without notifying when requester cancels but original state is gone', async () => {
+      const repository = new OnlineSessionRepository();
+      const io = {
+        to: vi.fn(() => ({ emit })),
+      };
+
+      const service = new OnlineSessionService(
+          repository,
+          new TurnTimerService(),
+          25,
+          60,
+          { io },
+      );
+
+      await service.createSession(
+          'm-decline-missing-state',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.abandon('m-decline-missing-state', 1);
+      await service.requestRematch('m-decline-missing-state', 1);
+      await repository.delete('m-decline-missing-state');
+
+      emit.mockClear();
+      vi.mocked(io.to).mockClear();
+
+      await service.declineRematch('m-decline-missing-state', 1);
+
+      expect(io.to).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('getPendingRematchForUser returns null when there is no pending rematch', async () => {
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+      );
+
+      await expect(service.getPendingRematchForUser(2)).resolves.toBeNull();
+    });
+
+    it('getPendingRematchForUser returns pending rematch for opponent', async () => {
+      const { service } = await setup();
+
+      await service.abandon('m1', 1);
+      await service.requestRematch('m1', 1);
+
+      const pending = await service.getPendingRematchForUser(2);
+
+      expect(pending).toMatchObject({
+        matchId: 'm1',
+        requesterId: 1,
+        requesterName: 'a',
+        size: 3,
+        rules: {
+          pieRule: { enabled: false },
+          honey: { enabled: false, blockedCells: [] },
+        },
+      });
+      expect(pending?.expiresAt).toEqual(expect.any(Number));
+    });
+
+    it('getPendingRematchForUser deletes stale pending pointer when request does not exist', async () => {
+      const { redis, store } = createFakeRedis();
+
+      store.set('rematch:pending:user:2', 'missing-rematch');
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          { redis },
+      );
+
+      await expect(service.getPendingRematchForUser(2)).resolves.toBeNull();
+
+      expect(redis.del).toHaveBeenCalledWith('rematch:pending:user:2');
+    });
+
+    it('getPendingRematchForUser deletes expired redis rematch request', async () => {
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+      const { redis } = createFakeRedis();
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          { redis },
+      );
+
+      await service.createSession(
+          'm-expired-redis-rematch',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.abandon('m-expired-redis-rematch', 1);
+      await service.requestRematch('m-expired-redis-rematch', 1);
+
+      nowSpy.mockReturnValue(71_001);
+
+      await expect(service.getPendingRematchForUser(2)).resolves.toBeNull();
+
+      expect(redis.del).toHaveBeenCalledWith('rematch:pending:user:2');
+
+      nowSpy.mockRestore();
+    });
+
+    it('getPendingRematchForUser deletes pending pointer when request belongs to another opponent', async () => {
+      const { service } = await setup();
+
+      await service.abandon('m1', 1);
+      await service.requestRematch('m1', 1);
+
+      (service as any).rematchRequestsByUser.set(999, 'm1');
+
+      await expect(service.getPendingRematchForUser(999)).resolves.toBeNull();
+
+      expect((service as any).rematchRequestsByUser.has(999)).toBe(false);
+    });
+
+    it('getPendingRematchForUser deletes rematch request when original state no longer exists', async () => {
+      const repository = new OnlineSessionRepository();
+
+      const service = new OnlineSessionService(
+          repository,
+          new TurnTimerService(),
+      );
+
+      await service.createSession(
+          'm-pending-missing-state',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.abandon('m-pending-missing-state', 1);
+      await service.requestRematch('m-pending-missing-state', 1);
+      await repository.delete('m-pending-missing-state');
+
+      await expect(service.getPendingRematchForUser(2)).resolves.toBeNull();
+
+      expect((service as any).rematchRequests.has('m-pending-missing-state')).toBe(false);
+    });
+
+    it('getPendingRematchForUser deletes rematch request when original state is not terminal', async () => {
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+      );
+
+      await service.createSession(
+          'm-active-pending-rematch',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await (service as any).saveRematchRequest('m-active-pending-rematch', {
+        requesterId: 1,
+        requesterName: 'a',
+        opponentId: 2,
+        matchId: 'm-active-pending-rematch',
+        expiresAt: Date.now() + 60_000,
+      });
+
+      await expect(service.getPendingRematchForUser(2)).resolves.toBeNull();
+
+      expect((service as any).rematchRequests.has('m-active-pending-rematch')).toBe(false);
+    });
+
+    it('getPendingRematchForUser deletes rematch request when pending user is not part of original session', async () => {
+      const { service } = await setup();
+
+      await service.abandon('m1', 1);
+
+      await (service as any).saveRematchRequest('m1', {
+        requesterId: 1,
+        requesterName: 'a',
+        opponentId: 999,
+        matchId: 'm1',
+        expiresAt: Date.now() + 60_000,
+      });
+
+      await expect(service.getPendingRematchForUser(999)).resolves.toBeNull();
+
+      expect((service as any).rematchRequests.has('m1')).toBe(false);
+    });
+
+    it('rematch request lifecycle works with redis storage', async () => {
+      const { redis } = createFakeRedis();
+
+      const io = {
+        to: vi.fn(() => ({ emit })),
+      };
+
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+          25,
+          60,
+          { redis, io },
+      );
+
+      await service.createSession(
+          'm-redis-rematch',
+          3,
+          [{ userId: 1, username: 'a' }, { userId: 2, username: 'b' }],
+          'HUMAN',
+      );
+
+      await service.abandon('m-redis-rematch', 1);
+      await service.requestRematch('m-redis-rematch', 1);
+
+      expect(redis.set).toHaveBeenCalledWith(
+          'rematch:m-redis-rematch',
+          expect.any(String),
+          { EX: 60 },
+      );
+      expect(redis.set).toHaveBeenCalledWith(
+          'rematch:pending:user:2',
+          'm-redis-rematch',
+          { EX: 60 },
+      );
+
+      const pending = await service.getPendingRematchForUser(2);
+
+      expect(pending).toMatchObject({
+        matchId: 'm-redis-rematch',
+        requesterId: 1,
+        requesterName: 'a',
+        size: 3,
+      });
+
+      emit.mockClear();
+      vi.mocked(io.to).mockClear();
+
+      await service.declineRematch('m-redis-rematch', 2);
+
+      expect(redis.del).toHaveBeenCalledWith('rematch:m-redis-rematch');
+      expect(redis.del).toHaveBeenCalledWith('rematch:pending:user:2');
+      expect(io.to).toHaveBeenCalledWith('user:1');
+      expect(emit).toHaveBeenCalledWith('rematch:declined', {
+        matchId: 'm-redis-rematch',
+      });
+    });
+
+    it('secureRandomInt returns a value inside requested range', () => {
+      const service = new OnlineSessionService(
+          new OnlineSessionRepository(),
+          new TurnTimerService(),
+      );
+
+      const value = (service as any).secureRandomInt(10);
+
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(10);
+    });
+  });
 });
