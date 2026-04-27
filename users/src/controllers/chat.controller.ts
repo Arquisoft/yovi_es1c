@@ -1,9 +1,13 @@
 import type { Request, Response } from "express";
-import { ChatRepository } from "../repositories/chat.repository.js";
+import { ChatRepository, type ChatMessage } from "../repositories/chat.repository.js";
 import { HttpError } from "../errors/http-error.js";
+import type { ChatRealtimeNotifier } from "../realtime/chatSocketServer.js";
 
 export class ChatController {
-  constructor(private readonly chatRepo: ChatRepository) {}
+  constructor(
+    private readonly chatRepo: ChatRepository,
+    private readonly realtime?: ChatRealtimeNotifier,
+  ) {}
 
   async listMyConversations(req: Request, res: Response): Promise<void> {
     const userId = Number(req.userId);
@@ -59,13 +63,7 @@ export class ChatController {
       const data = await this.chatRepo.listMessages(userId, friendUserId, { limit, beforeId });
       res.json({
         conversationId: data.conversation_id,
-        messages: data.messages.map((m) => ({
-          id: m.id,
-          conversationId: m.conversation_id,
-          senderUserId: m.sender_user_id,
-          text: m.text,
-          createdAt: m.created_at,
-        })),
+        messages: data.messages.map((m) => this.toResponseMessage(m)),
       });
     } catch (error) {
       this.handleHttpError(res, error);
@@ -89,16 +87,25 @@ export class ChatController {
 
     try {
       const message = await this.chatRepo.sendMessage(userId, friendUserId, text);
-      res.status(201).json({
-        id: message.id,
-        conversationId: message.conversation_id,
-        senderUserId: message.sender_user_id,
-        text: message.text,
-        createdAt: message.created_at,
-      });
+      try {
+        this.realtime?.emitMessage(message);
+      } catch (emitError) {
+        console.error("Chat realtime emit error:", emitError);
+      }
+      res.status(201).json(this.toResponseMessage(message));
     } catch (error) {
       this.handleHttpError(res, error);
     }
+  }
+
+  private toResponseMessage(message: ChatMessage) {
+    return {
+      id: message.id,
+      conversationId: message.conversation_id,
+      senderUserId: message.sender_user_id,
+      text: message.text,
+      createdAt: message.created_at,
+    };
   }
 
   private handleHttpError(res: Response, error: unknown): void {
@@ -111,4 +118,3 @@ export class ChatController {
     res.status(500).json({ error: "internal_server_error", message: "Internal server error" });
   }
 }
-

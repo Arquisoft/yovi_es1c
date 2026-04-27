@@ -218,5 +218,7 @@
   "messagesSelectConversationBody": "从列表中选择一位好友开始聊天。",
   "messagesUnknownFriendTitle": "找不到该好友",
   "messagesUnknownFriendBody": "对方可能已不在你的列表中，或者链接无效。",
-  "messagesBackToFriends": "返回好友"
+  "messagesBackToFriends": "返回好友",
+  "messagesRealtimeConnectionError": "无法连接实时聊天。请重新加载页面后重试。",
+  "messagesRealtimeError": "聊天连接出现错误。"
 }

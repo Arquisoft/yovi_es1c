@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import expressApp from "./app.js";
 import { initDB } from "./database/database.js";
 import { register } from './metrics.js';
@@ -8,14 +9,17 @@ import { UsersController } from './controllers/users.controller.js';
 import { createUsersRouter } from './routes/users.routes.js';
 import { ChatController } from './controllers/chat.controller.js';
 import { createChatRouter } from './routes/chat.routes.js';
+import { attachChatSocketServer } from './realtime/chatSocketServer.js';
 
 const db = await initDB();
 
+const server = createServer(expressApp);
 const userRepository = new UserRepository(db);
 const chatRepository = new ChatRepository(db, userRepository);
+const chatRealtime = attachChatSocketServer(server, chatRepository);
 const usersService = new UsersService();
 const usersController = new UsersController(usersService, userRepository);
-const chatController = new ChatController(chatRepository);
+const chatController = new ChatController(chatRepository, chatRealtime);
 
 expressApp.use('/api/users', createUsersRouter(usersController));
 expressApp.use('/api/users/chat', createChatRouter(chatController));
@@ -29,6 +33,6 @@ expressApp.get('/', (_req, res) => {
   res.send('Users Service (TypeScript) is running!');
 });
 
-expressApp.listen(3000, () => {
+server.listen(3000, () => {
   console.log("Users running on port 3000");
 });

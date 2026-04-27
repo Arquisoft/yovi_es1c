@@ -218,5 +218,7 @@
   "messagesSelectConversationBody": "Choose a friend from the list to start chatting.",
   "messagesUnknownFriendTitle": "We could not find that friend",
   "messagesUnknownFriendBody": "They may no longer be in your list or the link may be invalid.",
-  "messagesBackToFriends": "Back to friends"
+  "messagesBackToFriends": "Back to friends",
+  "messagesRealtimeConnectionError": "The realtime chat connection could not be established. Reload the page to try again.",
+  "messagesRealtimeError": "A chat connection error occurred."
 }

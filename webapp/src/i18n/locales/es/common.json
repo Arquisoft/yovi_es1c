@@ -219,5 +219,7 @@
   "messagesSelectConversationBody": "Elige un amigo de la lista para empezar a chatear.",
   "messagesUnknownFriendTitle": "No encontramos ese amigo",
   "messagesUnknownFriendBody": "Puede que ya no esté en tu lista o que el enlace no sea válido.",
-  "messagesBackToFriends": "Volver a amigos"
+  "messagesBackToFriends": "Volver a amigos",
+  "messagesRealtimeConnectionError": "No se pudo conectar al chat en tiempo real. Recarga la página para reintentar.",
+  "messagesRealtimeError": "Se produjo un error en la conexión del chat."
 }
