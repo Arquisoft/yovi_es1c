@@ -12,7 +12,31 @@ Given('I am not authenticated', async function () {
     await this.page.goto(`${BASE_URL}/login`)
     await this.page.evaluate(() => localStorage.clear())
 })
+When('I register a fresh user and return to login', async function () {
+    const uniqueUser = `e2e_login_${Date.now()}`
+    const pass = 'Test1234!'
+    this._loginUser = uniqueUser
+    this._loginPass = pass
 
+    await this.page.goto(`${BASE_URL}/register`)
+    await this.page.waitForLoadState('networkidle')
+    await this.page.fill('input[autocomplete="username"], input[name="username"]', uniqueUser)
+    const passwordInputs = await this.page.$$('input[type="password"]')
+    for (const input of passwordInputs) await input.fill(pass)
+    await this.page.click('button[type="submit"]')
+    await this.page.waitForURL(`${BASE_URL}/`, { timeout: 10000 })
+
+    const logoutBtn = this.page.locator('button[aria-label*="logout"], button:has-text("Logout"), button:has-text("Salir"), [data-testid="logout"]').first()
+    if (await logoutBtn.count() > 0) {
+        await logoutBtn.click()
+    } else {
+        await this.page.goto(`${BASE_URL}/login`)
+    }
+    await this.page.waitForURL(`${BASE_URL}/login`, { timeout: 8000 })
+
+    await this.page.fill('input[autocomplete="username"], input[name="username"]', uniqueUser)
+    await this.page.fill('input[type="password"]', pass)
+})
 When('I fill in the username with {string}', async function (username) {
     await this.page.fill('input[autocomplete="username"], input[name="username"]', username)
 })

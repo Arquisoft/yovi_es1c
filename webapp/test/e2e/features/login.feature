@@ -2,8 +2,7 @@ Feature: Login de usuario
 
   Scenario: Login exitoso con credenciales válidas
     Given I am on the login page
-    When I fill in the username with "testuser"
-    And I fill in the password with "Test1234!"
+    When I register a fresh user and return to login
     And I submit the login form
     Then I should be on the home page
 

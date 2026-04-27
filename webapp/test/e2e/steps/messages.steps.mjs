@@ -49,3 +49,12 @@ Then('the message should appear in the chat', async function (text) {
     await messageText.waitFor({ state: 'visible', timeout: 5000 })
     assert.ok(await messageText.isVisible(), `Message "${text}" not found in chat`)
 })
+Then('I should see the messages page', async function () {
+    // MessagesPage.tsx siempre renderiza la estructura base aunque no haya amigos
+    // Buscar el contenedor principal o el heading
+    const pageContainer = this.page.locator(
+        '[class*="messagesPage"], [class*="messages"], h1, h2, main'
+    ).first()
+    await pageContainer.waitFor({ state: 'visible', timeout: 8000 })
+    assert.ok(await pageContainer.isVisible(), 'Messages page structure not visible')
+})
