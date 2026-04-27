@@ -18,6 +18,42 @@ export class ValidationError extends HttpError {
     }
 }
 
+export class FriendRequestAlreadyExistsError extends HttpError {
+    constructor() {
+        super(409, 'friend_request_exists', 'There is already a pending friend request between these users');
+    }
+}
+
+export class FriendshipAlreadyExistsError extends HttpError {
+    constructor() {
+        super(409, 'friendship_exists', 'These users are already friends');
+    }
+}
+
+export class FriendshipNotFoundError extends HttpError {
+    constructor() {
+        super(404, 'friendship_not_found', 'Friendship not found');
+    }
+}
+
+export class FriendRequestNotFoundError extends HttpError {
+    constructor() {
+        super(404, 'friend_request_not_found', 'Friend request not found');
+    }
+}
+
+export class ForbiddenFriendRequestActionError extends HttpError {
+    constructor() {
+        super(403, 'forbidden_friend_request_action', 'You are not allowed to modify this friend request');
+    }
+}
+
+export class NotFriendsError extends HttpError {
+    constructor() {
+        super(403, 'not_friends', 'You can only chat with friends');
+    }
+}
+
 export class UnexpectedError extends HttpError {
     constructor() {
         super(500, 'unexpected_error', 'Unexpected server error');

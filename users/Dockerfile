@@ -1,40 +1,28 @@
 # Stage 1: Build
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
-# Instalar dependencias de build y herramientas necesarias
 RUN apk add --no-cache g++ make python3
 
-# Copiar package.json y package-lock.json primero para cache
 COPY package*.json ./
+RUN npm ci
 
-# Instalar dependencias
-RUN npm install
-
-# Copiar código fuente
 COPY src ./src
 COPY tsconfig.json ./
 
-# Compilar TypeScript
 RUN npm run build
-
-# Copiar SQL a dist
-COPY src/database/users.sql ./dist/database/
+COPY src/database/users.sql ./dist/src/database/users.sql
 
 # Stage 2: Runtime
-FROM node:18-alpine AS runtime
+FROM node:22-alpine AS runtime
 
 WORKDIR /app
 
-# Copiar build y package.json
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
-COPY src/database/users.sql ./dist/src/database/
 
-# Instalar solo dependencias de producción
-RUN npm ci --only=production --silent
+RUN npm ci --omit=dev --silent
 
 EXPOSE 3000
-
 CMD ["npm", "start"]

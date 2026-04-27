@@ -1,122 +1,156 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { act } from 'react';
-import Nav from '../components/layout/Nav';
-import { AuthProvider } from '../features/auth/context/AuthContext';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Nav from '../components/layout/Nav'
+import { useAuth } from '../features/auth'
+import { logoutSession } from '../features/auth/api/authApi'
 
-const fetchMock = vi.fn();
+vi.mock('../features/auth', () => ({
+    useAuth: vi.fn(),
+}))
 
-function renderNav() {
+vi.mock('../components/layout/LanguageSwitcher', () => ({
+    default: () => <span>Language switcher</span>,
+}))
+
+vi.mock('../features/auth/api/authApi', () => ({
+    logoutSession: vi.fn(),
+}))
+
+const useAuthMock = vi.mocked(useAuth)
+const logoutSessionMock = vi.mocked(logoutSession)
+const logoutMock = vi.fn()
+
+function renderNav(initialEntry = '/') {
     return render(
-        <MemoryRouter>
-            <AuthProvider>
-                <Nav />
-            </AuthProvider>
-        </MemoryRouter>
-    );
+        <MemoryRouter initialEntries={[initialEntry]}>
+            <Nav />
+        </MemoryRouter>,
+    )
 }
 
 describe('Nav Component', () => {
     beforeEach(() => {
-        fetchMock.mockReset();
-        fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
-        vi.stubGlobal('fetch', fetchMock);
-    });
-    it('renders navigation links', () => {
-        renderNav();
+        vi.clearAllMocks()
+        logoutSessionMock.mockResolvedValue()
+        useAuthMock.mockReturnValue({
+            token: null,
+            refreshToken: null,
+            user: null,
+            login: vi.fn(),
+            logout: logoutMock,
+            updateTokens: vi.fn(),
+        })
+    })
 
-        expect(screen.getByText('Inicio')).toBeInTheDocument();
-        expect(screen.getByText('Nueva partida')).toBeInTheDocument(); // actualizado
-        expect(screen.getByText('Estadísticas')).toBeInTheDocument();
-    });
+    it('renders navigation links', () => {
+        renderNav()
+
+        expect(screen.getByText('Inicio')).toBeInTheDocument()
+        expect(screen.getByText('Nueva partida')).toBeInTheDocument()
+        expect(screen.getByText('Estadísticas')).toBeInTheDocument()
+    })
 
     it('shows login and register links when not authenticated', () => {
-        renderNav();
+        renderNav()
 
-        expect(screen.getByText('Iniciar sesión')).toBeInTheDocument();
-        expect(screen.getByText('Registrarse')).toBeInTheDocument();
-    });
+        expect(screen.getByText('Iniciar sesión')).toBeInTheDocument()
+        expect(screen.getByText('Registrarse')).toBeInTheDocument()
+    })
 
     it('handles dark mode detection at mount', () => {
         act(() => {
-            (globalThis as unknown as { __setMatchMedia?: (v: boolean) => void }).__setMatchMedia?.(true);
-        });
+            window.__setMatchMedia?.(true)
+        })
 
-        renderNav();
+        renderNav()
 
-        expect(screen.getByAltText('Game Y Logo')).toBeInTheDocument();
-    });
-
-    it('shows login and register links when not authenticated', () => {
-        renderNav();
-
-        expect(screen.getByText('Iniciar sesión')).toBeInTheDocument();
-        expect(screen.getByText('Registrarse')).toBeInTheDocument();
-    });
+        expect(screen.getByAltText('Game Y Logo')).toBeInTheDocument()
+    })
 
     it('applies dark mode class if prefers-color-scheme is dark', () => {
-        // Simula dark mode
-        (globalThis as unknown as { matchMedia: unknown }).matchMedia = () => ({
-            matches: true,
-            media: '(prefers-color-scheme: dark)',
-            addEventListener: () => {},
-            removeEventListener: () => {},
-        } as unknown as MediaQueryList);
+        window.__setMatchMedia?.(true)
 
-        renderNav();
+        renderNav()
 
-        const nav = document.querySelector('nav');
-        expect(nav?.className).toContain('dark');
-    });
+        const nav = document.querySelector('nav')
+        expect(nav?.className).toContain('dark')
+    })
 
     it('handles media query change events', () => {
-        renderNav();
+        renderNav()
 
-        const g = globalThis as unknown as { __setMatchMedia?: (v: boolean) => void };
         act(() => {
-            g.__setMatchMedia?.(true);
-            g.__setMatchMedia?.(false);
-        });
+            window.__setMatchMedia?.(true)
+            window.__setMatchMedia?.(false)
+        })
 
-        expect(screen.getByText('Inicio')).toBeInTheDocument();
-    });
+        expect(screen.getByText('Inicio')).toBeInTheDocument()
+    })
 
-    it('handles scroll events to show/hide nav', () => {
-        renderNav();
+    it('handles scroll events to show and hide nav', () => {
+        renderNav()
 
-        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 100 });
-        fireEvent.scroll(globalThis as unknown as Window);
+        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 100 })
+        fireEvent.scroll(globalThis as unknown as Window)
 
-        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 50 });
-        fireEvent.scroll(globalThis as unknown as Window);
+        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 50 })
+        fireEvent.scroll(globalThis as unknown as Window)
 
-        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 0 });
-        fireEvent.scroll(globalThis as unknown as Window);
+        Object.defineProperty(globalThis, 'scrollY', { writable: true, value: 0 })
+        fireEvent.scroll(globalThis as unknown as Window)
 
-        expect(screen.getByText('Inicio')).toBeInTheDocument();
-    });
+        expect(screen.getByText('Inicio')).toBeInTheDocument()
+    })
 
-    it('shows username and logout button when authenticated', () => {
-        localStorage.setItem('auth_token', 'test-token');
-        localStorage.setItem('auth_user', JSON.stringify({ id: 1, username: 'Pablo' }));
+    it('shows friends, messages, username and logout button when authenticated', () => {
+        useAuthMock.mockReturnValue({
+            token: 'test-token',
+            refreshToken: 'refresh-token',
+            user: { id: 1, username: 'Pablo' },
+            login: vi.fn(),
+            logout: logoutMock,
+            updateTokens: vi.fn(),
+        })
 
-        renderNav();
+        renderNav()
 
-        expect(screen.getByText('Pablo')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument();
+        expect(screen.getByText('Amigos')).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: /mensajes/i })).toBeInTheDocument()
+        expect(screen.getByText('Pablo')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /cerrar sesión/i })).toBeInTheDocument()
+    })
 
-        localStorage.clear();
-    });
+    it('marks messages as active on nested message routes', () => {
+        useAuthMock.mockReturnValue({
+            token: 'test-token',
+            refreshToken: 'refresh-token',
+            user: { id: 1, username: 'Pablo' },
+            login: vi.fn(),
+            logout: logoutMock,
+            updateTokens: vi.fn(),
+        })
 
-    it('clears session when clicking logout', async () => {
-        localStorage.setItem('auth_token', 'test-token');
-        localStorage.setItem('auth_user', JSON.stringify({ id: 1, username: 'Pablo' }));
+        renderNav('/messages/2')
 
-        renderNav();
-        fireEvent.click(screen.getByRole('button', { name: /cerrar sesión/i }));
+        expect(screen.getByRole('link', { name: /mensajes/i }).className).toContain('active')
+    })
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-        expect(localStorage.getItem('auth_token')).toBeNull();
-    });
-});
+    it('logs out through the auth service and local auth state', async () => {
+        useAuthMock.mockReturnValue({
+            token: 'test-token',
+            refreshToken: 'refresh-token',
+            user: { id: 1, username: 'Pablo' },
+            login: vi.fn(),
+            logout: logoutMock,
+            updateTokens: vi.fn(),
+        })
+
+        renderNav()
+        fireEvent.click(screen.getByRole('button', { name: /cerrar sesión/i }))
+
+        await waitFor(() => expect(logoutSessionMock).toHaveBeenCalled())
+        expect(logoutMock).toHaveBeenCalled()
+    })
+})
