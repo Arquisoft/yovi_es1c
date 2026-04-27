@@ -13,7 +13,6 @@ import { errorHandler } from "./middleware/error-handler";
 import { verifyJwtMiddleware } from "./middleware/verify-jwt";
 import { attachSocketServer } from "./realtime/socketServer";
 import { register } from './metrics';
-import { FriendshipClient } from "./services/FriendshipClient";
 
 process.on('unhandledRejection', (reason) => {
     console.error('[process] Unhandled Promise Rejection (service kept alive):', reason);
@@ -44,8 +43,6 @@ app.get('/metrics', async (_req, res) => {
     const rankingService = new RankingService(rankingRepo);
     const matchService = new MatchService(matchRepo, rankingService);
     const statsService = new StatsService(statsRepo);
-    const friendshipClient = new FriendshipClient();
-
     const server = createServer(app);
     const realtimeBundle = await attachSocketServer(server, { statsService, matchService });
 
@@ -58,7 +55,6 @@ app.get('/metrics', async (_req, res) => {
             realtimeBundle?.matchmakingService,
             realtimeBundle?.onlineSessionService,
             rankingService,
-            friendshipClient,
         )
     );
 

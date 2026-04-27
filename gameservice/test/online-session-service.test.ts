@@ -1640,3 +1640,89 @@ describe('OnlineSessionService friend match invites', () => {
     await expect(service.acceptFriendInvite(invite.inviteId, 3)).rejects.toMatchObject({ code: 'FRIEND_INVITE_FORBIDDEN' });
   });
 });
+
+describe('OnlineSessionService friend invite branches', () => {
+  it('rejects duplicate pending or outgoing friend invites', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService());
+    await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5, undefined, 1_000);
+
+    await expect(
+        service.createFriendInvite({ userId: 3, username: 'cara' }, { userId: 2, username: 'bea' }, 5, undefined, 1_001),
+    ).rejects.toMatchObject({ code: 'FRIEND_INVITE_ALREADY_PENDING' });
+
+    await expect(
+        service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 3, username: 'cara' }, 5, undefined, 1_001),
+    ).rejects.toMatchObject({ code: 'FRIEND_INVITE_ALREADY_PENDING' });
+  });
+
+  it('expires pending and outgoing friend invites and notifies both players', async () => {
+    const emit = vi.fn();
+    const io = { to: vi.fn(() => ({ emit })) };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { io });
+
+    const invite = await service.createFriendInvite(
+        { userId: 1, username: 'alice' },
+        { userId: 2, username: 'bea' },
+        5,
+        undefined,
+        1_000,
+    );
+
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+
+    await expect(service.getPendingFriendInviteForUser(2, invite.expiresAt + 1)).resolves.toBeNull();
+    await expect(service.getOutgoingFriendInviteForUser(1, invite.expiresAt + 1)).resolves.toBeNull();
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(emit).toHaveBeenCalledWith('friend-match:expired', expect.objectContaining({ inviteId: invite.inviteId }));
+  });
+
+  it('declines and cancels friend invites with different events', async () => {
+    const emit = vi.fn();
+    const io = { to: vi.fn(() => ({ emit })) };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { io });
+
+    const declined = await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5);
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+    await service.declineFriendInvite(declined.inviteId, 2);
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(emit).toHaveBeenCalledWith('friend-match:declined', expect.objectContaining({ inviteId: declined.inviteId }));
+
+    const cancelled = await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5);
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+    await service.declineFriendInvite(cancelled.inviteId, 1);
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(emit).toHaveBeenCalledWith('friend-match:cancelled', expect.objectContaining({ inviteId: cancelled.inviteId }));
+  });
+
+  it('uses redis storage for friend invite lifecycle', async () => {
+    const store = new Map<string, string>();
+    const redis = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      set: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+        return 'OK';
+      }),
+      del: vi.fn(async (key: string) => {
+        const existed = store.delete(key);
+        return existed ? 1 : 0;
+      }),
+    };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { redis });
+
+    const invite = await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5, undefined, 1_000);
+
+    expect(redis.set).toHaveBeenCalledWith(`friend-invite:${invite.inviteId}`, expect.any(String), expect.objectContaining({ EX: expect.any(Number) }));
+    expect(redis.set).toHaveBeenCalledWith('friend-invite:pending:user:2', invite.inviteId, expect.objectContaining({ EX: expect.any(Number) }));
+    expect(redis.set).toHaveBeenCalledWith('friend-invite:outgoing:user:1', invite.inviteId, expect.objectContaining({ EX: expect.any(Number) }));
+    await expect(service.getPendingFriendInviteForUser(2, 1_001)).resolves.toMatchObject({ inviteId: invite.inviteId });
+
+    await service.declineFriendInvite(invite.inviteId, 1);
+    expect(redis.del).toHaveBeenCalledWith(`friend-invite:${invite.inviteId}`);
+    expect(redis.del).toHaveBeenCalledWith('friend-invite:pending:user:2');
+    expect(redis.del).toHaveBeenCalledWith('friend-invite:outgoing:user:1');
+  });
+});

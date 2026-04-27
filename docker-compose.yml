@@ -131,6 +131,7 @@ services:
       - PGPOOL_MAX=50
       - AUTH_SERVICE_URL=http://auth:3001
       - GAMEY_SERVICE_URL=http://gamey:4000
+      - USERS_SERVICE_URL=http://users:3000/api/users
       - REDIS_URL=redis://redis:6379
       - GAMESERVICE_GAMEY_TIMEOUT_MS=3500
       - PERSPECTIVE_API_KEY=${PERSPECTIVE_API_KEY:-}

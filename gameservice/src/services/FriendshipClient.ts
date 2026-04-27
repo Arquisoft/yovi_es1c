@@ -14,11 +14,23 @@ function trimTrailingSlash(value: string): string {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }
 
+function resolveUsersServiceBaseUrl(value = process.env.USERS_SERVICE_URL): string {
+  const baseUrl = value?.trim();
+  if (!baseUrl) {
+    throw new Error('USERS_SERVICE_URL must be configured for friend match verification');
+  }
+  return trimTrailingSlash(baseUrl);
+}
+
 export class FriendshipClient {
-  constructor(private readonly baseUrl = process.env.USERS_SERVICE_URL ?? 'http://users:3000/api/users') {}
+  private readonly baseUrl: string;
+
+  constructor(baseUrl?: string) {
+    this.baseUrl = resolveUsersServiceBaseUrl(baseUrl);
+  }
 
   async getFriendshipStatus(friendUserId: number, authorizationHeader: string): Promise<FriendshipStatus> {
-    const response = await fetch(`${trimTrailingSlash(this.baseUrl)}/friends/${friendUserId}/status`, {
+    const response = await fetch(`${this.baseUrl}/friends/${friendUserId}/status`, {
       method: 'GET',
       headers: {
         Authorization: authorizationHeader,

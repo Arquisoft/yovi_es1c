@@ -59,6 +59,54 @@ export function createGameController(
     return res.status(400).json(apiError(error.code, error.message));
   };
 
+  const runOnlineRoute = async (
+      res: Response,
+      next: NextFunction,
+      action: () => Promise<void>,
+  ) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      await action();
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        handleOnlineError(res, error);
+        return;
+      }
+      next(error);
+    }
+  };
+
+  const requireOnlineSessionService = (res: Response, message: string): OnlineSessionService | null => {
+    if (!onlineSessionService) {
+      res.status(503).json(apiError('SERVICE_UNAVAILABLE', message));
+      return null;
+    }
+    return onlineSessionService;
+  };
+
+  const requireUserId = (req: Request, res: Response): number | null => {
+    if (!req.userId) {
+      res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      return null;
+    }
+    return Number(req.userId);
+  };
+
+  const sendOptionalJson = <T>(res: Response, payload: T | null | undefined): void => {
+    if (!payload) {
+      res.status(204).send();
+      return;
+    }
+    res.status(200).json(payload);
+  };
+
+  let defaultFriendshipClient: FriendshipClient | null = null;
+  const getFriendshipClient = (): FriendshipClient => {
+    if (friendshipClient) return friendshipClient;
+    defaultFriendshipClient ??= new FriendshipClient();
+    return defaultFriendshipClient;
+  };
+
   router.post("/matches", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.userId ? Number(req.userId) : undefined;
@@ -258,175 +306,90 @@ export function createGameController(
     }
   });
 
-  router.post('/online/friend-invites', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService || !friendshipClient) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
-      }
-      if (!req.userId || !req.username) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
-
-      const payload = validateCreateFriendInvite(req.body);
-      const userId = Number(req.userId);
-      if (payload.friendUserId === userId) {
-        return res.status(400).json(apiError('VALIDATION_ERROR', 'friendUserId must be different from current user'));
-      }
-
-      const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
-      const friendship = await friendshipClient.getFriendshipStatus(payload.friendUserId, authHeader);
-      const friend = friendship.user;
-      if (!friendship.friend || !friend?.username) {
-        return res.status(403).json(apiError('FRIENDSHIP_REQUIRED', 'Users must be friends to create a friend match invite'));
-      }
-
-      const invite = await onlineSessionService.createFriendInvite(
-          { userId, username: req.username },
-          { userId: friend.userId ?? friend.id, username: friend.username },
-          payload.boardSize,
-          payload.rules,
-      );
-
-      return res.status(201).json(invite);
-    } catch (error) {
-      if (error instanceof OnlineSessionError) {
-        return handleOnlineError(res, error);
-      }
-      next(error);
+  router.post('/online/friend-invites', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Friend match invites not available');
+    if (!service) return;
+    if (!req.userId || !req.username) {
+      res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      return;
     }
-  });
 
-  router.get('/online/friend-invites/pending', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
-      }
-      if (!req.userId) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
-
-      const pending = await onlineSessionService.getPendingFriendInviteForUser(Number(req.userId));
-      if (!pending) {
-        return res.status(204).send();
-      }
-
-      return res.status(200).json(pending);
-    } catch (error) {
-      if (error instanceof OnlineSessionError) {
-        return handleOnlineError(res, error);
-      }
-      next(error);
+    const payload = validateCreateFriendInvite(req.body);
+    const userId = Number(req.userId);
+    if (payload.friendUserId === userId) {
+      res.status(400).json(apiError('VALIDATION_ERROR', 'friendUserId must be different from current user'));
+      return;
     }
-  });
 
-  router.get('/online/friend-invites/outgoing', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
-      }
-      if (!req.userId) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
-
-      const outgoing = await onlineSessionService.getOutgoingFriendInviteForUser(Number(req.userId));
-      if (!outgoing) {
-        return res.status(204).send();
-      }
-
-      return res.status(200).json(outgoing);
-    } catch (error) {
-      if (error instanceof OnlineSessionError) {
-        return handleOnlineError(res, error);
-      }
-      next(error);
+    const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
+    const friendship = await getFriendshipClient().getFriendshipStatus(payload.friendUserId, authHeader);
+    const friend = friendship.user;
+    if (!friendship.friend || !friend?.username) {
+      res.status(403).json(apiError('FRIENDSHIP_REQUIRED', 'Users must be friends to create a friend match invite'));
+      return;
     }
-  });
 
-  router.post('/online/friend-invites/:inviteId/accept', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
-      }
-      if (!req.userId) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
+    const invite = await service.createFriendInvite(
+        { userId, username: req.username },
+        { userId: friend.userId ?? friend.id, username: friend.username },
+        payload.boardSize,
+        payload.rules,
+    );
 
-      const inviteId = validateFriendInviteId(req.params.inviteId);
-      const ready = await onlineSessionService.acceptFriendInvite(inviteId, Number(req.userId));
-      return res.status(201).json(ready);
-    } catch (error) {
-      if (error instanceof OnlineSessionError) {
-        return handleOnlineError(res, error);
-      }
-      next(error);
-    }
-  });
+    res.status(201).json(invite);
+  }));
 
-  router.post('/online/friend-invites/:inviteId/decline', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
-      }
-      if (!req.userId) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
+  router.get('/online/friend-invites/pending', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Friend match invites not available');
+    const userId = requireUserId(req, res);
+    if (!service || !userId) return;
 
-      const inviteId = validateFriendInviteId(req.params.inviteId);
-      await onlineSessionService.declineFriendInvite(inviteId, Number(req.userId));
-      return res.status(204).send();
-    } catch (error) {
-      if (error instanceof OnlineSessionError) {
-        return handleOnlineError(res, error);
-      }
-      next(error);
-    }
-  });
+    sendOptionalJson(res, await service.getPendingFriendInviteForUser(userId));
+  }));
 
-  router.get('/online/rematches/pending', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
-      }
-      if (!req.userId) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
-      const pending = await onlineSessionService.getPendingRematchForUser(Number(req.userId));
-      if (!pending) {
-        return res.status(204).send();
-      }
-      return res.status(200).json(pending);
-    } catch (error) {
-      if (error instanceof OnlineSessionError) {
-        return handleOnlineError(res, error);
-      }
-      next(error);
-    }
-  });
+  router.get('/online/friend-invites/outgoing', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Friend match invites not available');
+    const userId = requireUserId(req, res);
+    if (!service || !userId) return;
 
-  router.get('/online/sessions/active', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      res.setHeader('Cache-Control', 'no-store');
-      if (!onlineSessionService) {
-        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
-      }
-      if (!req.userId) {
-        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
-      }
-      const active = await onlineSessionService.getActiveSessionForUser(Number(req.userId));
-      if (!active) {
-        return res.status(204).send();
-      }
-      return res.status(200).json(active);
-    } catch (error) {
-      next(error);
-    }
-  });
+    sendOptionalJson(res, await service.getOutgoingFriendInviteForUser(userId));
+  }));
+
+  router.post('/online/friend-invites/:inviteId/accept', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Friend match invites not available');
+    const userId = requireUserId(req, res);
+    if (!service || !userId) return;
+
+    const inviteId = validateFriendInviteId(req.params.inviteId);
+    const ready = await service.acceptFriendInvite(inviteId, userId);
+    res.status(201).json(ready);
+  }));
+
+  router.post('/online/friend-invites/:inviteId/decline', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Friend match invites not available');
+    const userId = requireUserId(req, res);
+    if (!service || !userId) return;
+
+    const inviteId = validateFriendInviteId(req.params.inviteId);
+    await service.declineFriendInvite(inviteId, userId);
+    res.status(204).send();
+  }));
+
+  router.get('/online/rematches/pending', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Online sessions not available');
+    const userId = requireUserId(req, res);
+    if (!service || !userId) return;
+
+    sendOptionalJson(res, await service.getPendingRematchForUser(userId));
+  }));
+
+  router.get('/online/sessions/active', (req: Request, res: Response, next: NextFunction) => runOnlineRoute(res, next, async () => {
+    const service = requireOnlineSessionService(res, 'Online sessions not available');
+    const userId = requireUserId(req, res);
+    if (!service || !userId) return;
+
+    sendOptionalJson(res, await service.getActiveSessionForUser(userId));
+  }));
 
   router.get('/online/sessions/:matchId', async (req: Request, res: Response, next: NextFunction) => {
     try {
