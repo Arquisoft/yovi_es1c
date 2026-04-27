@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import { getFriendsOverview, type Friend } from '../../friends/api/friendsApi'
 import { getMessagesWithFriend, sendMessageToFriend, type ChatMessage } from '../../friends/api/chatApi'
+import { messagesSocketClient } from '../realtime/messagesSocketClient'
 import styles from './MessagesPage.module.css'
-
-const CHAT_REFRESH_INTERVAL_MS = 3000
 
 function formatDate(value: string, locale: string): string {
   const date = new Date(value)
@@ -52,7 +51,7 @@ function mergeMessages(currentMessages: ChatMessage[], incomingMessages: ChatMes
 }
 
 export default function MessagesPage() {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const navigate = useNavigate()
   const { friendId } = useParams()
   const { t, i18n } = useTranslation()
@@ -63,7 +62,8 @@ export default function MessagesPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const chatMessagesRef = useRef<HTMLDivElement | null>(null)
+  const activeConversationIdRef = useRef<number | null>(null)
 
   const selectedFriendId = useMemo(() => parseFriendId(friendId), [friendId])
   const activeFriend = selectedFriendId ? friends.find(friend => friend.id === selectedFriendId) ?? null : null
@@ -102,61 +102,90 @@ export default function MessagesPage() {
   }, [t])
 
   useEffect(() => {
-    if (!user || activeFriendId === null) {
+    if (!user || !token || activeFriendId === null) {
+      activeConversationIdRef.current = null
       setMessages([])
       setDraft('')
       return
     }
 
     const friendIdToLoad = activeFriendId
+    const tokenToUse = token
     let ignore = false
-    let intervalId: number | undefined
+    let conversationIdToLeave: number | undefined
+    let cleanupRealtime = () => {}
 
-    async function loadMessages(showLoading: boolean) {
+    async function loadMessagesAndConnect() {
       try {
-        if (showLoading) {
-          setIsLoadingMessages(true)
-        }
-
+        setIsLoadingMessages(true)
         const data = await getMessagesWithFriend(friendIdToLoad, { limit: 50 })
 
-        if (!ignore) {
-          setError(null)
-          setMessages(normalizeMessages(data.messages))
+        if (ignore) {
+          return
+        }
+
+        activeConversationIdRef.current = data.conversationId
+        conversationIdToLeave = data.conversationId
+        setError(null)
+        setMessages(normalizeMessages(data.messages))
+
+        messagesSocketClient.connect(tokenToUse)
+
+        const unsubscribeMessage = messagesSocketClient.onMessage(message => {
+          if (message.conversationId !== activeConversationIdRef.current) {
+            return
+          }
+
+          setMessages(prev => mergeMessages(prev, [message]))
+        })
+        const unsubscribeConnectionError = messagesSocketClient.onConnectionError(() => {
+          if (!ignore) {
+            setError(t('messagesRealtimeConnectionError'))
+          }
+        })
+        const unsubscribeChatError = messagesSocketClient.onChatError(() => {
+          if (!ignore) {
+            setError(t('messagesRealtimeError'))
+          }
+        })
+
+        messagesSocketClient.joinConversation(friendIdToLoad)
+
+        cleanupRealtime = () => {
+          unsubscribeMessage()
+          unsubscribeConnectionError()
+          unsubscribeChatError()
+          messagesSocketClient.leaveConversation(conversationIdToLeave)
+          messagesSocketClient.disconnect()
         }
       } catch (loadError) {
-        if (!ignore && showLoading) {
+        if (!ignore) {
+          activeConversationIdRef.current = null
           setError(loadError instanceof Error ? loadError.message : t('messagesLoadError'))
           setMessages([])
         }
       } finally {
-        if (!ignore && showLoading) {
+        if (!ignore) {
           setIsLoadingMessages(false)
         }
       }
     }
 
     setDraft('')
-    void loadMessages(true)
-
-    intervalId = window.setInterval(() => {
-      void loadMessages(false)
-    }, CHAT_REFRESH_INTERVAL_MS)
+    void loadMessagesAndConnect()
 
     return () => {
       ignore = true
-
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId)
-      }
+      activeConversationIdRef.current = null
+      cleanupRealtime()
     }
-  }, [activeFriendId, t, user])
+  }, [activeFriendId, t, token, user])
 
-  useEffect(() => {
-    const endElement = messagesEndRef.current
+  useLayoutEffect(() => {
+    const chatMessagesElement = chatMessagesRef.current
 
-    if (endElement && typeof endElement.scrollIntoView === 'function') {
-      endElement.scrollIntoView({ block: 'end' })
+    if (chatMessagesElement) {
+      chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight
     }
   }, [messages])
 
@@ -188,9 +217,6 @@ export default function MessagesPage() {
       const sent = await sendMessageToFriend(friendIdToSend, trimmed)
       setMessages(prev => mergeMessages(prev, [sent]))
       setDraft('')
-
-      const refreshed = await getMessagesWithFriend(friendIdToSend, { limit: 50 })
-      setMessages(normalizeMessages(refreshed.messages))
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : t('messagesSendError'))
     } finally {
@@ -255,7 +281,7 @@ export default function MessagesPage() {
 
                         {!isLoadingMessages ? (
                             <>
-                              <div className={styles.chatMessages}>
+                              <div className={styles.chatMessages} ref={chatMessagesRef} data-testid="messages-scroll-container">
                                 {messages.length === 0 ? <p className={styles.empty}>{t('messagesNoMessagesYet')}</p> : null}
                                 {messages.map(message => (
                                     <div
@@ -270,7 +296,6 @@ export default function MessagesPage() {
                                       <p className={styles.chatMeta}>{formatDate(message.createdAt, locale)}</p>
                                     </div>
                                 ))}
-                                <div ref={messagesEndRef} />
                               </div>
 
                               <form className={styles.chatComposer} onSubmit={handleSend}>
