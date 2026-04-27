@@ -6,6 +6,10 @@ export interface QueueJoinRequest {
   rules: MatchRules;
 }
 
+export interface FriendInviteRequest extends QueueJoinRequest {
+  friendUserId: number;
+}
+
 export interface MovePlayRequest {
   matchId: string;
   move: { row: number; col: number };
@@ -53,6 +57,24 @@ function validateQueueRules(data: unknown): MatchRules {
   }
 
   return normalized;
+}
+
+export function validateCreateFriendInvite(data: unknown): FriendInviteRequest {
+  const queue = validateQueueJoin(data);
+  const payload = data as Record<string, unknown>;
+  const friendUserId = Number(payload.friendUserId ?? payload.friend_user_id);
+  if (!Number.isInteger(friendUserId) || friendUserId <= 0) {
+    throw new ValidationError('friendUserId must be a positive integer');
+  }
+  return { ...queue, friendUserId };
+}
+
+export function validateFriendInviteId(value: unknown): string {
+  const inviteId = Array.isArray(value) ? value[0] : value;
+  if (typeof inviteId !== 'string' || inviteId.trim().length === 0) {
+    throw new ValidationError('inviteId is required');
+  }
+  return inviteId.trim();
 }
 
 export function validateMovePlay(data: unknown): MovePlayRequest {

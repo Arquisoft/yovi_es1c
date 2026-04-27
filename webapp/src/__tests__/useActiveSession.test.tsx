@@ -19,7 +19,13 @@ describe('useActiveSession', () => {
 
   it('returns active session when API responds 200', async () => {
     vi.mocked(fetchWithAuth).mockResolvedValue(
-      new Response(JSON.stringify({ matchId: 'm-1', boardSize: 8 }), { status: 200 }),
+      new Response(JSON.stringify({
+        matchId: 'm-1',
+        boardSize: 8,
+        source: 'friend',
+        opponent: { userId: 2, username: 'bea' },
+        rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      }), { status: 200 }),
     );
 
     const { result } = renderHook(() => useActiveSession(), {
@@ -30,6 +36,9 @@ describe('useActiveSession', () => {
     expect(result.current.matchId).toBe('m-1');
     expect(result.current.boardSize).toBe(8);
     expect(result.current.error).toBeNull();
+    expect(result.current.source).toBe('friend');
+    expect(result.current.opponent).toEqual({ userId: 2, username: 'bea' });
+    expect(result.current.rules).toEqual({ pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } });
   });
 
   it('returns null session when API responds 204', async () => {

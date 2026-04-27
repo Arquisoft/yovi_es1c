@@ -58,9 +58,10 @@ export class MatchService {
       difficulty: string,
       mode: string = 'BOT',
       rules: MatchRules = cloneDefaultMatchRules(),
+      ranked = true,
   ) {
     const resolvedRules = resolveRulesForMatch(boardSize, rules);
-    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode, resolvedRules);
+    const match = await this.matchRepo.createMatch(userId, boardSize, difficulty, mode, resolvedRules, ranked);
     gamesCreated.inc({ mode });
     activeGames.inc();
     return match;
@@ -120,6 +121,8 @@ export class MatchService {
     try {
       const match = await this.matchRepo.getMatchById(matchId);
       if (!match) return;
+
+      if (match.ranked === false) return;
 
       const mode = match.mode as MatchMode;
       if (mode === 'LOCAL_2P') return;

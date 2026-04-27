@@ -12,6 +12,8 @@ import {
   type Friend,
   type FriendRequest,
 } from '../api/friendsApi'
+import { createFriendMatchInvite } from '../api/friendMatchApi'
+import type { MatchRulesDto } from '../../../shared/contracts'
 import styles from './FriendsPage.module.css'
 
 function formatDate(value: string, locale: string): string {
@@ -38,6 +40,11 @@ export default function FriendsPage() {
   const [removingFriendId, setRemovingFriendId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [matchFriend, setMatchFriend] = useState<Friend | null>(null)
+  const [friendMatchBoardSize, setFriendMatchBoardSize] = useState(8)
+  const [friendMatchPieRule, setFriendMatchPieRule] = useState(false)
+  const [friendMatchHoney, setFriendMatchHoney] = useState(false)
+  const [creatingFriendMatchId, setCreatingFriendMatchId] = useState<number | null>(null)
 
   const locale = i18n.resolvedLanguage ?? i18n.language
 
@@ -167,6 +174,37 @@ export default function FriendsPage() {
     navigate(`/messages/${friend.id}`)
   }
 
+  function buildFriendMatchRules(): MatchRulesDto {
+    return {
+      pieRule: { enabled: friendMatchPieRule },
+      honey: { enabled: friendMatchHoney, blockedCells: [] },
+    }
+  }
+
+  function openFriendMatchSetup(friend: Friend) {
+    setError(null)
+    setSuccessMessage(null)
+    setMatchFriend(friend)
+  }
+
+  async function handleCreateFriendMatch() {
+    if (!matchFriend) return
+
+    try {
+      setCreatingFriendMatchId(matchFriend.id)
+      setError(null)
+      setSuccessMessage(null)
+      const invite = await createFriendMatchInvite(matchFriend.id, friendMatchBoardSize, buildFriendMatchRules())
+      window.dispatchEvent(new CustomEvent('friend-match:sent-local', { detail: invite }))
+      setSuccessMessage(t('friendMatchInviteSent', { name: matchFriend.displayName ?? matchFriend.username }))
+      setMatchFriend(null)
+    } catch (inviteError) {
+      setError(t(inviteError instanceof Error ? inviteError.message : 'friendMatchInviteCreateError'))
+    } finally {
+      setCreatingFriendMatchId(null)
+    }
+  }
+
   return (
     <section className={styles.page}>
       <div className={`${styles.card} crt-panel`}>
@@ -195,6 +233,55 @@ export default function FriendsPage() {
 
         {error ? <p className={styles.error}>{error}</p> : null}
         {successMessage ? <p className={styles.success}>{successMessage}</p> : null}
+
+        {matchFriend ? (
+          <section className={styles.matchSetup} aria-label={t('friendMatchSetupTitle')}>
+            <div>
+              <h2 className={styles.sectionTitle}>{t('friendMatchSetupTitle')}</h2>
+              <p className={styles.meta}>{t('friendMatchSetupSubtitle', { name: matchFriend.displayName ?? matchFriend.username })}</p>
+            </div>
+            <label className={styles.label}>
+              {t('boardSizeLabel')}
+              <input
+                className={styles.input}
+                type="number"
+                min={3}
+                max={20}
+                value={friendMatchBoardSize}
+                onChange={event => setFriendMatchBoardSize(Number(event.target.value))}
+              />
+            </label>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={friendMatchPieRule}
+                onChange={event => setFriendMatchPieRule(event.target.checked)}
+              />
+              {t('pieRule')}
+            </label>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={friendMatchHoney}
+                onChange={event => setFriendMatchHoney(event.target.checked)}
+              />
+              {t('honey')}
+            </label>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={creatingFriendMatchId === matchFriend.id}
+                onClick={handleCreateFriendMatch}
+              >
+                {creatingFriendMatchId === matchFriend.id ? t('friendMatchInviting') : t('friendMatchSendInvite')}
+              </button>
+              <button type="button" className={styles.secondaryButton} onClick={() => setMatchFriend(null)}>
+                {t('cancel')}
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         {isLoading ? <p className={styles.status}>{t('friendsLoading')}</p> : null}
 
@@ -253,6 +340,9 @@ export default function FriendsPage() {
                       <p className={styles.meta}>{t('friendsSince', { date: formatDate(friend.friendsSince, locale) })}</p>
                     </div>
                     <div className={styles.actions}>
+                      <button type="button" className={styles.primaryButton} onClick={() => openFriendMatchSetup(friend)}>
+                        {t('friendMatchPlay')}
+                      </button>
                       <button type="button" className={styles.primaryButton} onClick={() => openMessages(friend)}>
                         {t('friendsMessage')}
                       </button>

@@ -333,6 +333,8 @@ export class MatchmakingService {
       reconnectDeadline,
       winner: null,
       messages: [],
+      ranked: true,
+      source: 'matchmaking',
     };
 
     await redis.set(`session:online:${assignment.matchId}`, JSON.stringify(initial), { EX: 3600 });

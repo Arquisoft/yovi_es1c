@@ -3,12 +3,20 @@ import { API_CONFIG } from '../../../config/api.config';
 import { fetchWithAuth } from '../../../shared/api/fetchWithAuth';
 import { useAuth } from '../../auth/context/useAuth';
 import {useTranslation} from "react-i18next";
+import type { MatchRulesDto } from '../../../shared/contracts';
 
 interface ActiveSessionResponse {
   matchId: string;
   boardSize: number;
   status?: string;
   reconnectDeadline?: number | null;
+  ranked?: boolean;
+  source?: 'matchmaking' | 'friend';
+  rules?: MatchRulesDto;
+  opponent?: {
+    userId: number;
+    username: string;
+  } | null;
 }
 
 export function useActiveSession() {
@@ -18,6 +26,9 @@ export function useActiveSession() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [source, setSource] = useState<'matchmaking' | 'friend' | null>(null);
+  const [opponent, setOpponent] = useState<ActiveSessionResponse['opponent']>(null);
+  const [rules, setRules] = useState<MatchRulesDto | null>(null);
   const {t} = useTranslation();
 
   useEffect(() => {
@@ -28,6 +39,9 @@ export function useActiveSession() {
       setLoading(false);
       setError(null);
       setStatus(null);
+      setSource(null);
+      setOpponent(null);
+      setRules(null);
       return;
     }
 
@@ -45,6 +59,9 @@ export function useActiveSession() {
           setMatchId(null);
           setBoardSize(null);
           setStatus(null);
+          setSource(null);
+          setOpponent(null);
+          setRules(null);
           return;
         }
 
@@ -57,6 +74,9 @@ export function useActiveSession() {
         setMatchId(data.matchId);
         setBoardSize(data.boardSize);
         setStatus(data.status ?? null);
+        setSource(data.source ?? 'matchmaking');
+        setOpponent(data.opponent ?? null);
+        setRules(data.rules ?? null);
       } catch (err) {
         if (!isMounted) return;
         setError(err instanceof Error ? err.message : t('networkError'));
@@ -69,7 +89,7 @@ export function useActiveSession() {
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, [token, t]);
 
-  return { matchId, boardSize, loading, error, status };
+  return { matchId, boardSize, loading, error, status, source, opponent, rules };
 }

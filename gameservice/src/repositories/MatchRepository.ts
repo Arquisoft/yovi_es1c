@@ -10,12 +10,13 @@ export class MatchRepository {
       difficulty: string,
       mode: string = 'BOT',
       rules: MatchRules = cloneDefaultMatchRules(),
+      ranked = true,
   ) {
     const result = await this.db.query(
-        `INSERT INTO matches (user_id, board_size, difficulty, status, mode, rules)
-         VALUES ($1, $2, $3, 'ONGOING', $4, $5::jsonb)
+        `INSERT INTO matches (user_id, board_size, difficulty, status, mode, rules, ranked)
+         VALUES ($1, $2, $3, 'ONGOING', $4, $5::jsonb, $6)
            RETURNING id`,
-        [userId, boardSize, difficulty, mode, JSON.stringify(rules)],
+        [userId, boardSize, difficulty, mode, JSON.stringify(rules), ranked],
     );
 
     return result.rows[0].id;

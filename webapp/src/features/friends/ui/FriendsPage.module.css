@@ -210,3 +210,19 @@
     grid-template-columns: 1fr;
   }
 }
+
+.matchSetup {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  border: 1px solid rgba(57, 255, 20, 0.22);
+  background: rgba(2, 12, 2, 0.72);
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #d5ffd0;
+}

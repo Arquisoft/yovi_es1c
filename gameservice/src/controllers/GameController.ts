@@ -6,8 +6,9 @@ import { InvalidMoveError, MatchAlreadyFinishedError, MatchNotFoundError, Unauth
 import { validateCreateMatch, validateAddMove, validateUserId, validateMatchId, validateFinishMatch } from "../validation/game.schemas";
 import { MatchmakingService } from "../services/MatchmakingService";
 import { OnlineSessionError, OnlineSessionService } from "../services/OnlineSessionService";
-import { validateQueueJoin } from "../validation/online.schemas";
+import { validateCreateFriendInvite, validateFriendInviteId, validateQueueJoin } from "../validation/online.schemas";
 import { apiError } from "../errors/error-catalog";
+import { FriendshipClient } from "../services/FriendshipClient";
 
 const DEFAULT_LEADERBOARD_LIMIT = 20;
 const MAX_LEADERBOARD_LIMIT = 100;
@@ -34,11 +35,12 @@ export function createGameController(
     matchmakingService?: MatchmakingService,
     onlineSessionService?: OnlineSessionService,
     rankingService?: RankingService,
+    friendshipClient?: FriendshipClient,
 ) {
   const router = Router();
 
   const handleOnlineError = (res: Response, error: OnlineSessionError) => {
-    if (error.code === 'SESSION_NOT_FOUND') {
+    if (error.code === 'SESSION_NOT_FOUND' || error.code === 'FRIEND_INVITE_NOT_FOUND') {
       return res.status(404).json(apiError(error.code, error.message));
     }
     if (
@@ -46,10 +48,12 @@ export function createGameController(
         || error.code === 'RECONNECT_EXPIRED'
         || error.code === 'SESSION_TERMINAL'
         || error.code === 'DUPLICATE_EVENT'
+        || error.code === 'FRIEND_INVITE_EXPIRED'
+        || error.code === 'FRIEND_INVITE_ALREADY_PENDING'
     ) {
       return res.status(409).json(apiError(error.code, error.message));
     }
-    if (error.code === 'UNAUTHORIZED' || error.code === 'NOT_YOUR_TURN') {
+    if (error.code === 'UNAUTHORIZED' || error.code === 'NOT_YOUR_TURN' || error.code === 'FRIEND_INVITE_FORBIDDEN') {
       return res.status(403).json(apiError(error.code, error.message));
     }
     return res.status(400).json(apiError(error.code, error.message));
@@ -254,6 +258,135 @@ export function createGameController(
     }
   });
 
+  router.post('/online/friend-invites', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!onlineSessionService || !friendshipClient) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
+      }
+      if (!req.userId || !req.username) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+
+      const payload = validateCreateFriendInvite(req.body);
+      const userId = Number(req.userId);
+      if (payload.friendUserId === userId) {
+        return res.status(400).json(apiError('VALIDATION_ERROR', 'friendUserId must be different from current user'));
+      }
+
+      const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
+      const friendship = await friendshipClient.getFriendshipStatus(payload.friendUserId, authHeader);
+      const friend = friendship.user;
+      if (!friendship.friend || !friend?.username) {
+        return res.status(403).json(apiError('FRIENDSHIP_REQUIRED', 'Users must be friends to create a friend match invite'));
+      }
+
+      const invite = await onlineSessionService.createFriendInvite(
+          { userId, username: req.username },
+          { userId: friend.userId ?? friend.id, username: friend.username },
+          payload.boardSize,
+          payload.rules,
+      );
+
+      return res.status(201).json(invite);
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
+  router.get('/online/friend-invites/pending', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!onlineSessionService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
+      }
+      if (!req.userId) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+
+      const pending = await onlineSessionService.getPendingFriendInviteForUser(Number(req.userId));
+      if (!pending) {
+        return res.status(204).send();
+      }
+
+      return res.status(200).json(pending);
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
+  router.get('/online/friend-invites/outgoing', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!onlineSessionService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
+      }
+      if (!req.userId) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+
+      const outgoing = await onlineSessionService.getOutgoingFriendInviteForUser(Number(req.userId));
+      if (!outgoing) {
+        return res.status(204).send();
+      }
+
+      return res.status(200).json(outgoing);
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
+  router.post('/online/friend-invites/:inviteId/accept', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!onlineSessionService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
+      }
+      if (!req.userId) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+
+      const inviteId = validateFriendInviteId(req.params.inviteId);
+      const ready = await onlineSessionService.acceptFriendInvite(inviteId, Number(req.userId));
+      return res.status(201).json(ready);
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
+  router.post('/online/friend-invites/:inviteId/decline', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!onlineSessionService) {
+        return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Friend match invites not available'));
+      }
+      if (!req.userId) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+
+      const inviteId = validateFriendInviteId(req.params.inviteId);
+      await onlineSessionService.declineFriendInvite(inviteId, Number(req.userId));
+      return res.status(204).send();
+    } catch (error) {
+      if (error instanceof OnlineSessionError) {
+        return handleOnlineError(res, error);
+      }
+      next(error);
+    }
+  });
+
   router.get('/online/rematches/pending', async (req: Request, res: Response, next: NextFunction) => {
     try {
       res.setHeader('Cache-Control', 'no-store');
@@ -289,14 +422,7 @@ export function createGameController(
       if (!active) {
         return res.status(204).send();
       }
-      const snapshot = typeof (onlineSessionService as any).getSnapshot === 'function'
-          ? await onlineSessionService.getSnapshot(active.matchId)
-          : null;
-      return res.status(200).json({
-        ...active,
-        status: snapshot?.status ?? 'active',
-        reconnectDeadline: snapshot?.reconnectDeadline?.[Number(req.userId)] ?? null,
-      });
+      return res.status(200).json(active);
     } catch (error) {
       next(error);
     }
@@ -308,10 +434,17 @@ export function createGameController(
       if (!onlineSessionService) {
         return res.status(503).json(apiError('SERVICE_UNAVAILABLE', 'Online sessions not available'));
       }
+      if (!req.userId) {
+        return res.status(401).json(apiError('UNAUTHORIZED', 'Unauthorized'));
+      }
+
       const matchId = Array.isArray(req.params.matchId) ? req.params.matchId[0] : req.params.matchId;
       const state = await onlineSessionService.getSnapshot(matchId);
       if (!state) {
         return res.status(404).json(apiError('SESSION_NOT_FOUND', 'Online session not found'));
+      }
+      if (!state.players.some((player) => player.userId === Number(req.userId))) {
+        return res.status(403).json(apiError('UNAUTHORIZED', 'User is not part of this session'));
       }
       res.json(state);
     } catch (error) {

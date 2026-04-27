@@ -181,6 +181,39 @@ export class UsersController {
         );
     }
 
+    async getFriendshipStatus(req: Request, res: Response): Promise<void> {
+        const userId = this.getAuthenticatedUserId(req);
+        const friendUserId = Number(req.params['friendUserId']);
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        if (!Number.isInteger(friendUserId) || friendUserId <= 0) {
+            res.status(400).json({ error: 'Invalid friend user id' });
+            return;
+        }
+
+        const [isFriend, profile] = await Promise.all([
+            this.userRepository.hasFriendship(userId, friendUserId),
+            this.userRepository.getById(friendUserId),
+        ]);
+
+        res.json({
+            friend: isFriend,
+            user: profile
+                ? {
+                    id: profile.user_id,
+                    userId: profile.user_id,
+                    username: profile.username,
+                    displayName: profile.display_name,
+                    avatar: profile.avatar,
+                }
+                : null,
+        });
+    }
+
     async listMyFriendRequests(req: Request, res: Response): Promise<void> {
         const userId = this.getAuthenticatedUserId(req);
 

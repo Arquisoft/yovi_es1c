@@ -20,6 +20,31 @@ vi.mock('../features/game/hooks/useActiveSession', () => ({
   useActiveSession: () => activeSessionMock(),
 }));
 
+vi.mock('../features/game/hooks/usePendingRematchNotification', () => ({
+  usePendingRematchNotification: () => ({
+    pendingRematch: null,
+    readyRematch: null,
+    acceptPendingRematch: vi.fn(),
+    declinePendingRematch: vi.fn(),
+    clearReadyRematch: vi.fn(),
+  }),
+}));
+
+vi.mock('../features/game/hooks/useFriendMatchInvites', () => ({
+  useFriendMatchInvites: () => ({
+    pendingFriendInvite: null,
+    outgoingFriendInvite: null,
+    readyFriendMatch: null,
+    notice: null,
+    errorKey: null,
+    acceptPendingFriendInvite: vi.fn(),
+    declinePendingFriendInvite: vi.fn(),
+    cancelOutgoingFriendInvite: vi.fn(),
+    clearReadyFriendMatch: vi.fn(),
+    clearFriendMatchNotice: vi.fn(),
+  }),
+}));
+
 vi.mock('../shared/api/fetchWithAuth', () => ({
   fetchWithAuth: vi.fn(),
 }));
@@ -52,6 +77,23 @@ describe('Reconnect banner', () => {
     await waitFor(() => {
       expect(screen.queryByText('Tienes una partida en curso. ¿Quieres reconectarte?')).not.toBeInTheDocument();
     });
+  });
+
+  it('shows friend-specific reconnect copy for friend matches', () => {
+    activeSessionMock.mockReturnValue({
+      matchId: 'm-friend',
+      boardSize: 8,
+      loading: false,
+      error: null,
+      source: 'friend',
+      opponent: { userId: 2, username: 'Alberto' },
+      rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+    });
+
+    render(<App />);
+
+    expect(screen.getByText('Partida con Alberto')).toBeInTheDocument();
+    expect(screen.getByText('Tienes una partida activa con Alberto.')).toBeInTheDocument();
   });
 
   it('navigates to online game when clicking reconnect', async () => {

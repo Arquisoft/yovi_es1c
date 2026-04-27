@@ -1,6 +1,6 @@
 import { SessionStatePayload } from '../realtime/events/session.events';
 import { OnlineSessionRepository } from '../repositories/OnlineSessionRepository';
-import { OnlineChatMessage, OnlineSessionState } from '../types/online';
+import { FriendMatchInvite, FriendMatchReadyPayload, OnlineChatMessage, OnlineSessionSource, OnlineSessionState } from '../types/online';
 import { cloneDefaultMatchRules, MatchRules, normalizeMatchRules, resolveRulesForMatch } from '../types/rules.js';
 import { TurnTimerService } from './TurnTimerService';
 import { MatchService } from './MatchService';
@@ -17,7 +17,11 @@ export type MoveErrorCode =
     | 'SESSION_TERMINAL'
     | 'UNAUTHORIZED'
     | 'DUPLICATE_EVENT'
-    | 'PIE_RULE_NOT_AVAILABLE';
+    | 'PIE_RULE_NOT_AVAILABLE'
+    | 'FRIEND_INVITE_NOT_FOUND'
+    | 'FRIEND_INVITE_EXPIRED'
+    | 'FRIEND_INVITE_FORBIDDEN'
+    | 'FRIEND_INVITE_ALREADY_PENDING';
 
 export interface RedisSessionClient {
     get(key: string): Promise<string | null>;
@@ -58,6 +62,30 @@ export class OnlineSessionError extends Error {
     }
 }
 
+interface CreateSessionOptions {
+    ranked?: boolean;
+    source?: OnlineSessionSource;
+}
+
+export interface ActiveOnlineSessionSummary {
+    matchId: string;
+    boardSize: number;
+    status: OnlineSessionState['status'];
+    ranked: boolean;
+    source: OnlineSessionSource;
+    rules: MatchRules;
+    reconnectDeadline: number | null;
+    opponent: {
+        userId: number;
+        username: string;
+    } | null;
+}
+
+interface FriendInvitePlayer {
+    userId: number;
+    username: string;
+}
+
 interface RematchRequest {
     requesterId: number;
     requesterName: string;
@@ -90,6 +118,12 @@ export class OnlineSessionService {
     private readonly rematchRequestsByUser = new Map<number, string>();
     private readonly rematchTtlSec = 60;
 
+    /** In-memory fallback when Redis is not available */
+    private readonly friendInvites = new Map<string, FriendMatchInvite>();
+    private readonly friendInvitesByRecipient = new Map<number, string>();
+    private readonly friendInvitesByRequester = new Map<number, string>();
+    private readonly friendInviteTtlSec = 120;
+
     constructor(
         private readonly repository: OnlineSessionRepository,
         private readonly timerService: TurnTimerService,
@@ -108,6 +142,7 @@ export class OnlineSessionService {
         players: [{ userId: number; username: string }, { userId: number; username: string }],
         opponentType: 'HUMAN' | 'BOT',
         rules: MatchRules = cloneDefaultMatchRules(),
+        options: CreateSessionOptions = {},
     ): Promise<OnlineSessionState> {
         const layout = Array.from({ length: size }, (_, idx) => '.'.repeat(idx + 1)).join('/');
         const state: OnlineSessionState = {
@@ -135,6 +170,8 @@ export class OnlineSessionService {
             },
             winner: null,
             messages: [],
+            ranked: options.ranked ?? true,
+            source: options.source ?? 'matchmaking',
         };
 
         await this.saveState(state);
@@ -404,22 +441,43 @@ export class OnlineSessionService {
         return this.getState(matchId);
     }
 
-    async getActiveSessionForUser(userId: number): Promise<{ matchId: string; boardSize: number } | null> {
+    async getActiveSessionForUser(userId: number): Promise<ActiveOnlineSessionSummary | null> {
+        let activeSession: OnlineSessionState | null = null;
+
         if (this.deps.redis) {
             const activeMatchId = await this.deps.redis.get(this.userActiveKey(userId));
             if (!activeMatchId) return null;
-            const activeSession = await this.getState(activeMatchId);
+            activeSession = await this.getState(activeMatchId);
             if (!activeSession || this.isTerminal(activeSession) || !activeSession.players.some((player) => player.userId === userId)) {
                 await this.deps.redis.del(this.userActiveKey(userId));
                 return null;
             }
-            return { matchId: activeSession.matchId, boardSize: activeSession.size };
+        } else {
+            const sessions = await this.repository.getAll();
+            activeSession = sessions.find((session) => !this.isTerminal(session) && session.players.some((player) => player.userId === userId)) ?? null;
+            if (!activeSession) return null;
         }
 
-        const sessions = await this.repository.getAll();
-        const active = sessions.find((session) => session.winner === null && session.players.some((player) => player.userId === userId));
-        if (!active) return null;
-        return { matchId: active.matchId, boardSize: active.size };
+        return this.toActiveSessionSummary(activeSession, userId);
+    }
+
+    private toActiveSessionSummary(state: OnlineSessionState, userId: number): ActiveOnlineSessionSummary {
+        const opponent = state.players.find((player) => player.userId !== userId) ?? null;
+        return {
+            matchId: state.matchId,
+            boardSize: state.size,
+            status: state.status,
+            ranked: state.ranked ?? true,
+            source: state.source ?? 'matchmaking',
+            rules: state.rules,
+            reconnectDeadline: state.reconnectDeadline?.[userId] ?? null,
+            opponent: opponent
+                ? {
+                    userId: opponent.userId,
+                    username: opponent.username,
+                }
+                : null,
+        };
     }
 
     /**
@@ -496,6 +554,7 @@ export class OnlineSessionService {
             [playerA, playerB],
             'HUMAN',
             state.rules,
+            { ranked: state.ranked ?? true, source: state.source ?? 'matchmaking' },
         );
 
         const payload = {
@@ -503,6 +562,7 @@ export class OnlineSessionService {
             size: newSession.size,
             rules: newSession.rules,
             players: newSession.players,
+            ranked: newSession.ranked,
         };
 
         this.deps.io?.to(`user:${request.requesterId}`).emit('rematch:ready', payload);
@@ -565,6 +625,234 @@ export class OnlineSessionService {
             rules: state.rules,
             expiresAt: request.expiresAt,
         };
+    }
+
+    async createFriendInvite(
+        requester: FriendInvitePlayer,
+        recipient: FriendInvitePlayer,
+        boardSize: number,
+        rules: MatchRules = cloneDefaultMatchRules(),
+        now = Date.now(),
+    ): Promise<FriendMatchInvite> {
+        if (requester.userId === recipient.userId) {
+            throw new OnlineSessionError('FRIEND_INVITE_FORBIDDEN', 'Cannot invite yourself');
+        }
+
+        const currentPending = await this.getPendingFriendInviteForUser(recipient.userId, now);
+        if (currentPending) {
+            throw new OnlineSessionError('FRIEND_INVITE_ALREADY_PENDING', 'Recipient already has a pending game invite');
+        }
+
+        const currentOutgoing = await this.getOutgoingFriendInviteForUser(requester.userId, now);
+        if (currentOutgoing) {
+            throw new OnlineSessionError('FRIEND_INVITE_ALREADY_PENDING', 'Requester already has a pending game invite');
+        }
+
+        const invite: FriendMatchInvite = {
+            inviteId: `friend-${randomUUID()}`,
+            requesterId: requester.userId,
+            requesterName: requester.username,
+            recipientId: recipient.userId,
+            recipientName: recipient.username,
+            boardSize,
+            rules: resolveRulesForMatch(boardSize, rules),
+            ranked: false,
+            source: 'friend',
+            status: 'pending',
+            createdAt: now,
+            expiresAt: now + this.friendInviteTtlSec * 1000,
+        };
+
+        await this.saveFriendInvite(invite);
+        const payload = this.toFriendInvitePayload(invite);
+        this.deps.io?.to(`user:${recipient.userId}`).emit('friend-match:invited', payload);
+        this.deps.io?.to(`user:${requester.userId}`).emit('friend-match:sent', payload);
+        return invite;
+    }
+
+    async getPendingFriendInviteForUser(userId: number, now = Date.now()): Promise<FriendMatchInvite | null> {
+        const inviteId = await this.readPendingFriendInviteId(userId);
+        if (!inviteId) return null;
+
+        const invite = await this.readFriendInvite(inviteId);
+        if (!invite || invite.recipientId !== userId || invite.status !== 'pending') {
+            await this.deletePendingFriendInviteForUser(userId);
+            return null;
+        }
+
+        if (invite.expiresAt <= now) {
+            await this.expireFriendInvite(invite);
+            return null;
+        }
+
+        return invite;
+    }
+
+    async getOutgoingFriendInviteForUser(userId: number, now = Date.now()): Promise<FriendMatchInvite | null> {
+        const inviteId = await this.readOutgoingFriendInviteId(userId);
+        if (!inviteId) return null;
+
+        const invite = await this.readFriendInvite(inviteId);
+        if (!invite || invite.requesterId !== userId || invite.status !== 'pending') {
+            await this.deleteOutgoingFriendInviteForUser(userId);
+            return null;
+        }
+
+        if (invite.expiresAt <= now) {
+            await this.expireFriendInvite(invite);
+            return null;
+        }
+
+        return invite;
+    }
+
+    async acceptFriendInvite(inviteId: string, userId: number, now = Date.now()): Promise<FriendMatchReadyPayload> {
+        return this.withMatchLock(inviteId, async () => {
+            const invite = await this.readFriendInvite(inviteId);
+            if (!invite || invite.status !== 'pending') {
+                throw new OnlineSessionError('FRIEND_INVITE_NOT_FOUND', 'Friend match invite not found');
+            }
+            if (invite.recipientId !== userId) {
+                throw new OnlineSessionError('FRIEND_INVITE_FORBIDDEN', 'Only the invited friend can accept this invite');
+            }
+            if (invite.expiresAt <= now) {
+                await this.expireFriendInvite(invite);
+                throw new OnlineSessionError('FRIEND_INVITE_EXPIRED', 'Friend match invite expired');
+            }
+
+            await this.deleteFriendInvite(invite.inviteId);
+
+            const session = await this.createSession(
+                `friend-${randomUUID()}`,
+                invite.boardSize,
+                [
+                    { userId: invite.requesterId, username: invite.requesterName },
+                    { userId: invite.recipientId, username: invite.recipientName },
+                ],
+                'HUMAN',
+                invite.rules,
+                { ranked: false, source: 'friend' },
+            );
+
+            const payload: FriendMatchReadyPayload = {
+                matchId: session.matchId,
+                boardSize: session.size,
+                size: session.size,
+                rules: session.rules,
+                players: session.players,
+                ranked: false,
+                source: 'friend',
+            };
+
+            this.deps.io?.to(`user:${invite.requesterId}`).emit('friend-match:ready', payload);
+            this.deps.io?.to(`user:${invite.recipientId}`).emit('friend-match:ready', payload);
+            return payload;
+        });
+    }
+
+    async declineFriendInvite(inviteId: string, userId: number): Promise<void> {
+        const invite = await this.readFriendInvite(inviteId);
+        if (!invite) return;
+        if (invite.recipientId !== userId && invite.requesterId !== userId) {
+            throw new OnlineSessionError('FRIEND_INVITE_FORBIDDEN', 'User is not part of this invite');
+        }
+
+        await this.deleteFriendInvite(invite.inviteId);
+        const eventName = invite.requesterId === userId ? 'friend-match:cancelled' : 'friend-match:declined';
+        const notifyUserId = invite.requesterId === userId ? invite.recipientId : invite.requesterId;
+        this.deps.io?.to(`user:${notifyUserId}`).emit(eventName, this.toFriendInvitePayload(invite));
+    }
+
+    private toFriendInvitePayload(invite: FriendMatchInvite): FriendMatchInvite {
+        return { ...invite, source: 'friend' };
+    }
+
+    private friendInviteKey(inviteId: string): string {
+        return `friend-invite:${inviteId}`;
+    }
+
+    private pendingFriendInviteUserKey(userId: number): string {
+        return `friend-invite:pending:user:${userId}`;
+    }
+
+    private outgoingFriendInviteUserKey(userId: number): string {
+        return `friend-invite:outgoing:user:${userId}`;
+    }
+
+    private async saveFriendInvite(invite: FriendMatchInvite): Promise<void> {
+        const ttlSec = Math.max(1, Math.ceil((invite.expiresAt - Date.now()) / 1000));
+        if (this.deps.redis) {
+            await this.deps.redis.set(this.friendInviteKey(invite.inviteId), JSON.stringify(invite), { EX: ttlSec });
+            await this.deps.redis.set(this.pendingFriendInviteUserKey(invite.recipientId), invite.inviteId, { EX: ttlSec });
+            await this.deps.redis.set(this.outgoingFriendInviteUserKey(invite.requesterId), invite.inviteId, { EX: ttlSec });
+            return;
+        }
+        this.friendInvites.set(invite.inviteId, invite);
+        this.friendInvitesByRecipient.set(invite.recipientId, invite.inviteId);
+        this.friendInvitesByRequester.set(invite.requesterId, invite.inviteId);
+    }
+
+    private async readFriendInvite(inviteId: string): Promise<FriendMatchInvite | null> {
+        if (this.deps.redis) {
+            const raw = await this.deps.redis.get(this.friendInviteKey(inviteId));
+            if (!raw) return null;
+            return JSON.parse(raw) as FriendMatchInvite;
+        }
+        return this.friendInvites.get(inviteId) ?? null;
+    }
+
+    private async readPendingFriendInviteId(userId: number): Promise<string | null> {
+        if (this.deps.redis) {
+            return this.deps.redis.get(this.pendingFriendInviteUserKey(userId));
+        }
+        return this.friendInvitesByRecipient.get(userId) ?? null;
+    }
+
+    private async readOutgoingFriendInviteId(userId: number): Promise<string | null> {
+        if (this.deps.redis) {
+            return this.deps.redis.get(this.outgoingFriendInviteUserKey(userId));
+        }
+        return this.friendInvitesByRequester.get(userId) ?? null;
+    }
+
+    private async deletePendingFriendInviteForUser(userId: number): Promise<void> {
+        if (this.deps.redis) {
+            await this.deps.redis.del(this.pendingFriendInviteUserKey(userId));
+            return;
+        }
+        this.friendInvitesByRecipient.delete(userId);
+    }
+
+    private async deleteOutgoingFriendInviteForUser(userId: number): Promise<void> {
+        if (this.deps.redis) {
+            await this.deps.redis.del(this.outgoingFriendInviteUserKey(userId));
+            return;
+        }
+        this.friendInvitesByRequester.delete(userId);
+    }
+
+    private async deleteFriendInvite(inviteId: string): Promise<void> {
+        const invite = await this.readFriendInvite(inviteId);
+        if (this.deps.redis) {
+            await this.deps.redis.del(this.friendInviteKey(inviteId));
+            if (invite) {
+                await this.deps.redis.del(this.pendingFriendInviteUserKey(invite.recipientId));
+                await this.deps.redis.del(this.outgoingFriendInviteUserKey(invite.requesterId));
+            }
+            return;
+        }
+        this.friendInvites.delete(inviteId);
+        if (invite) {
+            this.friendInvitesByRecipient.delete(invite.recipientId);
+            this.friendInvitesByRequester.delete(invite.requesterId);
+        }
+    }
+
+    private async expireFriendInvite(invite: FriendMatchInvite): Promise<void> {
+        await this.deleteFriendInvite(invite.inviteId);
+        const payload = this.toFriendInvitePayload(invite);
+        this.deps.io?.to(`user:${invite.requesterId}`).emit('friend-match:expired', payload);
+        this.deps.io?.to(`user:${invite.recipientId}`).emit('friend-match:expired', payload);
     }
 
     private rematchKey(matchId: string): string {
@@ -927,6 +1215,8 @@ export class OnlineSessionService {
             winner: state.winner,
             connectionStatus: 'CONNECTED',
             messages: state.messages,
+            ranked: state.ranked,
+            source: state.source,
         };
 
         this.deps.io.to(state.matchId).emit('session:state', payload);
@@ -1028,7 +1318,12 @@ export class OnlineSessionService {
                 const opponent = state.players[idx === 0 ? 1 : 0];
                 try {
                     const matchId = await this.matchService!.createMatch(
-                        player.userId, state.size, 'medium', 'ONLINE'
+                        player.userId,
+                        state.size,
+                        'medium',
+                        'ONLINE',
+                        state.rules,
+                        state.ranked ?? true,
                     );
                     if (matchId == null) return;
                     const winner = player.symbol === winnerSymbol ? 'USER' : 'BOT';
@@ -1103,6 +1398,8 @@ export class OnlineSessionService {
             return {
                 ...parsed,
                 rules: normalizeMatchRules((parsed as Partial<OnlineSessionState>).rules),
+                ranked: (parsed as Partial<OnlineSessionState>).ranked !== false,
+                source: (parsed as Partial<OnlineSessionState>).source ?? 'matchmaking',
             };
         } catch {
             return null;

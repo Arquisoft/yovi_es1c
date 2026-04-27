@@ -264,6 +264,8 @@ export async function attachSocketServer(server: HttpServer, deps: AttachSocketD
                     winner: state.winner,
                     connectionStatus: state.connection[user.userId] ?? 'CONNECTED',
                     messages: state.messages,
+                    ranked: state.ranked,
+                    source: state.source,
                 });
             }),
         );

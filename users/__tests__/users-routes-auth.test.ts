@@ -20,6 +20,7 @@ describe('users routes authentication', () => {
             updateMyProfile: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
             listMyFriends: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
             listMyFriendRequests: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
+            getFriendshipStatus: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
             sendFriendRequest: vi.fn(async (_req, res) => res.status(201).json({ ok: true })),
             acceptFriendRequest: vi.fn(async (_req, res) => res.status(200).json({ ok: true })),
             deleteFriendRequest: vi.fn(async (_req, res) => res.status(204).send()),
@@ -37,6 +38,7 @@ describe('users routes authentication', () => {
             request(app).put('/api/users/me').send({ displayName: 'Alex' }),
             request(app).get('/api/users/friends'),
             request(app).get('/api/users/friends/requests'),
+            request(app).get('/api/users/friends/2/status'),
             request(app).post('/api/users/friends/requests').send({ username: 'bea' }),
             request(app).post('/api/users/friends/requests/1/accept'),
             request(app).delete('/api/users/friends/requests/1'),
@@ -53,6 +55,7 @@ describe('users routes authentication', () => {
         expect(controller.updateMyProfile).not.toHaveBeenCalled();
         expect(controller.listMyFriends).not.toHaveBeenCalled();
         expect(controller.listMyFriendRequests).not.toHaveBeenCalled();
+        expect(controller.getFriendshipStatus).not.toHaveBeenCalled();
         expect(controller.sendFriendRequest).not.toHaveBeenCalled();
         expect(controller.acceptFriendRequest).not.toHaveBeenCalled();
         expect(controller.deleteFriendRequest).not.toHaveBeenCalled();
