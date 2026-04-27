@@ -445,7 +445,16 @@ describe('GET /api/game/online/sessions/active', () => {
     });
 
     const mockOnlineSessionService = {
-      getActiveSessionForUser: vi.fn().mockResolvedValue({ matchId: 'm-100', boardSize: 16 }),
+      getActiveSessionForUser: vi.fn().mockResolvedValue({
+        matchId: 'm-100',
+        boardSize: 16,
+        status: 'active',
+        reconnectDeadline: null,
+        source: 'matchmaking',
+        ranked: true,
+        rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+        opponent: { userId: 8, username: 'bea' },
+      }),
     } as unknown as OnlineSessionService;
 
     const matchService = {} as MatchService;
@@ -455,7 +464,16 @@ describe('GET /api/game/online/sessions/active', () => {
 
     const response = await request(app).get('/api/game/online/sessions/active');
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ matchId: 'm-100', boardSize: 16, status: 'active', reconnectDeadline: null });
+    expect(response.body).toEqual({
+      matchId: 'm-100',
+      boardSize: 16,
+      status: 'active',
+      reconnectDeadline: null,
+      source: 'matchmaking',
+      ranked: true,
+      rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      opponent: { userId: 8, username: 'bea' },
+    });
     expect(mockOnlineSessionService.getActiveSessionForUser).toHaveBeenCalledWith(7);
   });
 
@@ -624,8 +642,16 @@ describe('GameController online routes', () => {
     });
 
     const onlineSessionService = {
-      getActiveSessionForUser: vi.fn().mockResolvedValue({ matchId: 'm1', boardSize: 8 }),
-      getSnapshot: vi.fn().mockResolvedValue({ status: 'waiting_reconnect', reconnectDeadline: { 1: 999 } }),
+      getActiveSessionForUser: vi.fn().mockResolvedValue({
+        matchId: 'm1',
+        boardSize: 8,
+        status: 'waiting_reconnect',
+        reconnectDeadline: 999,
+        source: 'friend',
+        ranked: false,
+        rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+        opponent: { userId: 2, username: 'bea' },
+      }),
     } as any;
 
     app.use('/api/game', createGameController({} as MatchService, {} as StatsService, undefined, onlineSessionService));
@@ -633,7 +659,16 @@ describe('GameController online routes', () => {
 
     const response = await request(app).get('/api/game/online/sessions/active');
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ matchId: 'm1', boardSize: 8, status: 'waiting_reconnect', reconnectDeadline: 999 });
+    expect(response.body).toEqual({
+      matchId: 'm1',
+      boardSize: 8,
+      status: 'waiting_reconnect',
+      reconnectDeadline: 999,
+      source: 'friend',
+      ranked: false,
+      rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      opponent: { userId: 2, username: 'bea' },
+    });
   });
 
   it('POST /online/sessions/:matchId/reconnect returns 200 for valid reconnect', async () => {
@@ -1190,5 +1225,206 @@ describe('GameController move/reconnect remaining branches', () => {
         message: 'Unexpected server error',
       });
     });
+  });
+});
+describe('GameController friend match routes', () => {
+  function buildApp(onlineSessionService: any, friendshipClient: any, userId = '1') {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).userId = userId;
+      (req as any).username = userId === '1' ? 'alice' : 'mallory';
+      req.headers.authorization = 'Bearer token';
+      next();
+    });
+    app.use('/api/game', createGameController({} as any, {} as any, undefined, onlineSessionService, undefined, friendshipClient));
+    app.use(errorHandler);
+    return app;
+  }
+
+  it('creates a friend match invite only after friendship verification', async () => {
+    const onlineSessionService = {
+      createFriendInvite: vi.fn().mockResolvedValue({ inviteId: 'invite-1', ranked: false, source: 'friend' }),
+    };
+    const friendshipClient = {
+      getFriendshipStatus: vi.fn().mockResolvedValue({
+        friend: true,
+        user: { id: 2, userId: 2, username: 'bea' },
+      }),
+    };
+
+    const app = buildApp(onlineSessionService, friendshipClient);
+    const response = await request(app)
+        .post('/api/game/online/friend-invites')
+        .send({ friendUserId: 2, boardSize: 8, rules: { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } } });
+
+    expect(response.status).toBe(201);
+    expect(friendshipClient.getFriendshipStatus).toHaveBeenCalledWith(2, 'Bearer token');
+    expect(onlineSessionService.createFriendInvite).toHaveBeenCalledWith(
+        { userId: 1, username: 'alice' },
+        { userId: 2, username: 'bea' },
+        8,
+        { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
+    );
+  });
+
+  it('rejects friend match invites for non-friends', async () => {
+    const onlineSessionService = { createFriendInvite: vi.fn() };
+    const friendshipClient = { getFriendshipStatus: vi.fn().mockResolvedValue({ friend: false }) };
+    const app = buildApp(onlineSessionService, friendshipClient);
+
+    const response = await request(app)
+        .post('/api/game/online/friend-invites')
+        .send({ friendUserId: 2, boardSize: 8 });
+
+    expect(response.status).toBe(403);
+    expect(onlineSessionService.createFriendInvite).not.toHaveBeenCalled();
+  });
+
+  it('returns an outgoing friend match invite', async () => {
+    const onlineSessionService = {
+      getOutgoingFriendInviteForUser: vi.fn().mockResolvedValue({ inviteId: 'invite-1', ranked: false, source: 'friend' }),
+    };
+    const app = buildApp(onlineSessionService, {});
+
+    const response = await request(app).get('/api/game/online/friend-invites/outgoing');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ inviteId: 'invite-1', ranked: false, source: 'friend' });
+    expect(onlineSessionService.getOutgoingFriendInviteForUser).toHaveBeenCalledWith(1);
+  });
+
+  it('accepts a pending friend match invite', async () => {
+    const onlineSessionService = {
+      acceptFriendInvite: vi.fn().mockResolvedValue({ matchId: 'friend-match', boardSize: 8, ranked: false, source: 'friend' }),
+    };
+    const app = buildApp(onlineSessionService, {});
+
+    const response = await request(app).post('/api/game/online/friend-invites/invite-1/accept').send({});
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ matchId: 'friend-match', boardSize: 8, ranked: false, source: 'friend' });
+    expect(onlineSessionService.acceptFriendInvite).toHaveBeenCalledWith('invite-1', 1);
+  });
+
+  it('prevents users outside an online session from reading its snapshot', async () => {
+    const onlineSessionService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        matchId: 'm-1',
+        players: [{ userId: 2 }, { userId: 3 }],
+      }),
+    };
+    const app = buildApp(onlineSessionService, {}, '1');
+
+    const response = await request(app).get('/api/game/online/sessions/m-1');
+
+    expect(response.status).toBe(403);
+  });
+});
+
+describe('GameController friend match route branches', () => {
+  function buildFriendApp(onlineSessionService: any, options: { userId?: string; username?: string; friendshipClient?: any } = {}) {
+    const app = express();
+    app.use(express.json());
+    if (options.userId !== undefined) {
+      app.use((req, _res, next) => {
+        (req as any).userId = options.userId;
+        (req as any).username = options.username ?? 'alice';
+        req.headers.authorization = 'Bearer token';
+        next();
+      });
+    }
+    app.use('/api/game', createGameController({} as any, {} as any, undefined, onlineSessionService, undefined, options.friendshipClient ?? {}));
+    app.use(errorHandler);
+    return app;
+  }
+
+  it('returns pending friend match invite for authenticated users', async () => {
+    const invite = { inviteId: 'friend-1', requesterId: 2, recipientId: 1, source: 'friend', ranked: false };
+    const onlineSessionService = {
+      getPendingFriendInviteForUser: vi.fn().mockResolvedValue(invite),
+    };
+
+    const response = await request(buildFriendApp(onlineSessionService, { userId: '1' }))
+        .get('/api/game/online/friend-invites/pending');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(invite);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(onlineSessionService.getPendingFriendInviteForUser).toHaveBeenCalledWith(1);
+  });
+
+  it('returns 204 when there is no outgoing friend match invite', async () => {
+    const onlineSessionService = {
+      getOutgoingFriendInviteForUser: vi.fn().mockResolvedValue(null),
+    };
+
+    const response = await request(buildFriendApp(onlineSessionService, { userId: '1' }))
+        .get('/api/game/online/friend-invites/outgoing');
+
+    expect(response.status).toBe(204);
+    expect(response.text).toBe('');
+  });
+
+  it('protects friend match invite queries', async () => {
+    const onlineSessionService = {
+      getPendingFriendInviteForUser: vi.fn(),
+    };
+
+    const response = await request(buildFriendApp(onlineSessionService))
+        .get('/api/game/online/friend-invites/pending');
+
+    expect(response.status).toBe(401);
+    expect(onlineSessionService.getPendingFriendInviteForUser).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when friend match invite service is unavailable', async () => {
+    const response = await request(buildFriendApp(undefined, { userId: '1' }))
+        .get('/api/game/online/friend-invites/pending');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Friend match invites not available',
+    });
+  });
+
+  it('declines a friend match invite', async () => {
+    const onlineSessionService = {
+      declineFriendInvite: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const response = await request(buildFriendApp(onlineSessionService, { userId: '1' }))
+        .post('/api/game/online/friend-invites/friend-1/decline')
+        .send({});
+
+    expect(response.status).toBe(204);
+    expect(onlineSessionService.declineFriendInvite).toHaveBeenCalledWith('friend-1', 1);
+  });
+
+  it('maps friend invite errors through the shared online error handler', async () => {
+    const onlineSessionService = {
+      acceptFriendInvite: vi.fn().mockRejectedValue(new OnlineSessionError('FRIEND_INVITE_EXPIRED', 'expired')),
+    };
+
+    const response = await request(buildFriendApp(onlineSessionService, { userId: '1' }))
+        .post('/api/game/online/friend-invites/friend-1/accept')
+        .send({});
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ code: 'FRIEND_INVITE_EXPIRED', message: 'expired' });
+  });
+
+  it('validates friend invite ids before accepting', async () => {
+    const onlineSessionService = {
+      acceptFriendInvite: vi.fn(),
+    };
+
+    const response = await request(buildFriendApp(onlineSessionService, { userId: '1' }))
+        .post('/api/game/online/friend-invites/%20/accept')
+        .send({});
+
+    expect(response.status).toBe(400);
+    expect(onlineSessionService.acceptFriendInvite).not.toHaveBeenCalled();
   });
 });

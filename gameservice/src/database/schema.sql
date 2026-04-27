@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS matches (
                                        status TEXT DEFAULT 'ONGOING',
                                        winner TEXT,
                                        mode TEXT DEFAULT 'BOT',
+                                       ranked BOOLEAN NOT NULL DEFAULT TRUE,
                                        rules JSONB NOT NULL DEFAULT '{"pieRule":{"enabled":false},"honey":{"enabled":false,"blockedCells":[]}}'::jsonb,
                                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -18,6 +19,8 @@ CREATE TABLE IF NOT EXISTS moves (
     move_number INTEGER NOT NULL,
     "timestamp" TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS ranked BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_matches_user_id ON matches(user_id);
 CREATE INDEX IF NOT EXISTS idx_moves_match_id ON moves(match_id);

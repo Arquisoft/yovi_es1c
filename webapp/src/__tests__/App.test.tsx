@@ -64,6 +64,21 @@ vi.mock('../features/stats/hooks/useStatsController', () => ({
     }),
 }));
 
+vi.mock('../features/game/hooks/useFriendMatchInvites', () => ({
+    useFriendMatchInvites: () => ({
+        pendingFriendInvite: null,
+        outgoingFriendInvite: null,
+        readyFriendMatch: null,
+        notice: null,
+        errorKey: null,
+        acceptPendingFriendInvite: vi.fn(),
+        declinePendingFriendInvite: vi.fn(),
+        cancelOutgoingFriendInvite: vi.fn(),
+        clearReadyFriendMatch: vi.fn(),
+        clearFriendMatchNotice: vi.fn(),
+    }),
+}));
+
 describe('App Routing', () => {
     beforeEach(() => {
         vi.clearAllMocks();

@@ -10,6 +10,7 @@ import {
   getFriendsOverview,
   sendFriendRequest,
 } from '../features/friends/api/friendsApi'
+import { createFriendMatchInvite } from '../features/friends/api/friendMatchApi'
 
 vi.mock('../features/auth', () => ({
   useAuth: vi.fn(),
@@ -23,12 +24,17 @@ vi.mock('../features/friends/api/friendsApi', () => ({
   sendFriendRequest: vi.fn(),
 }))
 
+vi.mock('../features/friends/api/friendMatchApi', () => ({
+  createFriendMatchInvite: vi.fn(),
+}))
+
 const useAuthMock = vi.mocked(useAuth)
 const getFriendsOverviewMock = vi.mocked(getFriendsOverview)
 const sendFriendRequestMock = vi.mocked(sendFriendRequest)
 const acceptFriendRequestMock = vi.mocked(acceptFriendRequest)
 const deleteFriendRequestMock = vi.mocked(deleteFriendRequest)
 const deleteFriendMock = vi.mocked(deleteFriend)
+const createFriendMatchInviteMock = vi.mocked(createFriendMatchInvite)
 
 function renderPage() {
   return render(
@@ -134,6 +140,47 @@ describe('FriendsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mensaje/i }))
 
     expect(await screen.findByText('Messages route')).toBeInTheDocument()
+  })
+
+  it('creates a friend match invite from the friends list', async () => {
+    getFriendsOverviewMock.mockResolvedValueOnce({
+      friends: [{ id: 2, username: 'bea', displayName: 'Bea', avatar: null, friendsSince: '2026-01-01T00:00:00.000Z' }],
+      requests: [],
+    })
+    const sentListener = vi.fn()
+    window.addEventListener('friend-match:sent-local', sentListener)
+
+    createFriendMatchInviteMock.mockResolvedValueOnce({
+      inviteId: 'invite-1',
+      requesterId: 1,
+      requesterName: 'alice',
+      recipientId: 2,
+      recipientName: 'bea',
+      boardSize: 8,
+      rules: { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
+      ranked: false,
+      source: 'friend',
+      status: 'pending',
+      createdAt: 1,
+      expiresAt: 2,
+    })
+
+    renderPage()
+
+    await screen.findByText('Bea')
+    fireEvent.click(screen.getByRole('button', { name: /^Jugar$/i }))
+    fireEvent.click(screen.getByLabelText(/Pie Rule/i))
+    fireEvent.click(screen.getByRole('button', { name: /Enviar invitación de partida/i }))
+
+    await waitFor(() => expect(createFriendMatchInviteMock).toHaveBeenCalledWith(2, 8, {
+      pieRule: { enabled: true },
+      honey: { enabled: false, blockedCells: [] },
+    }))
+    expect(await screen.findByText('Invitación de partida enviada a Bea')).toBeInTheDocument()
+    expect(sentListener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ inviteId: 'invite-1' }),
+    }))
+    window.removeEventListener('friend-match:sent-local', sentListener)
   })
 
   it('removes a friend when the user confirms', async () => {

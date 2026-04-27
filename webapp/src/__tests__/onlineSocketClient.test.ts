@@ -8,6 +8,8 @@ const mockSocket = {
   off: vi.fn(),
   emit: vi.fn(),
   disconnect: vi.fn(),
+  connect: vi.fn(),
+  auth: {},
 };
 
 const { ioMock } = vi.hoisted(() => ({
@@ -23,6 +25,7 @@ describe('onlineSocketClient', () => {
     vi.clearAllMocks();
     onlineSocketClient.resetForTests();
     mockSocket.connected = true;
+    mockSocket.auth = {};
   });
 
   it('connects passing auth token and socket path', () => {
@@ -49,15 +52,17 @@ describe('onlineSocketClient', () => {
     expect(ioMock).toHaveBeenCalledTimes(1);
   });
 
-  it('disconnects stale socket before reconnecting', () => {
+  it('reuses an existing disconnected socket and reconnects it without dropping listeners', () => {
     onlineSocketClient.connect('token-a');
-    onlineSocketClient.disconnect();
     mockSocket.connected = false;
 
     const second = onlineSocketClient.connect('token-b');
 
     expect(second).toBe(mockSocket);
-    expect(ioMock).toHaveBeenCalledTimes(2);
+    expect(mockSocket.auth).toEqual({ token: 'token-b' });
+    expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+    expect(mockSocket.disconnect).not.toHaveBeenCalled();
+    expect(ioMock).toHaveBeenCalledTimes(1);
   });
 
   it('emits events through socket', () => {

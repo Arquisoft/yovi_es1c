@@ -49,7 +49,7 @@ describe('MatchService', () => {
       const result = await matchService.createMatch(userId, boardSize, difficulty, mode);
 
       expect(result).toBe(expectedId);
-      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(userId, boardSize, difficulty, mode, classicRules);
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(userId, boardSize, difficulty, mode, classicRules, true);
       expect(mockMatchRepository.createMatch).toHaveBeenCalledTimes(1);
     });
 
@@ -58,7 +58,7 @@ describe('MatchService', () => {
 
       await matchService.createMatch(1, 8, 'medium');
 
-      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT', classicRules);
+      expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'medium', 'BOT', classicRules, true);
     });
 
     it('should accept all valid modes', async () => {
@@ -69,7 +69,7 @@ describe('MatchService', () => {
 
         await matchService.createMatch(1, 8, 'easy', mode);
 
-        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', mode, classicRules);
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, 'easy', mode, classicRules, true);
       }
     });
 
@@ -96,6 +96,7 @@ describe('MatchService', () => {
               ]),
             }),
           }),
+          true,
       );
     });
 
@@ -107,7 +108,7 @@ describe('MatchService', () => {
 
         await matchService.createMatch(1, 8, difficulty, 'BOT');
 
-        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty, 'BOT', classicRules);
+        expect(mockMatchRepository.createMatch).toHaveBeenCalledWith(1, 8, difficulty, 'BOT', classicRules, true);
       }
     });
 
@@ -690,6 +691,18 @@ describe('MatchService', () => {
 
       await serviceWithRanking.finishMatch(12, 'USER');
 
+      expect(mockRanking.applyRatingUpdate).not.toHaveBeenCalled();
+    });
+
+    it('skips ranking for unranked friend matches', async () => {
+      vi.spyOn(mockMatchRepository, 'finishMatch').mockResolvedValue(undefined);
+      vi.spyOn(mockMatchRepository, 'getMatchById').mockResolvedValue({
+        id: 13, user_id: 5, mode: 'ONLINE', ranked: false,
+      } as any);
+
+      await serviceWithRanking.finishMatch(13, 'USER', 99);
+
+      expect(mockRanking.getOpponentRatingForUser).not.toHaveBeenCalled();
       expect(mockRanking.applyRatingUpdate).not.toHaveBeenCalled();
     });
 

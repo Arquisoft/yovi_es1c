@@ -43,7 +43,6 @@ app.get('/metrics', async (_req, res) => {
     const rankingService = new RankingService(rankingRepo);
     const matchService = new MatchService(matchRepo, rankingService);
     const statsService = new StatsService(statsRepo);
-
     const server = createServer(app);
     const realtimeBundle = await attachSocketServer(server, { statsService, matchService });
 

@@ -1,7 +1,9 @@
 import { MatchRules } from './rules.js';
 
 export type OpponentType = 'HUMAN' | 'BOT';
+export type FriendInviteStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
 export type ConnectionState = 'CONNECTED' | 'DISCONNECTED';
+export type OnlineSessionSource = 'matchmaking' | 'friend';
 export type SessionStatus = 'created' | 'active' | 'waiting_reconnect' | 'finished' | 'abandoned' | 'expired' | 'cancelled';
 
 export interface OnlineQueueEntry {
@@ -52,6 +54,33 @@ export interface OnlineSessionState {
   reconnectDeadline: Record<number, number | null>;
   winner: 'B' | 'R' | null;
   messages: OnlineChatMessage[];
+  ranked: boolean;
+  source: OnlineSessionSource;
+}
+
+export interface FriendMatchInvite {
+  inviteId: string;
+  requesterId: number;
+  requesterName: string;
+  recipientId: number;
+  recipientName: string;
+  boardSize: number;
+  rules: MatchRules;
+  ranked: false;
+  source: 'friend';
+  status: FriendInviteStatus;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface FriendMatchReadyPayload {
+  matchId: string;
+  boardSize: number;
+  size: number;
+  rules: MatchRules;
+  players: OnlinePlayerState[];
+  ranked: false;
+  source: 'friend';
 }
 
 export interface QueueStatusPayload {

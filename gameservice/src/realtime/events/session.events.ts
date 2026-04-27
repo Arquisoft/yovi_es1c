@@ -1,4 +1,4 @@
-import { ConnectionState, OpponentType } from '../../types/online';
+import { ConnectionState, OnlineSessionSource, OpponentType } from '../../types/online';
 import { MatchRules } from '../../types/rules.js';
 
 export interface SessionStatePayload {
@@ -16,6 +16,8 @@ export interface SessionStatePayload {
   winner: 'B' | 'R' | null;
   connectionStatus: ConnectionState;
   messages?: Array<{ userId: number; username: string; text: string; timestamp: number }>;
+  ranked?: boolean;
+  source?: OnlineSessionSource;
 }
 
 export interface SessionEndedPayload {

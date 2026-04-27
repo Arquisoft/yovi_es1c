@@ -9,12 +9,12 @@ class OnlineSocketClient {
   connect(token: string): Socket {
     this.connectionUsers += 1;
 
-    if (this.socket?.connected) {
-      return this.socket;
-    }
-
     if (this.socket) {
-      this.socket.disconnect();
+      this.socket.auth = { token };
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
+      return this.socket;
     }
 
     this.socket = io(globalThis.location.origin, {

@@ -27,6 +27,7 @@ import { FriendsPage } from '../features/friends';
 import { MessagesPage } from '../features/messages';
 import { useActiveSession } from '../features/game/hooks/useActiveSession';
 import { usePendingRematchNotification } from '../features/game/hooks/usePendingRematchNotification';
+import { useFriendMatchInvites } from '../features/game/hooks/useFriendMatchInvites';
 import { fetchWithAuth } from '../shared/api/fetchWithAuth';
 import { API_CONFIG } from '../config/api.config';
 import { useTranslation } from 'react-i18next';
@@ -69,7 +70,7 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { matchId, boardSize } = useActiveSession();
+  const { matchId, boardSize, source: activeSessionSource, opponent: activeSessionOpponent, rules: activeSessionRules } = useActiveSession();
   const [dismissedMatchId, setDismissedMatchId] = useState<string | null>(null);
   const { t } = useTranslation();
   const {
@@ -79,6 +80,18 @@ function AppContent() {
     declinePendingRematch,
     clearReadyRematch,
   } = usePendingRematchNotification(Boolean(user && location.pathname !== '/gamey'));
+  const {
+    pendingFriendInvite,
+    outgoingFriendInvite,
+    readyFriendMatch,
+    notice: friendMatchNotice,
+    errorKey: friendInviteErrorKey,
+    acceptPendingFriendInvite,
+    declinePendingFriendInvite,
+    cancelOutgoingFriendInvite,
+    clearReadyFriendMatch,
+    clearFriendMatchNotice,
+  } = useFriendMatchInvites(Boolean(user && location.pathname !== '/gamey'));
 
   const storageKey = useMemo(() => (matchId ? `abandoned:${matchId}` : null), [matchId]);
   const isDismissed = useMemo(
@@ -102,6 +115,33 @@ function AppContent() {
       location.pathname !== '/gamey',
   );
 
+  const shouldShowFriendInvitePrompt = Boolean(
+      user &&
+      pendingFriendInvite &&
+      !shouldPrompt &&
+      !shouldShowRematchPrompt &&
+      location.pathname !== '/gamey',
+  );
+
+  const shouldShowOutgoingFriendInvitePrompt = Boolean(
+      user &&
+      outgoingFriendInvite &&
+      !shouldPrompt &&
+      !shouldShowRematchPrompt &&
+      !shouldShowFriendInvitePrompt &&
+      location.pathname !== '/gamey',
+  );
+
+  const shouldShowFriendMatchNotice = Boolean(
+      user &&
+      friendMatchNotice &&
+      !shouldPrompt &&
+      !shouldShowRematchPrompt &&
+      !shouldShowFriendInvitePrompt &&
+      !shouldShowOutgoingFriendInvitePrompt &&
+      location.pathname !== '/gamey',
+  );
+
   useEffect(() => {
     if (!matchId && dismissedMatchId !== null) {
       setDismissedMatchId(null);
@@ -122,6 +162,20 @@ function AppContent() {
     clearReadyRematch();
   }, [readyRematch, navigate, clearReadyRematch]);
 
+  useEffect(() => {
+    if (!readyFriendMatch) return;
+    navigate('/gamey', {
+      state: {
+        matchId: readyFriendMatch.matchId,
+        boardSize: readyFriendMatch.boardSize ?? readyFriendMatch.size,
+        mode: 'ONLINE',
+        difficulty: 'medium',
+        rules: readyFriendMatch.rules,
+      },
+    });
+    clearReadyFriendMatch();
+  }, [readyFriendMatch, navigate, clearReadyFriendMatch]);
+
   const handleReconnect = async () => {
     if (!matchId || !boardSize) return;
     const response = await fetchWithAuth(`${API_CONFIG.GAME_SERVICE_API}/online/sessions/${matchId}/reconnect`, {
@@ -134,6 +188,7 @@ function AppContent() {
         boardSize,
         mode: 'ONLINE',
         difficulty: 'medium',
+        ...(activeSessionRules ? { rules: activeSessionRules } : {}),
       },
     });
   };
@@ -146,6 +201,12 @@ function AppContent() {
     localStorage.removeItem(`abandoned:${matchId}`);
     setDismissedMatchId(matchId);
   };
+
+  const activeSessionOpponentName = activeSessionOpponent?.username ?? t('opponent');
+  const friendMatchNoticePlayer = friendMatchNotice?.invite?.requesterId === user?.id
+      ? friendMatchNotice?.invite?.recipientName
+      : friendMatchNotice?.invite?.requesterName;
+  const friendMatchNoticeKey = friendMatchNotice ? `friendMatchNotice.${friendMatchNotice.kind}` : 'friendMatchNotice.expired';
 
   return (
       <>
@@ -187,11 +248,15 @@ function AppContent() {
             }}
         >
           <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-            {t('activeMatchTitle')}
+            {activeSessionSource === 'friend'
+                ? t('friendMatchActiveTitle', { player: activeSessionOpponentName })
+                : t('activeMatchTitle')}
           </DialogTitle>
           <DialogContent>
             <Typography>
-              {t('activeMatchMessage')}
+              {activeSessionSource === 'friend'
+                  ? t('friendMatchActiveBody', { player: activeSessionOpponentName })
+                  : t('activeMatchMessage')}
             </Typography>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -200,6 +265,101 @@ function AppContent() {
             </Button>
             <Button variant="contained" onClick={handleReconnect}>
               {t('reconnect')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+            open={shouldShowFriendInvitePrompt}
+            slotProps={{
+              paper: {
+                sx: {
+                  minWidth: { xs: 'auto', sm: 460 },
+                  border: '1px solid rgba(57, 255, 20, 0.34)',
+                  background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
+                },
+              },
+            }}
+        >
+          <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+            {t('friendMatchIncomingTitle', { player: pendingFriendInvite?.requesterName ?? t('opponent') })}
+          </DialogTitle>
+          <DialogContent>
+            <Typography>
+              {t('friendMatchIncomingBody', { player: pendingFriendInvite?.requesterName ?? t('opponent'), boardSize: pendingFriendInvite?.boardSize ?? '' })}
+            </Typography>
+            {friendInviteErrorKey ? (
+              <Typography color="error" sx={{ mt: 1 }}>
+                {t(friendInviteErrorKey)}
+              </Typography>
+            ) : null}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button variant="outlined" onClick={declinePendingFriendInvite}>
+              {t('friendMatchDecline')}
+            </Button>
+            <Button variant="contained" onClick={acceptPendingFriendInvite}>
+              {t('friendMatchAccept')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+            open={shouldShowOutgoingFriendInvitePrompt}
+            slotProps={{
+              paper: {
+                sx: {
+                  minWidth: { xs: 'auto', sm: 460 },
+                  border: '1px solid rgba(57, 255, 20, 0.34)',
+                  background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
+                },
+              },
+            }}
+        >
+          <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+            {t('friendMatchInviteSentTitle')}
+          </DialogTitle>
+          <DialogContent>
+            <Typography>
+              {t('friendMatchInviteSentBody', { player: outgoingFriendInvite?.recipientName ?? t('opponent') })}
+            </Typography>
+            {friendInviteErrorKey ? (
+              <Typography color="error" sx={{ mt: 1 }}>
+                {t(friendInviteErrorKey)}
+              </Typography>
+            ) : null}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button variant="outlined" onClick={cancelOutgoingFriendInvite}>
+              {t('friendMatchCancelInvite')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+            open={shouldShowFriendMatchNotice}
+            onClose={clearFriendMatchNotice}
+            slotProps={{
+              paper: {
+                sx: {
+                  minWidth: { xs: 'auto', sm: 460 },
+                  border: '1px solid rgba(57, 255, 20, 0.34)',
+                  background: 'linear-gradient(180deg, rgba(7, 24, 7, 0.96) 0%, rgba(2, 14, 2, 0.94) 100%)',
+                },
+              },
+            }}
+        >
+          <DialogTitle sx={{ color: 'primary.main', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+            {t('friendMatchNoticeTitle')}
+          </DialogTitle>
+          <DialogContent>
+            <Typography>
+              {t(friendMatchNoticeKey, { player: friendMatchNoticePlayer ?? t('opponent') })}
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button variant="contained" onClick={clearFriendMatchNotice}>
+              {t('ok')}
             </Button>
           </DialogActions>
         </Dialog>

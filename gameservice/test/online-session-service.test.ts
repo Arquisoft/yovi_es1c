@@ -327,7 +327,16 @@ describe('OnlineSessionService', () => {
       get: vi
           .fn()
           .mockResolvedValueOnce('m-active')
-          .mockResolvedValueOnce(JSON.stringify({ matchId: 'm-active', size: 9, status: 'active', players: [{ userId: 99 }, { userId: 10 }] })),
+          .mockResolvedValueOnce(JSON.stringify({
+            matchId: 'm-active',
+            size: 9,
+            status: 'active',
+            players: [{ userId: 99, username: 'opponent' }, { userId: 10, username: 'me' }],
+            rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+            reconnectDeadline: { 10: null },
+            ranked: true,
+            source: 'matchmaking',
+          })),
       set: vi.fn(),
       del: vi.fn().mockResolvedValue(1),
     };
@@ -335,7 +344,16 @@ describe('OnlineSessionService', () => {
     const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { redis });
     const active = await service.getActiveSessionForUser(10);
 
-    expect(active).toEqual({ matchId: 'm-active', boardSize: 9 });
+    expect(active).toEqual({
+      matchId: 'm-active',
+      boardSize: 9,
+      status: 'active',
+      ranked: true,
+      source: 'matchmaking',
+      rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      reconnectDeadline: null,
+      opponent: { userId: 99, username: 'opponent' },
+    });
     expect(redis.get).toHaveBeenCalledWith('session:user-active:10');
     expect(redis.get).toHaveBeenCalledWith('session:online:m-active');
   });
@@ -380,6 +398,12 @@ describe('OnlineSessionService', () => {
     await expect(service.getActiveSessionForUser(10)).resolves.toEqual({
       matchId: 'repo-active',
       boardSize: 5,
+      status: 'active',
+      ranked: true,
+      source: 'matchmaking',
+      rules: { pieRule: { enabled: false }, honey: { enabled: false, blockedCells: [] } },
+      reconnectDeadline: null,
+      opponent: { userId: 20, username: 'b' },
     });
   });
 
@@ -1017,8 +1041,14 @@ describe('OnlineSessionService', () => {
     expect(finalState.closeReason).toBe('winner');
 
     expect(matchService.createMatch).toHaveBeenCalledTimes(2);
-    expect(matchService.createMatch).toHaveBeenNthCalledWith(1, 1, 3, 'medium', 'ONLINE');
-    expect(matchService.createMatch).toHaveBeenNthCalledWith(2, 2, 3, 'medium', 'ONLINE');
+    expect(matchService.createMatch).toHaveBeenNthCalledWith(1, 1, 3, 'medium', 'ONLINE', {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+    }, true);
+    expect(matchService.createMatch).toHaveBeenNthCalledWith(2, 2, 3, 'medium', 'ONLINE', {
+        pieRule: { enabled: false },
+        honey: { enabled: false, blockedCells: [] },
+    }, true);
 
     expect(matchService.finishMatch).toHaveBeenCalledTimes(2);
     expect(matchService.finishMatch).toHaveBeenNthCalledWith(1, 101, 'USER', 2, 'a');
@@ -1093,8 +1123,14 @@ describe('OnlineSessionService', () => {
       expect(finalState.closeReason).toBe('winner');
 
       expect(matchService.createMatch).toHaveBeenCalledTimes(2);
-      expect(matchService.createMatch).toHaveBeenCalledWith(1, 3, 'medium', 'ONLINE');
-      expect(matchService.createMatch).toHaveBeenCalledWith(2, 3, 'medium', 'ONLINE');
+      expect(matchService.createMatch).toHaveBeenCalledWith(1, 3, 'medium', 'ONLINE', {
+          pieRule: { enabled: false },
+          honey: { enabled: false, blockedCells: [] },
+      }, true);
+      expect(matchService.createMatch).toHaveBeenCalledWith(2, 3, 'medium', 'ONLINE', {
+          pieRule: { enabled: false },
+          honey: { enabled: false, blockedCells: [] },
+      }, true);
 
       expect(matchService.finishMatch).toHaveBeenCalledTimes(2);
       expect(matchService.finishMatch).toHaveBeenCalledWith(101, 'USER', 2, 'a');
@@ -1549,5 +1585,144 @@ describe('OnlineSessionService', () => {
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThan(10);
     });
+  });
+});
+
+describe('OnlineSessionService friend match invites', () => {
+  it('creates a pending invite, emits it to the friend, and accepts it as an unranked session', async () => {
+    const emit = vi.fn();
+    const io = {
+      to: vi.fn(() => ({ emit })),
+    };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { io });
+
+    const invite = await service.createFriendInvite(
+        { userId: 1, username: 'alice' },
+        { userId: 2, username: 'bea' },
+        5,
+        { pieRule: { enabled: true }, honey: { enabled: false, blockedCells: [] } },
+        1_000,
+    );
+
+    expect(invite).toMatchObject({ requesterId: 1, recipientId: 2, boardSize: 5, ranked: false, source: 'friend', status: 'pending' });
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(emit).toHaveBeenCalledWith('friend-match:invited', expect.objectContaining({ inviteId: invite.inviteId, source: 'friend' }));
+    expect(emit).toHaveBeenCalledWith('friend-match:sent', expect.objectContaining({ inviteId: invite.inviteId, source: 'friend' }));
+
+    const pending = await service.getPendingFriendInviteForUser(2, 1_001);
+    const outgoing = await service.getOutgoingFriendInviteForUser(1, 1_001);
+    expect(pending?.inviteId).toBe(invite.inviteId);
+    expect(outgoing?.inviteId).toBe(invite.inviteId);
+
+    const ready = await service.acceptFriendInvite(invite.inviteId, 2, 1_002);
+    expect(ready).toMatchObject({ boardSize: 5, ranked: false, source: 'friend' });
+    expect(ready.players).toEqual([
+      { userId: 1, username: 'alice', symbol: 'B' },
+      { userId: 2, username: 'bea', symbol: 'R' },
+    ]);
+
+    const snapshot = await service.getSnapshot(ready.matchId);
+    expect(snapshot?.ranked).toBe(false);
+    expect(snapshot?.source).toBe('friend');
+    expect(await service.getPendingFriendInviteForUser(2, 1_003)).toBeNull();
+    expect(await service.getOutgoingFriendInviteForUser(1, 1_003)).toBeNull();
+  });
+
+  it('rejects accepting an invite by a user who is not the recipient', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService());
+    const invite = await service.createFriendInvite(
+        { userId: 1, username: 'alice' },
+        { userId: 2, username: 'bea' },
+        5,
+    );
+
+    await expect(service.acceptFriendInvite(invite.inviteId, 3)).rejects.toMatchObject({ code: 'FRIEND_INVITE_FORBIDDEN' });
+  });
+});
+
+describe('OnlineSessionService friend invite branches', () => {
+  it('rejects duplicate pending or outgoing friend invites', async () => {
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService());
+    await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5, undefined, 1_000);
+
+    await expect(
+        service.createFriendInvite({ userId: 3, username: 'cara' }, { userId: 2, username: 'bea' }, 5, undefined, 1_001),
+    ).rejects.toMatchObject({ code: 'FRIEND_INVITE_ALREADY_PENDING' });
+
+    await expect(
+        service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 3, username: 'cara' }, 5, undefined, 1_001),
+    ).rejects.toMatchObject({ code: 'FRIEND_INVITE_ALREADY_PENDING' });
+  });
+
+  it('expires pending and outgoing friend invites and notifies both players', async () => {
+    const emit = vi.fn();
+    const io = { to: vi.fn(() => ({ emit })) };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { io });
+
+    const invite = await service.createFriendInvite(
+        { userId: 1, username: 'alice' },
+        { userId: 2, username: 'bea' },
+        5,
+        undefined,
+        1_000,
+    );
+
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+
+    await expect(service.getPendingFriendInviteForUser(2, invite.expiresAt + 1)).resolves.toBeNull();
+    await expect(service.getOutgoingFriendInviteForUser(1, invite.expiresAt + 1)).resolves.toBeNull();
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(emit).toHaveBeenCalledWith('friend-match:expired', expect.objectContaining({ inviteId: invite.inviteId }));
+  });
+
+  it('declines and cancels friend invites with different events', async () => {
+    const emit = vi.fn();
+    const io = { to: vi.fn(() => ({ emit })) };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { io });
+
+    const declined = await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5);
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+    await service.declineFriendInvite(declined.inviteId, 2);
+    expect(io.to).toHaveBeenCalledWith('user:1');
+    expect(emit).toHaveBeenCalledWith('friend-match:declined', expect.objectContaining({ inviteId: declined.inviteId }));
+
+    const cancelled = await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5);
+    emit.mockClear();
+    vi.mocked(io.to).mockClear();
+    await service.declineFriendInvite(cancelled.inviteId, 1);
+    expect(io.to).toHaveBeenCalledWith('user:2');
+    expect(emit).toHaveBeenCalledWith('friend-match:cancelled', expect.objectContaining({ inviteId: cancelled.inviteId }));
+  });
+
+  it('uses redis storage for friend invite lifecycle', async () => {
+    const store = new Map<string, string>();
+    const redis = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      set: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+        return 'OK';
+      }),
+      del: vi.fn(async (key: string) => {
+        const existed = store.delete(key);
+        return existed ? 1 : 0;
+      }),
+    };
+    const service = new OnlineSessionService(new OnlineSessionRepository(), new TurnTimerService(), 25, 60, { redis });
+
+    const invite = await service.createFriendInvite({ userId: 1, username: 'alice' }, { userId: 2, username: 'bea' }, 5, undefined, 1_000);
+
+    expect(redis.set).toHaveBeenCalledWith(`friend-invite:${invite.inviteId}`, expect.any(String), expect.objectContaining({ EX: expect.any(Number) }));
+    expect(redis.set).toHaveBeenCalledWith('friend-invite:pending:user:2', invite.inviteId, expect.objectContaining({ EX: expect.any(Number) }));
+    expect(redis.set).toHaveBeenCalledWith('friend-invite:outgoing:user:1', invite.inviteId, expect.objectContaining({ EX: expect.any(Number) }));
+    await expect(service.getPendingFriendInviteForUser(2, 1_001)).resolves.toMatchObject({ inviteId: invite.inviteId });
+
+    await service.declineFriendInvite(invite.inviteId, 1);
+    expect(redis.del).toHaveBeenCalledWith(`friend-invite:${invite.inviteId}`);
+    expect(redis.del).toHaveBeenCalledWith('friend-invite:pending:user:2');
+    expect(redis.del).toHaveBeenCalledWith('friend-invite:outgoing:user:1');
   });
 });

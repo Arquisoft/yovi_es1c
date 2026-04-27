@@ -79,6 +79,7 @@ describe('UsersController', () => {
       acceptFriendRequest: vi.fn(),
       deleteFriendRequest: vi.fn(),
       deleteFriendship: vi.fn(),
+      hasFriendship: vi.fn(),
     } as unknown as UserRepository;
 
     controller = new UsersController(mockService, mockRepo);
@@ -356,5 +357,92 @@ describe('UsersController', () => {
 
     expect(res.status).toHaveBeenCalled();
     expect(res.json).toHaveBeenCalled();
+  });
+});
+
+describe('UsersController friendship status', () => {
+  it('returns whether the authenticated user is friend with the target profile', async () => {
+    const mockService = {
+      onUserCreated: vi.fn(),
+      onProfileUpdated: vi.fn(),
+      onUserDeleted: vi.fn(),
+    } as unknown as UsersService;
+    const mockRepo = {
+      hasFriendship: vi.fn().mockResolvedValue(true),
+      getById: vi.fn().mockResolvedValue({
+        id: 2,
+        user_id: 2,
+        username: 'bea',
+        display_name: 'Bea',
+        email: null,
+        avatar: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+      }),
+    } as unknown as UserRepository;
+    const controller = new UsersController(mockService, mockRepo);
+    const res = makeRes();
+
+    await controller.getFriendshipStatus(makeReq({ userId: '1', params: { friendUserId: '2' } }), res);
+
+    expect(mockRepo.hasFriendship).toHaveBeenCalledWith(1, 2);
+    expect(res.json).toHaveBeenCalledWith({
+      friend: true,
+      user: {
+        id: 2,
+        userId: 2,
+        username: 'bea',
+        displayName: 'Bea',
+        avatar: null,
+      },
+    });
+  });
+});
+
+describe('UsersController friendship status validation', () => {
+  function buildController(repoOverrides: Partial<UserRepository> = {}) {
+    const mockService = {
+      onUserCreated: vi.fn(),
+      onProfileUpdated: vi.fn(),
+      onUserDeleted: vi.fn(),
+    } as unknown as UsersService;
+    const mockRepo = {
+      hasFriendship: vi.fn().mockResolvedValue(false),
+      getById: vi.fn().mockResolvedValue(null),
+      ...repoOverrides,
+    } as unknown as UserRepository;
+    return { controller: new UsersController(mockService, mockRepo), mockRepo };
+  }
+
+  it('rejects unauthenticated friendship status checks', async () => {
+    const { controller, mockRepo } = buildController();
+    const res = makeRes();
+
+    await controller.getFriendshipStatus(makeReq({ params: { friendUserId: '2' } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(mockRepo.hasFriendship).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid target user ids', async () => {
+    const { controller, mockRepo } = buildController();
+    const res = makeRes();
+
+    await controller.getFriendshipStatus(makeReq({ userId: '1', params: { friendUserId: 'abc' } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockRepo.hasFriendship).not.toHaveBeenCalled();
+  });
+
+  it('returns null user when target profile does not exist', async () => {
+    const { controller, mockRepo } = buildController({
+      hasFriendship: vi.fn().mockResolvedValue(false),
+      getById: vi.fn().mockResolvedValue(null),
+    } as Partial<UserRepository>);
+    const res = makeRes();
+
+    await controller.getFriendshipStatus(makeReq({ userId: '1', params: { friendUserId: '2' } }), res);
+
+    expect(mockRepo.hasFriendship).toHaveBeenCalledWith(1, 2);
+    expect(res.json).toHaveBeenCalledWith({ friend: false, user: null });
   });
 });
