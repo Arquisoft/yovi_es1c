@@ -3,6 +3,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Box, Button, CircularProgress, Link, TextField, Typography, Alert } from '@mui/material';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import { registerUser } from '../api/authApi';
+import { getMyProfile } from '../../profile/api/profileApi';
 import { useAuth } from '../context/useAuth';
 import AuthFormCard from './AuthFormCard';
 import {useTranslation} from "react-i18next";
@@ -36,6 +37,9 @@ const RegisterForm: React.FC = () => {
     try {
       const session = await registerUser(username, password);
       login(session.accessToken, session.refreshToken, session.user);
+      await getMyProfile().catch((profileError) => {
+        console.warn('Could not initialize user profile:', profileError);
+      });
 
       if (session?.user?.username) {
         setResponseMessage(t('welcomeUser', { username: session.user.username }));

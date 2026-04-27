@@ -44,7 +44,7 @@ export default function Nav() {
   }, [lastScrollY]);
 
   const linkClass = (path: string) => {
-    const active = location.pathname === path ? styles.active : '';
+    const active = location.pathname === path || (path !== '/' && location.pathname.startsWith(`${path}/`)) ? styles.active : '';
     return `${styles.link} ${active}`.trim();
   };
 
@@ -68,34 +68,45 @@ export default function Nav() {
           <Link to="/stats" className={linkClass('/stats')}>{t('stats')}</Link>
         </li>
         <li>
-            <LanguageSwitcher />
-        </li>
-        <li>
           <Link to="/ranking" className={linkClass('/ranking')}>Ranking</Link>
         </li>
-        {user ? (
-          <>
-            <li>
-              <span className={`${styles.link} ${styles.username}`}>{user.username}</span>
-            </li>
-            <li>
-              <button type="button" onClick={handleLogout} className={`${styles.link} ${styles.logoutButton}`}>
-                {t('logout')}
-              </button>
-            </li>
 
-             
-          </>
+        {user ? (
+            <>
+              <li>
+                <Link to="/friends" className={linkClass('/friends')}>{t('friends')}</Link>
+              </li>
+              <li>
+                <Link to="/messages" className={linkClass('/messages')} aria-label={t('messages')}>
+                  <span className={styles.messageIcon} aria-hidden="true">💬</span>
+                  {t('messages')}
+                </Link>
+              </li>
+              <li>
+                <Link to="/profile" className={`${linkClass('/profile')} ${styles.username}`} title={t('profile')}>
+                  {user.username}
+                </Link>
+              </li>
+              <li>
+                <button type="button" onClick={handleLogout} className={`${styles.link} ${styles.logoutButton}`}>
+                  {t('logout')}
+                </button>
+              </li>
+            </>
         ) : (
-          <>
-            <li>
-              <Link to="/login" className={linkClass('/login')}>{t('login')}</Link>
-            </li>
-            <li>
-              <Link to="/register" className={linkClass('/register')}>{t('register')}</Link>
-            </li>
-          </>
+            <>
+              <li>
+                <Link to="/login" className={linkClass('/login')}>{t('login')}</Link>
+              </li>
+              <li>
+                <Link to="/register" className={linkClass('/register')}>{t('register')}</Link>
+              </li>
+            </>
         )}
+
+        <li className={styles.languageItem}>
+          <LanguageSwitcher />
+        </li>
       </ul>
     </nav>
   );

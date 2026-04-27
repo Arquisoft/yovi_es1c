@@ -22,6 +22,9 @@ import CreateMatchPage from '../features/game/ui/tsx/CreateMatchPage.tsx';
 import OnlineMatchmakingPage from '../features/game/ui/tsx/OnlineMatchmakingPage.tsx';
 import StatsUI from '../features/stats/ui/StatsUI.tsx';
 import LeaderboardUI from '../features/ranking/ui/LeaderboardUI.tsx';
+import { ProfilePage } from '../features/profile';
+import { FriendsPage } from '../features/friends';
+import { MessagesPage } from '../features/messages';
 import { useActiveSession } from '../features/game/hooks/useActiveSession';
 import { usePendingRematchNotification } from '../features/game/hooks/usePendingRematchNotification';
 import { fetchWithAuth } from '../shared/api/fetchWithAuth';
@@ -164,6 +167,10 @@ function AppContent() {
             <Route path="/gamey" element={<GameUI />} />
             <Route path="/stats" element={<StatsUI />} />
             <Route path="/ranking" element={<LeaderboardUI />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/friends" element={<FriendsPage />} />
+            <Route path="/messages" element={<MessagesPage />} />
+            <Route path="/messages/:friendId" element={<MessagesPage />} />
           </Routes>
         </div>
 

@@ -1,22 +1,16 @@
-# Dockerfile
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Copiar package.json y package-lock.json primero para cache
 COPY package*.json ./
 
-# Instalar dependencias
-RUN npm install
+RUN npm ci
 
-# No copiar node_modules local, solo el código fuente
 COPY src ./src
 COPY tsconfig.json ./
 
-# Compilar TypeScript
 RUN npm run build
 
-# Copiar archivos SQL a dist (necesario para runtime)
 COPY src/database/schema.sql ./dist/src/database/
 
 EXPOSE 3002

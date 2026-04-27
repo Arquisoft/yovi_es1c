@@ -1,0 +1,212 @@
+.page {
+  min-height: calc(100vh - 100px);
+  padding: 6rem 1rem 4rem;
+  display: grid;
+  place-items: start center;
+}
+
+.card {
+  width: min(1100px, 100%);
+  padding: 2rem;
+  background: linear-gradient(180deg, rgba(8, 23, 8, 0.95) 0%, rgba(3, 14, 3, 0.92) 100%);
+  border: 1px solid rgba(57, 255, 20, 0.24);
+  box-shadow: 0 0 24px rgba(57, 255, 20, 0.12);
+}
+
+.header {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--phosphor-text-dim);
+  font-size: 1.5rem;
+}
+
+.inviteForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.label {
+  display: grid;
+  gap: 0.45rem;
+  color: #d5ffd0;
+}
+
+.input {
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(57, 255, 20, 0.25);
+  background: rgba(0, 0, 0, 0.32);
+  color: #f3fff0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.panel {
+  padding: 1rem;
+  border: 1px solid rgba(57, 255, 20, 0.2);
+  background: rgba(2, 12, 2, 0.6);
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
+}
+
+.sectionTitle {
+  margin: 0 0 1rem;
+  color: var(--phosphor-primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.item,
+.friendCard {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 0;
+  border-top: 1px solid rgba(57, 255, 20, 0.14);
+}
+
+.item:first-of-type,
+.friendCard:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.friendsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.friendCard {
+  padding: 1rem;
+  border: 1px solid rgba(57, 255, 20, 0.16);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.meta {
+  margin: 0.2rem 0 0;
+  color: var(--phosphor-text-faint);
+  font-size: 1.25rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(57, 255, 20, 0.35);
+  color: #e8ffe3;
+  background: transparent;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: #16351c;
+}
+
+.secondaryButton {
+  border-color: rgba(157, 255, 149, 0.22);
+  color: var(--phosphor-text-dim);
+}
+
+.error {
+  color: #ff8f8f;
+}
+
+.success {
+  color: #9dff7a;
+}
+
+.status,
+.empty {
+  color: var(--phosphor-text-faint);
+}
+
+.chatBox {
+  display: grid;
+  gap: 1rem;
+}
+
+.chatMessages {
+  max-height: 340px;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid rgba(57, 255, 20, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.chatMessage {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid rgba(57, 255, 20, 0.14);
+  background: rgba(2, 12, 2, 0.35);
+  margin-bottom: 0.65rem;
+}
+
+.chatMessageMine {
+  border-color: rgba(157, 255, 149, 0.22);
+  background: rgba(22, 53, 28, 0.35);
+}
+
+.chatText {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chatMeta {
+  margin: 0;
+  color: var(--phosphor-text-faint);
+  font-size: 1.1rem;
+}
+
+.chatComposer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+@media (max-width: 760px) {
+  .inviteForm {
+    grid-template-columns: 1fr;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chatComposer {
+    grid-template-columns: 1fr;
+  }
+}
