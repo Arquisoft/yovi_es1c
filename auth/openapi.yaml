@@ -5,10 +5,8 @@ info:
   description: |
     Authentication service API for registration, login, logout, token refresh, and internal JWT verification.
 servers:
-  - url: http://localhost
+  - url: https://localhost
     description: Public entrypoint through Nginx
-  - url: http://auth:3001
-    description: Internal Docker network endpoint
 
 tags:
   - name: Auth
@@ -236,11 +234,6 @@ paths:
       tags: [Internal]
       summary: Prometheus metrics
       security: []
-      servers:
-        - url: http://auth:3001
-          description: Internal Docker network endpoint
-        - url: http://localhost:3001
-          description: Local direct service endpoint
       responses:
         '200':
           description: Metrics payload

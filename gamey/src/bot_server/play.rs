@@ -36,7 +36,7 @@ pub async fn play(
         ))
     })?;
 
-    let bot_id = req.bot_id.unwrap_or_else(|| "random".to_string());
+    let bot_id = req.bot_id.unwrap_or_else(|| "impossible".to_string());
     let resolved_id = state.resolve_bot_id(&bot_id);
 
     let bot = state.bots().find(resolved_id).ok_or_else(|| {
