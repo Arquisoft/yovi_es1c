@@ -49,6 +49,7 @@ impl AppState {
         // Alias resolver de prueba
         let mut map = std::collections::HashMap::new();
         map.insert("easy".to_string(), "random".to_string());
+        map.insert("impossible".to_string(), "random".to_string());
         let resolver = BotAliasResolver::new(map);
 
         Self::new(registry, resolver)
