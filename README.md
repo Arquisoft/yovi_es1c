@@ -203,3 +203,8 @@ Root `.env.example` documents the variables used by Compose:
 ### Load Tests
 
 See `loadtests/README.md` for k6 and Artillery commands. The suites can target the local Docker network or the deployed DuckDNS environment.
+
+
+### Terraform deployment
+You can also take a look to our terraform project [here](https://github.com/BolanosDavid/3-ASW-uniovi).
+
