@@ -59,7 +59,9 @@ Docker Compose exposes Nginx on ports `80` and `443`. HTTP redirects to HTTPS. B
 | `/play` | Gamey competition endpoint |
 | `/prometheus/` | Prometheus UI/API |
 | `/grafana/` | Grafana UI |
+| `/openapis*` | Swagger UI  |
 | `/*` | Webapp SPA |
+
 
 `/api/auth/verify` is blocked by Nginx and is only for internal service-to-service calls.
 
