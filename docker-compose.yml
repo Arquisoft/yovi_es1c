@@ -174,6 +174,22 @@ services:
     networks:
       - monitor-net
 
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui
+    expose:
+      - "8080"
+    environment:
+      BASE_URL: /openapis
+      URLS: '[{"url":"/openapis/specs/users.yaml","name":"Users Service"},{"url":"/openapis/specs/auth.yaml","name":"Auth Service"},{"url":"/openapis/specs/gameservice.yaml","name":"Game Service"},{"url":"/openapis/specs/gamey.yaml","name":"Gamey Bot Server"}]'
+      URLS_PRIMARY_NAME: "Users Service"
+    volumes:
+      - ./users/openapi.yaml:/usr/share/nginx/html/specs/users.yaml:ro
+      - ./auth/openapi.yaml:/usr/share/nginx/html/specs/auth.yaml:ro
+      - ./gameservice/openapi.yaml:/usr/share/nginx/html/specs/gameservice.yaml:ro
+      - ./gamey/openapi.yaml:/usr/share/nginx/html/specs/gamey.yaml:ro
+    networks:
+      - monitor-net
   nginx:
     image: nginx:alpine
     container_name: nginx_proxy
@@ -196,6 +212,7 @@ services:
       - gameservice
       - auth
       - redis
+      - swagger-ui
     networks:
       - monitor-net
     restart: unless-stopped

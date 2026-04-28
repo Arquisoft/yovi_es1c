@@ -9,8 +9,6 @@ info:
 servers:
   - url: /api/users
     description: Public gateway path through Nginx
-  - url: http://users:3000/api/users
-    description: Internal Docker network endpoint
 
 tags:
   - name: Profiles
@@ -27,11 +25,6 @@ paths:
     get:
       tags: [Operations]
       summary: Service health/info endpoint
-      servers:
-        - url: /
-          description: Service root path
-        - url: http://users:3000
-          description: Internal Docker network endpoint
       responses:
         '200':
           description: Service is running
@@ -630,11 +623,6 @@ paths:
     get:
       tags: [Operations]
       summary: Prometheus metrics
-      servers:
-        - url: /
-          description: Service root path
-        - url: http://users:3000
-          description: Internal Docker network endpoint
       responses:
         '200':
           description: Metrics payload
